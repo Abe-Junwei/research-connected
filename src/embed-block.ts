@@ -1,0 +1,53 @@
+import { MarkdownRenderChild, Plugin, type MarkdownPostProcessorContext } from "obsidian";
+import { mountEmbed } from "./embed-mount";
+import { obsidianGetJson } from "./obsidian-http";
+import { openExternal } from "./open-external";
+import type { ConnectedPapersSettings } from "./settings-model";
+import { createVaultNote } from "./vault-note";
+
+interface EmbedHost extends Plugin {
+	getSettings(): ConnectedPapersSettings;
+}
+
+/**
+ * Reading view and Live Preview both use this processor. While the cursor is
+ * inside the fence, Obsidian shows the source; leaving the block mounts the
+ * 3D graph again. The WebGL context is disposed in onunload so the editor
+ * does not keep a hidden canvas.
+ */
+export function registerConnectedPapersEmbed(plugin: EmbedHost): void {
+	const handler = (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {
+		ctx.addChild(new ConnectedPapersEmbed(el, source, plugin, ctx));
+	};
+	// `connected-papers` stays valid so existing notes keep rendering.
+	plugin.registerMarkdownCodeBlockProcessor("connected-papers", handler);
+	plugin.registerMarkdownCodeBlockProcessor("research-connected", handler);
+}
+
+class ConnectedPapersEmbed extends MarkdownRenderChild {
+	private destroyView: (() => void) | null = null;
+
+	constructor(
+		containerEl: HTMLElement,
+		private readonly source: string,
+		private readonly plugin: EmbedHost,
+		_ctx: MarkdownPostProcessorContext,
+	) {
+		super(containerEl);
+	}
+
+	onload(): void {
+		this.destroyView = mountEmbed(this.containerEl, {
+			source: this.source,
+			getSettings: () => this.plugin.getSettings(),
+			getJson: obsidianGetJson,
+			openExternal,
+			createNote: (filename, markdown) => createVaultNote(this.plugin.app, filename, markdown),
+		});
+	}
+
+	onunload(): void {
+		this.destroyView?.();
+		this.destroyView = null;
+	}
+}

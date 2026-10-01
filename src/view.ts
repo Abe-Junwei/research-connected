@@ -1,0 +1,52 @@
+import { ItemView, WorkspaceLeaf } from "obsidian";
+import { mountGraphApp } from "./app";
+import { VIEW_TYPE } from "./constants";
+import { obsidianGetJson } from "./obsidian-http";
+import { openExternal } from "./open-external";
+import { createVaultNote } from "./vault-note";
+import type { ConnectedPapersSettings } from "./settings";
+
+export interface GraphHost {
+	getSettings(): ConnectedPapersSettings;
+}
+
+export class ConnectedPapersView extends ItemView {
+	private destroyApp: (() => void) | null = null;
+
+	constructor(
+		leaf: WorkspaceLeaf,
+		private readonly host: GraphHost,
+	) {
+		super(leaf);
+	}
+
+	getViewType(): string {
+		return VIEW_TYPE;
+	}
+
+	getDisplayText(): string {
+		return "Research Connected";
+	}
+
+	getIcon(): string {
+		return "git-fork";
+	}
+
+	async onOpen(): Promise<void> {
+		this.contentEl.empty();
+		this.contentEl.addClass("cpo-host");
+		this.destroyApp = mountGraphApp(this.contentEl, {
+			getSettings: () => this.host.getSettings(),
+			getJson: obsidianGetJson,
+			openExternal,
+			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
+		});
+	}
+
+	async onClose(): Promise<void> {
+		this.destroyApp?.();
+		this.destroyApp = null;
+		this.contentEl.empty();
+		this.contentEl.removeClass("cpo-host");
+	}
+};

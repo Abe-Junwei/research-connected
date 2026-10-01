@@ -1,5 +1,16 @@
-node_modules/
+.vscode
+*.iml
+.idea
+
+node_modules
+
+# Built by `npm run build`. Copied into the vault after compilation.
+main.js
+
+*.map
+data.json
 .DS_Store
-*.zip
-*.b64
-dist/
+
+scripts/verify.cjs
+preview/preview.js
+preview/embed.js

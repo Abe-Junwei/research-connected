@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Research Connected embed preview</title>
+		<link rel="stylesheet" href="../styles.css" />
+		<style>
+			body {
+				margin: 0;
+				background: #1a1d24;
+				color: #e8ebf2;
+				font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+			}
+			article {
+				max-width: 1120px;
+				margin: 0 auto;
+				padding: 28px 20px 48px;
+			}
+			h1 {
+				margin: 0 0 8px;
+				font-size: 28px;
+				font-weight: 650;
+			}
+			p {
+				margin: 0 0 16px;
+				color: #b7c0d0;
+				line-height: 1.5;
+			}
+		</style>
+	</head>
+	<body>
+		<article>
+			<h1>Deep learning</h1>
+			<p>
+				A note with an embedded similarity graph. The graph fills the block; filters open from 筛选, and the paper sits in a short bottom sheet.
+				Pass <code>?position=float-right</code> to sit the graph beside this paragraph.
+			</p>
+			<div id="embed"></div>
+			<p>
+				Following text wraps around a left or right float. Inline and full positions stay in the column.
+				Gold edges are citations, teal is co-citation, indigo is shared references.
+			</p>
+		</article>
+		<script src="./embed.js"></script>
+	</body>
+</html>

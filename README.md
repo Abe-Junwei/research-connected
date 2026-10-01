@@ -1,35 +1,251 @@
 # Research Connected
 
-Obsidian plugin: Connected Papers–style similarity map for a seed paper via [OpenAlex](https://openalex.org/), with force / temporal / radial layouts and note embeds.
+An Obsidian plugin that draws a **similarity map** for one seed paper, in the spirit of [Connected Papers](https://www.connectedpapers.com/). The product is a force-directed graph in its own pane.
 
-**Version:** 1.5.1 (installable build)
+It is not a sidebar of citation cards. Reference Map / Literature Flow–style index lists are an explicit non-goal. This project is not affiliated with Connected Papers.
 
-## Install (manual)
+## Rename
 
-1. Copy this folder into your vault:  
-   `.obsidian/plugins/research-connected/`
-2. Enable **Research Connected** in Obsidian → Settings → Community plugins.
-3. Optional: set an [OpenAlex API key](https://openalex.org/settings/api) in plugin settings for higher rate limits.
+The display name is **Research Connected**. The plugin id is `research-connected`, version 1.5.1.
 
-Required files: `main.js`, `manifest.json`, `styles.css`.
+Earlier builds used the id `connected-papers-openalex` and the folder `<vault>/.obsidian/plugins/connected-papers-openalex/`. That id does not carry over. After you install this build:
 
-## Note embed
+1. Turn off **Connected Papers (OpenAlex)** if it is still enabled.
+2. Remove the old folder `connected-papers-openalex`.
+3. Enable **Research Connected** from `research-connected`.
+
+Plugin settings (the OpenAlex API key) live in that folder’s `data.json`. Copy the old `data.json` into the new folder before you reload if you want to keep the key. Notes that already use a `connected-papers` fence keep working. `research-connected` is the same fence.
+
+The graph is built from the public [OpenAlex](https://openalex.org/) works API.
+
+## Build
+
+```bash
+npm install
+npm run build
+```
+
+`npm run build` typechecks, then bundles `src/main.ts` to `main.js`. You need Node 18+.
+
+Loadable plugin files:
+
+| File | Role |
+| --- | --- |
+| `main.js` | Bundled plugin (generated, gitignored) |
+| `manifest.json` | Plugin id `research-connected` |
+| `styles.css` | Pane styles |
+
+## Install
+
+1. Build the plugin (above).
+2. Copy `main.js`, `manifest.json`, and `styles.css` into:
+
+   ```text
+   <vault>/.obsidian/plugins/research-connected/
+   ```
+
+3. Reload Obsidian (or restart it). If a previous copy failed with **加载失败**, replace `main.js` and `manifest.json` with this build, reload, then turn the plugin off and on again.
+4. Settings → Community plugins → turn on **Research Connected**.
+
+Restricted mode must be off, or Obsidian will not load community plugins.
+
+## Usage
+
+1. Command palette → **Open Research Connected**.
+   The same command is on the ribbon (git-fork icon).
+   The view opens as a **main-area tab** titled “Research Connected”, not in the sidebars.
+2. In the pane, enter a seed:
+   - DOI (`10.1038/nature14539` or `https://doi.org/...`)
+   - OpenAlex work id (`W2919115771`) or an `openalex.org` work URL
+   - or a title. Title search shows up to 8 hits; click one to make it the seed.
+3. Press **构建图谱** (Build map). **示例 DOI** loads the Nature review *Deep learning* (`10.1038/nature14539`).
+4. The seed sits in the middle with a double ring and a halo. Other papers are placed by similarity:
+   - node color runs from indigo (older) to gold (newer)
+   - node area grows with citation count
+   - line strength follows the similarity score
+5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / 适配** zoom and fit the map.
+6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **在 OpenAlex 中打开**, and **打开 DOI** when a DOI exists.
+   Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
+7. Chinese titles render with the interface font plus a CJK fallback stack. In-pane labels are Chinese; the command name stays English.
+
+While a request is in flight the button reads **正在构建…**. Failures (unknown id, exhausted budget, network) show a banner and leave the previous map in place.
+
+## 3D embed in a note
+
+A fenced block renders the same neighborhood as an interactive **3D** graph inside the note. The language can be `connected-papers` or `research-connected`. Reading view and Live Preview both mount it. While the cursor is inside the fence, Obsidian shows the source; leaving the block builds the graph again. The command-palette pane stays the 2D map.
+
+The fence is the anchor in the note. `position` changes how that block sits among the surrounding paragraphs. It does not teleport the graph to another heading.
 
 ````markdown
-```research-connected
+```connected-papers
 doi: 10.1038/nature14539
-layout: temporal
+# optional
+position: inline
+width: 100%
+height: 520
+align: center
+labels: author-year
+maxNodes: 40
+depth: 1
 ```
 ````
 
-Aliases: `research-connected`, `connected-papers`.
+| Line | Required | Meaning |
+| --- | --- | --- |
+| `doi:` | one seed | DOI, with or without `https://doi.org/`. |
+| `openalex:` / `id:` / `seed:` | one seed | OpenAlex work id (`W2919115771`) or a DOI. A bare DOI or `W…` id on its own line also works. |
+| `position:` | no | `inline` (default, in the column), `float-left`, `float-right` (beside the following text), or `full` (clear floats and span the note column). |
+| `width:` | no | `420`, `420px` (240–1400), `60%` (30–100), `24em`, or `24rem`. Default `100%`. Floats default to `420px` when `width` is omitted. |
+| `height:` | no | Pixels, clamped to 280–900. Default **480**. |
+| `align:` | no | `left` (default), `center`, or `right`. Centers or right-aligns a block that is narrower than the column. Ignored for floats. |
+| `labels:` | no | `author-year` (default: family name and year on each node), `title`, `both`, or `off`. Overlapping labels drop out; the seed, the selection, and the node under the pointer stay. |
+| `maxNodes:` | no | 20–80. Overrides the setting for this block only. Default is the setting (50). |
+| `depth:` | no | `1` (default) is the seed neighborhood. `2` also samples references of the two closest papers, up to the node cap. |
+| `yearFrom:` / `yearTo:` | no | Inclusive year range for the other papers. The seed stays. If both are set and reversed, they are swapped. |
+| `language:` / `type:` / `concept:` | no | Preset filters. They apply only when OpenAlex included that field (`language`, `type`, `concepts`). |
+| `minCoCite:` / `minShared:` | no | Hide co-citation edges below that count, and coupling edges below that shared-reference count. Default 1. |
+| `layout:` | no | `temporal` (default; year on X, log citation count on Y — recommended in a note), `radial` (seed at the center), `force2d`, or `force3d`. |
+| `color:` | no | `community` (default) or `year`. Edge colors stay the relation type. `year` is the older year ramp. |
 
-Useful keys: `position`, `width`, `height`, `align`, `labels`, `yearFrom` / `yearTo`, `language`, `type`, `concept`, `minCoCite`, `minShared`, `layout`, `color`.
+`full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
 
-## Source
+Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph fills the block. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. The selected paper is a bottom sheet: one title line until you press **展开** (about 160px), where the evidence, prior and derivative lists, and exports live. Both start collapsed so the graph stays large.
 
-This repo currently holds the **built** plugin for Obsidian. Full TypeScript source lives in the Cursor Origin draft from the cloud agent that developed it; it will be added when that workspace can be exported again.
+On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. The wheel zooms, and so do **+ / − / 适配**. A two-finger pinch zooms. The grip at the bottom-right changes the block’s width and height after it opens; `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
 
-## License
+**重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Hover or click an edge for that pair’s explanation.
 
-MIT (unless noted otherwise in a later LICENSE file).
+Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation and coupling stay undirected. Thickness is three steps, **弱 / 中 / 强**, matching the legend. Click a legend chip to hide that edge type. **共被引 ≥** and **共享文献 ≥** raise the count threshold. **到种子的路径** keeps the shortest visible path bright when you click a node that is not the seed; neighbors stay bright and the rest dim. Hover or click an edge for the evidence strip: shared-reference count, co-citation count, OpenAlex as the source, and a note that the citation lists can be incomplete.
+
+After the graph loads, language, work type, and concept menus appear only when at least one paper has that OpenAlex field. Node size is still citation count. Author–year labels stay.
+
+**时间 / 放射 / 平面 / 三维** switch the layout without another OpenAlex request. The default in a note is **时间** (`layout: temporal`): left to right is year, bottom to top is log citation count. **社区 / 年份** recolors nodes only. The year scrubber hides papers published after the chosen year, including the seed, and **播放** walks forward one year at a time. At the right end the full filtered graph returns, undated papers included.
+
+**先验工作** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **衍生工作** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out. **BibTeX**, **YAML**, and **表格** export the papers still on screen. **写入笔记** creates a note whose frontmatter is only title, authors, year, DOI, and the OpenAlex link.
+
+Edge color is the sharpest relation, not a blend. The legend inside **筛选** lists them:
+
+| Color | Relation | What the text counts |
+| --- | --- | --- |
+| Gold | 引用 citing | One paper lists the other, or they cite each other. |
+| Teal | 共被引 co-citation | How many sampled citing papers list both. |
+| Indigo | 文献耦合 coupling | How many referenced works they share. |
+| Gray | 弱连线 | A fallback link with none of the counts above. |
+
+Thickness is the same three steps as the legend (弱 / 中 / 强), not a continuous score. The same OpenAlex API key from settings is sent; without a key the small daily budget still applies, and a 429 is shown inside the block instead of freezing the editor. The animation pauses while the block is off screen.
+
+`depth: 2` costs a few extra OpenAlex calls. If that second hop fails, the block keeps the depth-1 graph and says so.
+
+## Settings
+
+Settings → Research Connected.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| OpenAlex API 密钥 | empty | Sent as `Authorization: Bearer`. Stored only in local plugin data. |
+| 联系邮箱（mailto） | empty | Appended as `mailto` if it looks like an email. |
+| 最大节点数 | 50 (range 20–80) | Cap including the seed. 40–60 is the intended range. Applied on the next build. |
+| 纳入参考文献 | on | Seed’s outgoing references. |
+| 纳入施引文献 | on | Works that cite the seed, also used as co-citation context. |
+| 纳入相关作品 | on | OpenAlex `related_works` as extra candidate nodes. |
+
+Turn off every neighbor toggle and the pane asks you to enable one. The next build uses the new toggles; the current map is not rebuilt automatically.
+
+### Authentication and limits
+
+OpenAlex still answers **without a key**, on a small daily budget. A keyless response while this plugin was written reported `X-RateLimit-Limit: 1000` and `X-RateLimit-Limit-USD: 0.1`. The live numbers are whatever the API puts in `X-RateLimit-*` that day.
+
+A free key from [openalex.org/settings/api](https://openalex.org/settings/api) raises that budget. OpenAlex documents the free key as about **10×** the keyless allowance. Past the budget, or above 100 requests/second, the API returns **HTTP 429**. The pane tells you to add a key or wait until the daily reset.
+
+The old polite pool is gone. Since February 2026 OpenAlex **ignores `mailto`**. The email setting is still sent when you fill it in, for older gateways, and it does **not** raise the limit. A key is the way to get a higher budget. See [OpenAlex authentication](https://help.openalex.org/api/authentication/).
+
+One map is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Title search is a separate, slightly more expensive call.
+
+## Algorithm
+
+Connected Papers builds a similarity map from co-citation and bibliographic coupling over a large citation graph. This plugin approximates that with a **sampled** OpenAlex neighborhood. It is not a citation tree and not a ranked list.
+
+1. Resolve the seed work.
+2. Sample candidates (each list is one page, most-cited first when a sort applies):
+   - up to **80** works the seed cites
+   - up to **40** works that cite the seed
+   - up to **20** OpenAlex related works
+3. Keep at most `最大节点数 − 1` neighbors:
+   - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure
+   - remaining slots split between references and citing works
+   - unused quota is filled by citation count
+   - the same work is kept once; a reference outranks a citing work, which outranks a related work
+4. Batch-fetch `referenced_works` and `abstract_inverted_index` for the kept nodes and for the citing sample (the citing sample is the co-citation context even when a citer is not drawn).
+5. Score every pair:
+
+   ```text
+   score = 0.55 * bibliographic coupling
+         + 0.35 * co-citation
+         + 0.10 * direct citation
+   ```
+
+   - **Bibliographic coupling** is the cosine of the two reference-id sets: `|A ∩ B| / sqrt(|A| |B|)`.
+   - **Co-citation** counts how often both ids show up together in the reference lists of the sampled citing papers, normalized by `both / sqrt(countA * countB)`.
+   - **Direct citation** is 1 when either work lists the other.
+6. Edges, so the picture is a map rather than a star:
+   - the seed links to its **7** nearest neighbors
+   - every other node links to its **2** nearest neighbors with score ≥ **0.07**
+   - a node with no edge still gets its single best link
+7. Layout: seed fixed at the origin, other nodes start on a golden-angle spiral (radius from similarity to the seed), then a short force simulation. Springs are shorter for higher scores; nodes repel and cannot overlap. Dragging after that moves only the node you grab.
+
+`related_works` in OpenAlex means “recent papers that share topics”, not a Connected Papers score. Related works are only **candidates**. Edge weight is always the score above.
+
+Highly cited papers are sampled, not exhaustively expanded. A seed with tens of thousands of citations contributes its 40 most-cited citers, not the full citing set. Reference lists longer than the sampled works are whatever OpenAlex returns on that one page (up to 80, sorted by citations).
+
+## OpenAlex endpoints
+
+Base: `https://api.openalex.org`. The plugin sends `Accept: application/json` and, when a key is set, `Authorization: Bearer <key>`.
+
+| Call | Endpoint | Role |
+| --- | --- | --- |
+| Seed by DOI | `GET /works/doi:{doi}?select=id,display_name,publication_year,cited_by_count,doi,authorships,abstract_inverted_index,referenced_works,related_works` | Resolve a DOI |
+| Seed by id | `GET /works/{openAlexId}` with the same `select` | Resolve `W…` or an OpenAlex URL |
+| Title search | `GET /works?search={query}&per_page=8&select=id,display_name,publication_year,cited_by_count,doi,authorships` | Picker, not the graph |
+| References of the seed | `GET /works?filter=cited_by:{id}&per_page=80&sort=cited_by_count:desc` plus the list `select` | Outgoing citations. OpenAlex’s `cited_by` filter means “works this id cites”. |
+| Citing works | `GET /works?filter=cites:{id}&per_page=40&sort=cited_by_count:desc` | Incoming citations |
+| Related works | `GET /works?filter=related_to:{id}&per_page=20` | Topic-similar candidates |
+| Reference lists and abstracts | `GET /works?filter=openalex:{id}\|{id}…&per_page={n}&select=id,referenced_works,abstract_inverted_index` | Batches of up to 80 ids |
+
+Abstracts are reconstructed from `abstract_inverted_index` when OpenAlex has one. Many works have none; the sheet then says so.
+
+Filter names are easy to invert: `cited_by:W…` returns works **in** that work’s `referenced_works` (outgoing). `cites:W…` returns works that **list** that id (incoming).
+
+## Development preview
+
+The pane UI is plain DOM (`src/app.ts`) so it can run outside Obsidian. The preview is the same map, not a second product.
+
+```bash
+npm run preview
+python3 -m http.server 8734 --bind 127.0.0.1
+```
+
+Open `http://127.0.0.1:8734/preview/index.html`. Add `?demo=1` to build the example DOI immediately.
+
+The note embed (same DOM as the plugin, without Obsidian) is `http://127.0.0.1:8734/preview/embed.html`. It loads `doi: 10.1038/nature14539` unless you pass `?doi=`.
+
+`npm run verify` runs the similarity unit checks and one live OpenAlex build for `10.1038/nature14539`.
+
+## Project layout
+
+Official sample-plugin shape: `src/main.ts` bundled by esbuild to `main.js`, plus `manifest.json`, `styles.css`, and `versions.json`.
+
+- `src/main.ts` — plugin, command, ribbon, settings, code-block registration
+- `src/view.ts` — `ItemView` (2D pane)
+- `src/embed-block.ts` — `connected-papers` and `research-connected` Markdown code blocks
+- `src/embed-syntax.ts` — fence parser (`position`, `width`, `align`, `labels`)
+- `src/embed-mount.ts` — embed chrome, cache, optional depth-2 hop
+- `src/graph-3d.ts` — Three.js view (drag to rotate, labels, typed edges)
+- `src/labels.ts` — author + year labels
+- `src/relation.ts` — edge kind and the Chinese explanation
+- `src/layout-3d.ts` — 3D force layout
+- `src/app.ts` — toolbar, detail sheet, search picker
+- `src/map-canvas.ts` — 2D canvas interaction
+- `src/neighborhood.ts` — sampling and OpenAlex orchestration
+- `src/similarity.ts` — coupling / co-citation scores
+- `src/layout.ts` — 2D force layout
+- `src/openalex.ts` — works client
