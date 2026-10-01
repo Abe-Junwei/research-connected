@@ -1,0 +1,9 @@
+{
+	"id": "research-connected",
+	"name": "Research Connected",
+	"version": "1.5.1",
+	"minAppVersion": "1.4.0",
+	"description": "Research Connected: a similarity map of a seed paper from OpenAlex, plus a 3D graph you can embed in a note.",
+	"author": "research-connected",
+	"isDesktopOnly": false
+}
