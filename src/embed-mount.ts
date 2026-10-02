@@ -1,9 +1,9 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
-import { parseEmbed, type EmbedSpec } from "./embed-syntax";
+import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { emptyFilter, evidenceText, facetOptions, visibleNodes, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { mountGraph3D, type Graph3DHandle } from "./graph-3d";
+import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -21,6 +21,8 @@ export interface EmbedDeps {
 	getJson: GetJson;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
+	/** Open the full graph pane on this seed, when the host supports it. */
+	openGraph?: (target: { kind: "doi" | "openalex"; value: string }) => void;
 }
 
 const STAGE_TEXT: Record<LoadStage, string> = {
@@ -30,6 +32,15 @@ const STAGE_TEXT: Record<LoadStage, string> = {
 };
 
 const cache = new Map<string, SimilarityGraph>();
+
+/** Camera, filter, and layout remembered per block key across remounts. */
+interface EmbedViewState {
+	camera: GraphCameraState;
+	filter: GraphFilter;
+	layout: LayoutMode;
+	color: ColorMode;
+}
+const viewStates = new Map<string, EmbedViewState>();
 
 /** Reading view and Live Preview share this DOM. It does not import Obsidian. */
 export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
@@ -89,7 +100,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	drawerTitle.textContent = "筛选 / 图例";
 	const tip = document.createElement("p");
 	tip.className = "cpo-side-tip";
-	tip.textContent = "拖拽移动图谱，滚轮或右下角按钮缩放。三维布局下拖拽是旋转，右键平移。";
+	tip.textContent = "拖拽移动图谱，按住 ⌘/Ctrl 滚动或用右下角按钮缩放。三维布局下拖拽是旋转，右键平移。嵌入图谱里节点位置固定，不能拖动。";
 	const legend = document.createElement("div");
 	legend.className = "cpo-embed-legend";
 	const filters = document.createElement("div");
@@ -117,6 +128,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	});
 
 	if (!parsed.ok) {
+		shell.classList.add("is-error");
 		status.textContent = "代码块还不能建图";
 		message.textContent = parsed.error;
 		reload.hidden = true;
@@ -130,7 +142,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	}
 
 	const spec = parsed.spec;
-	let viewFilter = filterFromSpec(spec);
+	const stateKey = cacheKey(spec.target, spec.maxNodes ?? deps.getSettings().maxNodes, spec.depth, deps.getSettings());
+	const saved = viewStates.get(stateKey);
+	let viewFilter = saved?.filter ?? filterFromSpec(spec);
 	buildLegend(legend, () => viewFilter, (next) => {
 		viewFilter = next;
 		graphView?.setFilter(viewFilter);
@@ -142,8 +156,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintLists();
 	});
 	let tab: GraphTab = "graph";
-	let layoutMode: LayoutMode = spec.layout;
-	let colorMode: ColorMode = spec.color;
+	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
+	let colorMode: ColorMode = saved?.color ?? spec.color;
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
@@ -232,6 +246,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	zoomIn.addEventListener("click", () => graphView?.zoomBy(1.2));
 	zoomOut.addEventListener("click", () => graphView?.zoomBy(1 / 1.2));
 	zoomFit.addEventListener("click", () => graphView?.frame());
+	let wheelHinted = false;
+	stage.addEventListener(
+		"wheel",
+		(event) => {
+			if (wheelHinted || event.ctrlKey || event.metaKey || !graphView) return;
+			wheelHinted = true;
+			status.textContent += " · 按住 ⌘/Ctrl 滚动可缩放";
+		},
+		{ capture: true, passive: true },
+	);
 	let generation = 0;
 	let graphView: Graph3DHandle | null = null;
 	let alive = true;
@@ -243,6 +267,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		empty.className = "cpo-embed-detail-empty";
 		empty.textContent = "点选节点查看题名、年份、作者和证据。";
 		detail.append(empty);
+		if (deps.openGraph) addLink(detail, "在图谱面板中打开此图", () => deps.openGraph?.(spec.target));
 		sheet.setSummary("点选节点查看论文", "");
 	};
 	placeDetailPlaceholder();
@@ -302,9 +327,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const doi = allowedExternalUrl(paper.doiUrl);
 			if (doi) addLink(detail, "打开 DOI", () => deps.openExternal(doi));
 		}
+		if (deps.openGraph) addLink(detail, "在图谱面板中打开此图", () => deps.openGraph?.(spec.target));
+	};
+
+	const snapshotView = (): void => {
+		if (!graphView) return;
+		rememberViewState(stateKey, { camera: graphView.getCamera(), filter: viewFilter, layout: layoutMode, color: colorMode });
 	};
 
 	const renderGraph = (graph: SimilarityGraph, depthNote: string): void => {
+		snapshotView();
 		graphView?.destroy();
 		graphView = null;
 		message.hidden = true;
@@ -316,6 +348,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				(paper, link) => showDetail(paper, graph, link),
 				{ labels: spec.labels, filter: viewFilter, layout: layoutMode, colorMode },
 			);
+			const remembered = viewStates.get(stateKey);
+			if (remembered) graphView.setCamera(remembered.camera);
 			facetControls.fill(graph.nodes);
 			currentGraph = graph;
 			chrome?.setYears(...yearSpan(graph.nodes));
@@ -384,6 +418,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	return () => {
 		alive = false;
 		generation += 1;
+		snapshotView();
 		graphView?.destroy();
 		chrome?.destroy();
 		sheet.destroy();
@@ -434,13 +469,23 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 	const grip = document.createElement("div");
 	grip.className = "cpo-resize";
 	grip.setAttribute("role", "button");
-	grip.setAttribute("aria-label", "拖动调整图谱大小");
+	grip.tabIndex = 0;
+	grip.setAttribute("aria-label", "调整图谱大小：拖动，或用方向键（Shift 加速）");
 	shell.append(grip);
 	let dragging = false;
 	let startX = 0;
 	let startY = 0;
 	let startW = 0;
 	let startH = 0;
+
+	const applySize = (width: number, height: number): void => {
+		const clampedWidth = Math.min(EMBED_WIDTH_LIMIT.max, Math.max(EMBED_WIDTH_LIMIT.min, Math.round(width)));
+		const clampedHeight = Math.min(EMBED_HEIGHT_LIMIT.max, Math.max(EMBED_HEIGHT_LIMIT.min, Math.round(height)));
+		anchor.style.maxWidth = "none";
+		anchor.style.width = `${clampedWidth}px`;
+		shell.style.height = `${clampedHeight}px`;
+		onResize();
+	};
 
 	const onPointerDown = (event: PointerEvent): void => {
 		dragging = true;
@@ -458,12 +503,7 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 	};
 	const onPointerMove = (event: PointerEvent): void => {
 		if (!dragging) return;
-		const width = Math.min(1600, Math.max(420, Math.round(startW + (event.clientX - startX))));
-		const height = Math.min(1200, Math.max(420, Math.round(startH + (event.clientY - startY))));
-		anchor.style.maxWidth = "none";
-		anchor.style.width = `${width}px`;
-		shell.style.height = `${height}px`;
-		onResize();
+		applySize(startW + (event.clientX - startX), startH + (event.clientY - startY));
 	};
 	const onPointerUp = (event: PointerEvent): void => {
 		if (!dragging) return;
@@ -474,15 +514,29 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 			// The pointer was never captured.
 		}
 	};
+	const onKeyDown = (event: KeyboardEvent): void => {
+		const step = event.shiftKey ? 160 : 40;
+		const width = anchor.getBoundingClientRect().width;
+		const height = shell.getBoundingClientRect().height;
+		if (event.key === "ArrowLeft") applySize(width - step, height);
+		else if (event.key === "ArrowRight") applySize(width + step, height);
+		else if (event.key === "ArrowUp") applySize(width, height - step);
+		else if (event.key === "ArrowDown") applySize(width, height + step);
+		else return;
+		event.preventDefault();
+		event.stopPropagation();
+	};
 	grip.addEventListener("pointerdown", onPointerDown);
 	grip.addEventListener("pointermove", onPointerMove);
 	grip.addEventListener("pointerup", onPointerUp);
 	grip.addEventListener("pointercancel", onPointerUp);
+	grip.addEventListener("keydown", onKeyDown);
 	return () => {
 		grip.removeEventListener("pointerdown", onPointerDown);
 		grip.removeEventListener("pointermove", onPointerMove);
 		grip.removeEventListener("pointerup", onPointerUp);
 		grip.removeEventListener("pointercancel", onPointerUp);
+		grip.removeEventListener("keydown", onKeyDown);
 		grip.remove();
 	};
 }
@@ -517,8 +571,9 @@ function buildLegend(
 	for (const kind of ["direct", "cocitation", "coupling", "weak"] as const) {
 		const button = document.createElement("button");
 		button.type = "button";
-		button.className = "cpo-legend-kind is-on";
-		button.setAttribute("aria-pressed", "true");
+		const on = read().kinds[kind];
+		button.className = on ? "cpo-legend-kind is-on" : "cpo-legend-kind";
+		button.setAttribute("aria-pressed", on ? "true" : "false");
 		const swatch = document.createElement("i");
 		swatch.dataset.kind = kind;
 		button.append(swatch, document.createTextNode(RELATION_LABEL[kind]));
@@ -569,8 +624,8 @@ function buildFilters(
 	host.append(language.label, workType.label, concept.label);
 	const path = document.createElement("button");
 	path.type = "button";
-	path.className = "cpo-path-toggle is-on";
-	path.setAttribute("aria-pressed", "true");
+	path.className = read().focusPath ? "cpo-path-toggle is-on" : "cpo-path-toggle";
+	path.setAttribute("aria-pressed", read().focusPath ? "true" : "false");
 	path.textContent = "到种子的路径";
 	path.addEventListener("click", () => {
 		const on = !read().focusPath;
@@ -781,6 +836,14 @@ function remember(key: string, graph: SimilarityGraph): void {
 		if (oldest) cache.delete(oldest);
 	}
 	cache.set(key, graph);
+}
+
+function rememberViewState(key: string, state: EmbedViewState): void {
+	if (viewStates.size >= 12) {
+		const oldest = viewStates.keys().next().value;
+		if (oldest) viewStates.delete(oldest);
+	}
+	viewStates.set(key, state);
 }
 
 function fillAggregate(

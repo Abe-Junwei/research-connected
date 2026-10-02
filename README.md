@@ -63,7 +63,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
    - node color runs from indigo (older) to gold (newer)
    - node area grows with citation count
    - line strength follows the similarity score
-5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / 适配** zoom and fit the map.
+5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / 适配** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
 6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **在 OpenAlex 中打开**, and **打开 DOI** when a DOI exists.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
 7. Chinese titles render with the interface font plus a CJK fallback stack. In-pane labels are Chinese; the command name stays English.
@@ -72,7 +72,7 @@ While a request is in flight the button reads **正在构建…**. Failures (unk
 
 ## 3D embed in a note
 
-A fenced block renders the same neighborhood as an interactive **3D** graph inside the note. The language can be `connected-papers` or `research-connected`. Reading view and Live Preview both mount it. While the cursor is inside the fence, Obsidian shows the source; leaving the block builds the graph again. The command-palette pane stays the 2D map.
+A fenced block renders the same neighborhood as an interactive **3D** graph inside the note. The language can be `connected-papers` or `research-connected`. Reading view and Live Preview both mount it. While the cursor is inside the fence, Obsidian shows the source; leaving the block builds the graph again — the camera, filters, and layout you chose are remembered across that rebuild. The command-palette pane stays the 2D map.
 
 The fence is the anchor in the note. `position` changes how that block sits among the surrounding paragraphs. It does not teleport the graph to another heading.
 
@@ -111,7 +111,7 @@ depth: 1
 
 Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph fills the block. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. The selected paper is a bottom sheet: one title line until you press **展开** (about 160px), where the evidence, prior and derivative lists, and exports live. Both start collapsed so the graph stays large.
 
-On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. The wheel zooms, and so do **+ / − / 适配**. A two-finger pinch zooms. The grip at the bottom-right changes the block’s width and height after it opens; `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
+On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The grip at the bottom-right changes the block’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
 
 **重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Hover or click an edge for that pair’s explanation.
 
@@ -132,7 +132,7 @@ Edge color is the sharpest relation, not a blend. The legend inside **筛选** l
 | Indigo | 文献耦合 coupling | How many referenced works they share. |
 | Gray | 弱连线 | A fallback link with none of the counts above. |
 
-Thickness is the same three steps as the legend (弱 / 中 / 强), not a continuous score. The same OpenAlex API key from settings is sent; without a key the small daily budget still applies, and a 429 is shown inside the block instead of freezing the editor. The animation pauses while the block is off screen.
+Thickness is the same three steps as the legend (弱 / 中 / 强), not a continuous score. The same OpenAlex API key from settings is sent; without a key the small daily budget still applies, and a 429 is shown inside the block instead of freezing the editor. The block renders on demand: frames stop once the camera settles, and rendering pauses while the block is off screen.
 
 `depth: 2` costs a few extra OpenAlex calls. If that second hop fails, the block keeps the depth-1 graph and says so.
 
@@ -241,7 +241,7 @@ python3 -m http.server 8734 --bind 127.0.0.1
 
 Open `http://127.0.0.1:8734/preview/index.html`. Add `?demo=1` to build the example DOI immediately.
 
-The note embed (same DOM as the plugin, without Obsidian) is `http://127.0.0.1:8734/preview/embed.html`. It loads `doi: 10.1038/nature14539` unless you pass `?doi=`.
+The note embed (same DOM as the plugin, without Obsidian) is `http://127.0.0.1:8734/preview/embed.html`. It loads `doi: 10.1038/nature14539` unless you pass `?doi=`. Add `&fixture=1` for offline data, as in the pane preview.
 
 `npm run verify` runs the similarity unit checks and one live OpenAlex build for `10.1038/nature14539`.
 

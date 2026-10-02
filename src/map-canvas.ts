@@ -44,6 +44,11 @@ export class SimilarityMap {
 	private fontFamily = "sans-serif";
 	private alive = true;
 	private adjusted = false;
+	private pointers = new Map<number, { x: number; y: number }>();
+	private pinch: { startDist: number; k: number; wx: number; wy: number } | null = null;
+	private coarse: boolean | null = null;
+	private bgStart = "#171c28";
+	private bgEnd = "#0b0d12";
 	private layoutMode: LayoutMode = "force2d";
 	private colorMode: ColorMode = "community";
 	private scrubYear: number | null = null;
@@ -62,10 +67,18 @@ export class SimilarityMap {
 		this.onPointerUp = this.onPointerUp.bind(this);
 		this.onWheel = this.onWheel.bind(this);
 		this.onPointerLeave = this.onPointerLeave.bind(this);
+		this.onKeyDown = this.onKeyDown.bind(this);
+		canvas.tabIndex = 0;
+		// Optional-call: the headless verify script stubs a bare canvas object.
+		canvas.setAttribute?.("role", "application");
+		if (!canvas.getAttribute?.("aria-label")) {
+			canvas.setAttribute?.("aria-label", "论文相似度图谱：方向键平移，+/- 缩放，0 或 F 适配");
+		}
 		canvas.addEventListener("pointerdown", this.onPointerDown);
 		canvas.addEventListener("pointermove", this.onPointerMove);
 		canvas.addEventListener("wheel", this.onWheel, { passive: false });
 		canvas.addEventListener("pointerleave", this.onPointerLeave);
+		canvas.addEventListener("keydown", this.onKeyDown);
 		window.addEventListener("pointerup", this.onPointerUp);
 		window.addEventListener("pointercancel", this.onPointerUp);
 	}
@@ -141,6 +154,9 @@ export class SimilarityMap {
 		this.ctx = ctx;
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		this.fontFamily = getComputedStyle(this.stage).fontFamily || "sans-serif";
+		const canvasStyles = getComputedStyle(this.canvas);
+		this.bgStart = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#171c28");
+		this.bgEnd = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#0b0d12");
 		this.draw();
 	}
 
@@ -176,10 +192,13 @@ export class SimilarityMap {
 
 	destroy(): void {
 		this.alive = false;
+		this.pointers.clear();
+		this.pinch = null;
 		this.canvas.removeEventListener("pointerdown", this.onPointerDown);
 		this.canvas.removeEventListener("pointermove", this.onPointerMove);
 		this.canvas.removeEventListener("wheel", this.onWheel);
 		this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+		this.canvas.removeEventListener("keydown", this.onKeyDown);
 		window.removeEventListener("pointerup", this.onPointerUp);
 		window.removeEventListener("pointercancel", this.onPointerUp);
 		this.hideTooltip();
@@ -205,6 +224,20 @@ export class SimilarityMap {
 
 	private onPointerDown(event: PointerEvent): void {
 		if (!this.alive) return;
+		this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+		try {
+			this.canvas.setPointerCapture(event.pointerId);
+		} catch {
+			// The pointer can vanish before capture; dragging still tracks window pointerup.
+		}
+		if (this.pointers.size >= 2) {
+			// Second finger down: pinch zoom takes over, single-pointer drag is cancelled.
+			this.startPinch();
+			this.dragging = null;
+			this.moved = true;
+			this.hideTooltip();
+			return;
+		}
 		const local = this.localPoint(event.clientX, event.clientY);
 		const hit = this.hit(local.x, local.y);
 		this.moved = false;
@@ -216,15 +249,51 @@ export class SimilarityMap {
 		} else {
 			this.dragging = { kind: "pan", px: local.x, py: local.y, tx: this.tx, ty: this.ty };
 		}
-		try {
-			this.canvas.setPointerCapture(event.pointerId);
-		} catch {
-			// The pointer can vanish before capture; dragging still tracks window pointerup.
-		}
+	}
+
+	private startPinch(): void {
+		const points = [...this.pointers.values()];
+		const a = points[0];
+		const b = points[1];
+		if (!a || !b) return;
+		const mid = this.localPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+		const world = this.screenToWorld(mid.x, mid.y);
+		this.pinch = {
+			startDist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+			k: this.k,
+			wx: world.x,
+			wy: world.y,
+		};
+	}
+
+	private movePinch(): void {
+		const pinch = this.pinch;
+		if (!pinch) return;
+		const points = [...this.pointers.values()];
+		const a = points[0];
+		const b = points[1];
+		if (!a || !b) return;
+		const dist = Math.hypot(a.x - b.x, a.y - b.y);
+		if (dist <= 0) return;
+		const mid = this.localPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+		this.k = clamp(pinch.k * (dist / pinch.startDist), 0.25, 4);
+		this.tx = mid.x - pinch.wx * this.k;
+		this.ty = mid.y - pinch.wy * this.k;
+		this.moved = true;
+		this.adjusted = true;
+		this.hideTooltip();
+		this.draw();
 	}
 
 	private onPointerMove(event: PointerEvent): void {
 		if (!this.alive) return;
+		if (this.pointers.has(event.pointerId)) {
+			this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+		}
+		if (this.pinch) {
+			this.movePinch();
+			return;
+		}
 		const local = this.localPoint(event.clientX, event.clientY);
 		const dragging = this.dragging;
 		if (!dragging) {
@@ -259,8 +328,24 @@ export class SimilarityMap {
 		this.draw();
 	}
 
-	private onPointerUp(): void {
+	private onPointerUp(event: PointerEvent): void {
 		if (!this.alive) return;
+		this.pointers.delete(event.pointerId);
+		if (this.pinch) {
+			if (this.pointers.size >= 2) return;
+			this.pinch = null;
+			this.canvas.style.cursor = "grab";
+			// One finger still down: resume panning from its current spot, no click fires.
+			const remaining = this.pointers.values().next().value;
+			if (remaining) {
+				const local = this.localPoint(remaining.x, remaining.y);
+				this.dragging = { kind: "pan", px: local.x, py: local.y, tx: this.tx, ty: this.ty };
+				this.downX = remaining.x;
+				this.downY = remaining.y;
+				this.moved = true;
+			}
+			return;
+		}
 		const dragging = this.dragging;
 		const wasDrag = this.moved;
 		this.dragging = null;
@@ -298,6 +383,34 @@ export class SimilarityMap {
 		this.draw();
 	}
 
+	private onKeyDown(event: KeyboardEvent): void {
+		if (!this.alive) return;
+		const panStep = 48;
+		const key = event.key;
+		if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
+			event.preventDefault();
+			this.tx += key === "ArrowLeft" ? panStep : key === "ArrowRight" ? -panStep : 0;
+			this.ty += key === "ArrowUp" ? panStep : key === "ArrowDown" ? -panStep : 0;
+			this.adjusted = true;
+			this.draw();
+			return;
+		}
+		if (key === "+" || key === "=") {
+			event.preventDefault();
+			this.zoomBy(1.2);
+			return;
+		}
+		if (key === "-" || key === "_") {
+			event.preventDefault();
+			this.zoomBy(1 / 1.2);
+			return;
+		}
+		if (key === "0" || key === "f" || key === "F") {
+			event.preventDefault();
+			this.fit(true);
+		}
+	}
+
 	private placeTooltip(node: DrawNode | null, x: number, y: number): void {
 		if (!node) {
 			this.hideTooltip();
@@ -325,10 +438,23 @@ export class SimilarityMap {
 			if (!node || !node.shown) continue;
 			const dx = world.x - node.x;
 			const dy = world.y - node.y;
-			const reach = node.radius + 4;
+			const reach = node.radius + (this.isCoarsePointer() ? 12 : 4);
 			if (dx * dx + dy * dy <= reach * reach) return node;
 		}
 		return null;
+	}
+
+	private isCoarsePointer(): boolean {
+		if (this.coarse !== null) return this.coarse;
+		try {
+			this.coarse =
+				typeof window !== "undefined" && typeof window.matchMedia === "function"
+					? window.matchMedia("(pointer: coarse)").matches
+					: false;
+		} catch {
+			this.coarse = false;
+		}
+		return this.coarse;
 	}
 
 	private screenToWorld(sx: number, sy: number): { x: number; y: number } {
@@ -353,8 +479,8 @@ export class SimilarityMap {
 			height / 2,
 			Math.max(width, height) * 0.72,
 		);
-		background.addColorStop(0, "#171c28");
-		background.addColorStop(1, "#0b0d12");
+		background.addColorStop(0, this.bgStart);
+		background.addColorStop(1, this.bgEnd);
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
 
@@ -507,6 +633,19 @@ export class SimilarityMap {
 			}
 		}
 	}
+}
+
+function themeColor(value: string, fallback: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return fallback;
+	try {
+		if (typeof CSS !== "undefined" && typeof CSS.supports === "function" && !CSS.supports("color", trimmed)) {
+			return fallback;
+		}
+	} catch {
+		return fallback;
+	}
+	return trimmed;
 }
 
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {

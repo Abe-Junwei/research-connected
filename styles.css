@@ -639,6 +639,11 @@
 	box-sizing: border-box;
 }
 
+/* Parse or build failures shrink the shell to the bar plus the message. */
+.cpo-embed.is-error {
+	height: auto;
+}
+
 .cpo-embed-bar {
 	flex: none;
 	display: flex;
@@ -699,7 +704,7 @@
 	display: block;
 	width: 100%;
 	height: 100%;
-	touch-action: none;
+	touch-action: pan-y;
 }
 
 .cpo-embed-message {
@@ -725,6 +730,7 @@
 	color: #f2f4f8;
 	font-size: 12px;
 	line-height: 1.4;
+	white-space: normal;
 	pointer-events: none;
 }
 
@@ -964,10 +970,6 @@
 	line-height: 1.45;
 }
 
-.cpo-embed-tooltip {
-	white-space: normal;
-}
-
 .cpo-embed .cpo-tools,
 .cpo-side .cpo-tools {
 	flex: none;
@@ -1116,6 +1118,12 @@
 		rgba(231, 194, 122, 0.55) 68% 78%,
 		transparent 78%
 	);
+}
+
+.cpo-resize:focus-visible {
+	outline: 2px solid #e7c27a;
+	outline-offset: 1px;
+	border-radius: 2px;
 }
 .cpo-analysis-svg { width: 100%; min-height: 280px; display: block; color: var(--text-normal); }
 .cpo-root .cpo-sheet-analysis:not(.is-collapsed) { max-height: 65%; }

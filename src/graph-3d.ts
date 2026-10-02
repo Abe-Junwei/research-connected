@@ -41,6 +41,11 @@ import { RELATION_COLOR, relationKind } from "./relation";
 import type { GraphEdge, PaperNode } from "./types";
 import { yearColor } from "./visual";
 
+export interface GraphCameraState {
+	position: [number, number, number];
+	target: [number, number, number];
+}
+
 export interface Graph3DHandle {
 	destroy(): void;
 	resize(): void;
@@ -50,6 +55,8 @@ export interface Graph3DHandle {
 	setFilter(next: GraphFilter): void;
 	setLayout(next: LayoutMode): void;
 	setColorMode(next: ColorMode): void;
+	getCamera(): GraphCameraState;
+	setCamera(state: GraphCameraState): void;
 }
 
 export interface Graph3DOptions {
@@ -82,9 +89,12 @@ interface DrawnEdge {
 }
 
 /**
- * WebGL similarity cloud. Wheel zooms. Flat layouts pan on left-drag and
- * rotate on right-drag; the 3D layout rotates on left-drag and pans on right-drag.
- * A click that does not drag selects a paper or the nearer end of an edge.
+ * WebGL similarity cloud. A plain wheel scrolls the note; ⌘/Ctrl + wheel
+ * (a trackpad pinch arrives as a ctrlKey wheel) zooms. Flat layouts pan on
+ * left-drag and rotate on right-drag; the 3D layout rotates on left-drag and
+ * pans on right-drag. Single-finger touch scrolls the page; two fingers zoom
+ * and pan. A click that does not drag selects a paper or the nearer end of
+ * an edge.
  */
 export function mountGraph3D(
 	viewport: HTMLElement,
@@ -199,7 +209,8 @@ export function mountGraph3D(
 		controls.mouseButtons.LEFT = flat ? MOUSE.PAN : MOUSE.ROTATE;
 		controls.mouseButtons.MIDDLE = MOUSE.DOLLY;
 		controls.mouseButtons.RIGHT = flat ? MOUSE.ROTATE : MOUSE.PAN;
-		controls.touches.ONE = flat ? TOUCH.PAN : TOUCH.ROTATE;
+		// One finger scrolls the note (touch-action: pan-y); two fingers zoom/pan.
+		controls.touches.ONE = null;
 		controls.touches.TWO = TOUCH.DOLLY_PAN;
 	};
 	applyPointerMode();
@@ -251,6 +262,7 @@ export function mountGraph3D(
 			material.opacity = entry.dim ? 0.16 : 1;
 			material.depthWrite = !entry.dim;
 		}
+		schedule();
 	};
 
 	const resize = (): void => {
@@ -260,6 +272,7 @@ export function mountGraph3D(
 		renderer.setSize(width, height, false);
 		camera.aspect = width / Math.max(1, height);
 		camera.updateProjectionMatrix();
+		schedule();
 	};
 
 	const showTooltip = (text: string, x: number, y: number): void => {
@@ -360,23 +373,33 @@ export function mountGraph3D(
 		}
 	};
 
-	const frame = (): void => {
+	// Render on demand: a frame is scheduled by control changes (drag, damped
+	// settling, zoom) and by state changes (paint, filter, layout, resize).
+	// While the camera settles, controls.update() keeps returning true and the
+	// loop sustains itself; once still, no frames run until the next change.
+	const schedule = (): void => {
+		if (!alive || !running || raf) return;
+		raf = window.requestAnimationFrame(tick);
+	};
+	const tick = (): void => {
+		raf = 0;
 		if (!alive || !running) return;
-		raf = window.requestAnimationFrame(frame);
-		controls.update();
+		const settling = controls.update();
 		renderer.render(scene, camera);
 		placeLabels();
+		if (settling) schedule();
 	};
 	const start = (): void => {
 		if (running || !alive) return;
 		running = true;
-		frame();
+		schedule();
 	};
 	const stop = (): void => {
 		running = false;
 		if (raf) window.cancelAnimationFrame(raf);
 		raf = 0;
 	};
+	controls.addEventListener("change", schedule);
 
 	const syncView = (): void => {
 		const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? "";
@@ -471,18 +494,22 @@ export function mountGraph3D(
 		canvas.style.cursor = "grab";
 		paint();
 	};
+	// A plain wheel scrolls the note; only ⌘/Ctrl + wheel zooms (a trackpad
+	// pinch arrives as a ctrlKey wheel). This capture listener sits on the
+	// viewport so it runs before OrbitControls' own wheel listener on the
+	// canvas; stopping propagation keeps plain wheels away from it.
 	const onWheel = (event: WheelEvent): void => {
-		event.preventDefault();
-		event.stopPropagation();
+		if (event.ctrlKey || event.metaKey) return;
+		event.stopImmediatePropagation();
 	};
 
 	canvas.addEventListener("pointerdown", onPointerDown);
 	canvas.addEventListener("pointermove", onPointerMove);
 	canvas.addEventListener("pointerup", onPointerUp);
 	canvas.addEventListener("pointerleave", onPointerLeave);
-	canvas.addEventListener("wheel", onWheel, { passive: false });
+	viewport.addEventListener("wheel", onWheel, { capture: true });
 	canvas.style.cursor = "grab";
-	canvas.style.touchAction = "none";
+	canvas.style.touchAction = "pan-y";
 
 	const resizeObserver = new ResizeObserver(() => resize());
 	resizeObserver.observe(viewport);
@@ -507,6 +534,7 @@ export function mountGraph3D(
 			if (!paper || !(material instanceof MeshStandardMaterial)) continue;
 			material.color.set(colorToHex(nodeColor(paper)));
 		}
+		schedule();
 	};
 
 	const applyLayout = (mode: LayoutMode): void => {
@@ -521,6 +549,7 @@ export function mountGraph3D(
 		drawn.relayout(next);
 		applyPointerMode();
 		frameCamera();
+		schedule();
 	};
 
 	const zoomBy = (factor: number): void => {
@@ -549,6 +578,17 @@ export function mountGraph3D(
 			colorMode = next;
 			applyColors();
 		},
+		getCamera(): GraphCameraState {
+			return {
+				position: [camera.position.x, camera.position.y, camera.position.z],
+				target: [controls.target.x, controls.target.y, controls.target.z],
+			};
+		},
+		setCamera(state: GraphCameraState): void {
+			camera.position.set(state.position[0], state.position[1], state.position[2]);
+			controls.target.set(state.target[0], state.target[1], state.target[2]);
+			controls.update();
+		},
 		destroy() {
 			if (!alive) return;
 			alive = false;
@@ -559,7 +599,7 @@ export function mountGraph3D(
 			canvas.removeEventListener("pointermove", onPointerMove);
 			canvas.removeEventListener("pointerup", onPointerUp);
 			canvas.removeEventListener("pointerleave", onPointerLeave);
-			canvas.removeEventListener("wheel", onWheel);
+			viewport.removeEventListener("wheel", onWheel, { capture: true });
 			controls.dispose();
 			for (const geometry of geometries) geometry.dispose();
 			for (const material of materials) material.dispose();

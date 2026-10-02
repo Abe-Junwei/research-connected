@@ -7,6 +7,8 @@ import { createVaultNote } from "./vault-note";
 
 interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
+	/** Open the full graph pane focused on a seed; absent in hosts that cannot. */
+	openGraph?(target: { kind: "doi" | "openalex"; value: string }): void;
 }
 
 /**
@@ -37,12 +39,14 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 	}
 
 	onload(): void {
+		const { plugin } = this;
 		this.destroyView = mountEmbed(this.containerEl, {
 			source: this.source,
-			getSettings: () => this.plugin.getSettings(),
+			getSettings: () => plugin.getSettings(),
 			getJson: obsidianGetJson,
 			openExternal,
-			createNote: (filename, markdown) => createVaultNote(this.plugin.app, filename, markdown),
+			createNote: (filename, markdown) => createVaultNote(plugin.app, filename, markdown),
+			openGraph: plugin.openGraph ? (target) => plugin.openGraph?.(target) : undefined,
 		});
 	}
 

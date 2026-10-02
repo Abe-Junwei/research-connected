@@ -51,6 +51,10 @@ import { classifyQuery, type SeedQuery } from "./paper";
 export type EmbedPosition = "inline" | "float-left" | "float-right" | "full";
 export type EmbedAlign = "left" | "center" | "right";
 
+/** Pixel clamps shared by the fence parser and the resize grip. */
+export const EMBED_WIDTH_LIMIT = { min: 240, max: 1400 } as const;
+export const EMBED_HEIGHT_LIMIT = { min: 280, max: 900 } as const;
+
 export interface EmbedSpec {
 	target: { kind: "doi" | "openalex"; value: string };
 	maxNodes?: number;
@@ -143,7 +147,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		if (key === "height") {
 			const parsed = readInt(value, "height");
 			if (!parsed.ok) return parsed;
-			height = clampInt(parsed.value, 280, 900);
+			height = clampInt(parsed.value, EMBED_HEIGHT_LIMIT.min, EMBED_HEIGHT_LIMIT.max);
 			continue;
 		}
 		if (key === "depth") {
@@ -308,13 +312,13 @@ function readLabels(value: string): LabelMode | null {
 
 function readWidth(value: string): { ok: true; width: string } | { ok: false; error: string } {
 	const raw = value.trim().toLowerCase();
-	if (/^\d+$/.test(raw)) return { ok: true, width: `${clampInt(Number(raw), 240, 1400)}px` };
+	if (/^\d+$/.test(raw)) return { ok: true, width: `${clampInt(Number(raw), EMBED_WIDTH_LIMIT.min, EMBED_WIDTH_LIMIT.max)}px` };
 	const match = raw.match(/^(\d+(?:\.\d+)?)(px|%|em|rem)$/);
 	if (!match) return { ok: false, error: "width 写成 420、420px、60% 或 24em。" };
 	const amount = Number(match[1]);
 	const unit = match[2];
 	if (!unit || !Number.isFinite(amount)) return { ok: false, error: "width 写成 420、420px、60% 或 24em。" };
-	if (unit === "px") return { ok: true, width: `${clampInt(amount, 240, 1400)}px` };
+	if (unit === "px") return { ok: true, width: `${clampInt(amount, EMBED_WIDTH_LIMIT.min, EMBED_WIDTH_LIMIT.max)}px` };
 	if (unit === "%") return { ok: true, width: `${clampInt(amount, 30, 100)}%` };
 	return { ok: true, width: `${clampInt(amount, 16, 80)}${unit}` };
 }
