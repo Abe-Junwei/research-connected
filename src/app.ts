@@ -6,7 +6,7 @@ import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, 
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
-import { OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation } from "./citation-sources";
+import { OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
 import { mergeOpenCitation, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
 import { drawFlows } from "./analysis-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
@@ -151,6 +151,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let disposed = false;
 	let narrativeBusy = false;
 	let settingsRevision = 0;
+	/** Abstract fallback: ids already asked, ids Semantic Scholar filled, ids both sources lack. */
+	const abstractRequested = new Set<string>();
+	const abstractFromS2 = new Set<string>();
+	const abstractMissing = new Set<string>();
 	const llmReady = (): boolean => {
 		const s = deps.getSettings();
 		return Boolean(s.llmEnabled && s.llmEndpoint.trim() && s.llmModel.trim() && deps.postJson);
@@ -414,6 +418,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		await copyPane(text);
 	};
 
+	const abstractText = (paper: PaperNode): string => {
+		if (paper.abstract) {
+			return snippet(paper.abstract) + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+		}
+		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
+		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
+	};
+
 	const showDetail = (paper: PaperNode | null): void => {
 		selectedPaper = paper;
 		detail.replaceChildren();
@@ -465,7 +477,21 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			}
 		}
 		el(detail, "h3", "cpo-kicker", "摘要");
-		el(detail, "p", "cpo-abstract", paper.abstract ? snippet(paper.abstract) : "OpenAlex 没有提供摘要。");
+		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
+			abstractRequested.add(paper.id);
+			const token = generation;
+			void semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper).then((text) => {
+				if (disposed || token !== generation) return;
+				if (text) {
+					paper.abstract = text;
+					abstractFromS2.add(paper.id);
+				} else {
+					abstractMissing.add(paper.id);
+				}
+				if (selectedPaper === paper && tab === "graph") showDetail(paper);
+			});
+		}
+		el(detail, "p", "cpo-abstract", abstractText(paper));
 		const openAlex = allowedExternalUrl(paper.openAlexUrl);
 		if (openAlex) addLink(detail, "在 OpenAlex 中打开", () => deps.openExternal(openAlex));
 		if (paper.doiUrl) {

@@ -62,6 +62,15 @@ export class SemanticScholarClient {
 		return { data, partial: true };
 	}
 
+	/** Single-paper abstract lookup, used when OpenAlex has none. */
+	async abstract(doi: string): Promise<string | null> {
+		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}`);
+		url.searchParams.set("fields", "abstract");
+		const result = await this.get<{ abstract?: string | null }>(url.toString());
+		const text = typeof result.abstract === "string" ? result.abstract.trim() : "";
+		return text || null;
+	}
+
 	private async get<T>(url: string): Promise<T> {
 		const json = await cachedGet(this.getJson, url, {
 			headers: {
@@ -76,6 +85,31 @@ export class SemanticScholarClient {
 
 export function doisFromOpenCitation(row: OpenCitationRow): { citing: string[]; cited: string[] } {
 	return { citing: pids(row.citing), cited: pids(row.cited) };
+}
+
+/** Bare DOI from a paper's https://doi.org/ link, or null when the paper has none. */
+export function doiFromPaper(paper: { doiUrl: string | null }): string | null {
+	if (!paper.doiUrl) return null;
+	const match = paper.doiUrl.match(/^https?:\/\/(?:dx\.)?doi\.org\/(\S+)$/i);
+	return match?.[1] ?? null;
+}
+
+/**
+ * OpenAlex has no abstract for many papers (Nature and friends deposit
+ * none). Ask Semantic Scholar for one; null means "don't bother again".
+ */
+export async function semanticAbstract(
+	getJson: GetJson,
+	apiKey: string,
+	paper: { doiUrl: string | null },
+): Promise<string | null> {
+	const doi = doiFromPaper(paper);
+	if (!doi) return null;
+	try {
+		return await new SemanticScholarClient(getJson, apiKey).abstract(doi);
+	} catch {
+		return null;
+	}
 }
 
 function pids(value: string | undefined): string[] {

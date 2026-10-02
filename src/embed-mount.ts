@@ -1,4 +1,5 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
+import { semanticAbstract } from "./citation-sources";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { emptyFilter, evidenceText, facetOptions, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -260,6 +261,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let generation = 0;
 	let graphView: Graph3DHandle | null = null;
 	let alive = true;
+	/** Abstract fallback: ids already asked, ids Semantic Scholar filled, ids both sources lack. */
+	const abstractRequested = new Set<string>();
+	const abstractFromS2 = new Set<string>();
+	const abstractMissing = new Set<string>();
+
+	const embedAbstractText = (paper: PaperNode): string => {
+		if (paper.abstract) {
+			return snippet(paper.abstract, 220) + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+		}
+		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
+		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
+	};
 
 	const placeDetailPlaceholder = (): void => {
 		selected = null;
@@ -314,9 +327,23 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				detail.append(line);
 			}
 		}
-		const abstract = document.createElement("p");
+	const abstract = document.createElement("p");
 		abstract.className = "cpo-embed-detail-abstract";
-		abstract.textContent = paper.abstract ? snippet(paper.abstract, 220) : "OpenAlex 没有提供摘要。";
+		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
+			abstractRequested.add(paper.id);
+			const token = generation;
+			void semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper).then((text) => {
+				if (!alive || token !== generation) return;
+				if (text) {
+					paper.abstract = text;
+					abstractFromS2.add(paper.id);
+				} else {
+					abstractMissing.add(paper.id);
+				}
+				if (selected === paper && currentGraph) showDetail(paper, currentGraph, null);
+			});
+		}
+		abstract.textContent = embedAbstractText(paper);
 		detail.append(abstract);
 		const openAlex = allowedExternalUrl(paper.openAlexUrl);
 		if (openAlex) addLink(detail, "在 OpenAlex 中打开", () => deps.openExternal(openAlex));
