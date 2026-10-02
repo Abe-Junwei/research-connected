@@ -96,7 +96,7 @@ depth: 1
 | `openalex:` / `id:` / `seed:` | one seed | OpenAlex work id (`W2919115771`) or a DOI. A bare DOI or `W…` id on its own line also works. |
 | `position:` | no | `inline` (default, in the column), `float-left`, `float-right` (beside the following text), or `full` (clear floats and span the note column). |
 | `width:` | no | `420`, `420px` (240–1400), `60%` (30–100), `24em`, or `24rem`. Default `100%`. Floats default to `420px` when `width` is omitted. |
-| `height:` | no | Pixels, clamped to 280–900. Default **480**. |
+| `height:` | no | Graph area in pixels, clamped to 280–900. Default **480**. The tab bar and the info strip sit below the graph and add their own height. |
 | `align:` | no | `left` (default), `center`, or `right`. Centers or right-aligns a block that is narrower than the column. Ignored for floats. |
 | `labels:` | no | `author-year` (default: family name and year on each node), `title`, `both`, or `off`. Overlapping labels drop out; the seed, the selection, and the node under the pointer stay. |
 | `maxNodes:` | no | 20–80. Overrides the setting for this block only. Default is the setting (50). |
@@ -109,9 +109,9 @@ depth: 1
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
 
-Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph fills the block. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. The selected paper is a bottom sheet: one title line until you press **展开** (about 160px), where the evidence, prior and derivative lists, and exports live. Both start collapsed so the graph stays large.
+Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph keeps the height you set; it is never squeezed by the panels around it. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. Below the graph an always-visible bar holds the tabs (**图谱 / 先验工作 / 衍生工作**) and the export buttons. The selected paper is a bottom sheet under that bar: one title line until you press **展开** (about 160px), where the evidence and the prior and derivative lists live. Picking a list tab opens the sheet by itself; the drawer and the sheet start collapsed so the graph stays large.
 
-On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The grip at the bottom-right changes the block’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
+On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The grip at the bottom-right changes the graph area’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
 
 **重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Hover or click an edge for that pair’s explanation.
 
@@ -144,7 +144,7 @@ Thickness is the same three steps as the legend (弱 / 中 / 强), not a continu
 
 - **OpenCitations**：建图后顺序检查最多 20 篇有 DOI 的图内论文的参考文献，只补当前节点之间的引用边。仅在 OpenAlex 同样记录了该方向引用时显示双源。状态栏显示已检查数和失败数；这不是全量覆盖。可在设置中填写访问令牌。
 - **Semantic Scholar**：点击直接引用边，选择“读取 Semantic Scholar 引用语义”。也可从论文详情读取它与种子的关系。查询施引论文的参考文献，最多 3 页 / 3000 条；未匹配或截断会提示。只有返回数据才显示 Background / Method / Result；只有明确为 true 才显示 Influential。原始上下文可在证据详情查看。API key 可选。
-- **分析**：默认图谱不变。展开底部面板的“分析”，可切换按年代聚合的桑基图和按社区聚合的弦图。只统计当前可见论文间的直接引用，去重后按数量绘制带宽。桑基方向是施引 → 被引；弦图合并两个方向。点击带状区域查看论文。聚合不代表学术影响或完整历史。
+- **分析**：默认图谱不变。图谱下方常驻条上的“分析”页签可切换按年代聚合的桑基图和按社区聚合的弦图。只统计当前可见论文间的直接引用，去重后按数量绘制带宽。桑基方向是施引 → 被引；弦图合并两个方向。点击带状区域查看论文。聚合不代表学术影响或完整历史。
 - **LLM 默认关闭**：关闭时没有“研究脉络”入口、生成内容或模型请求。开启并填写完整 Endpoint、模型后才出现入口。支持兼容 chat/completions 的 JSON 响应接口；HTTPS 为默认要求，本机 HTTP 服务允许使用。API 密钥保存在插件本地 data.json 中，不是加密密钥库。
 - **手动生成**：只在点击生成时发送种子、最多 8 篇直接参考文献、8 篇直接施引文献，以及已取得的引用证据。摘要发送默认关闭；已获取的引用上下文仍属于证据包。总结针对整张采样图，不跟随年份滑块。未访问全文，不声称完整学术史。
 - **输出检查**：校验 JSON 结构、论文 ID 和引用方向；拒绝输入之外的论文。该校验无法证明模型每一句叙述正确，“模型自评”也不是统计置信度。证据快照可展开核对，支持复制或另建笔记。关闭功能不会删除用户已经导出的笔记。

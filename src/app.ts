@@ -129,9 +129,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	zoomOut.setAttribute("aria-label", "缩小");
 	fit.setAttribute("aria-label", "适应窗口");
 
+	const actionsBar = el(root, "div", "cpo-actions-bar");
 	const sheetHost = el(root, "section");
 	const sheet = mountBottomSheet(sheetHost);
-	const actionsHost = el(sheet.body, "div");
 	const detail = el(sheet.body, "div", "cpo-detail");
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
@@ -367,7 +367,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		analysisButton: true,
-		actionsHost,
+		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => map.setLayout(mode),
 		onColor: (mode) => {
@@ -385,7 +385,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			paintLists();
 		},
 		onExport: (kind) => {
-			sheet.setExpanded(true);
 			void exportPane(kind);
 		},
 	});

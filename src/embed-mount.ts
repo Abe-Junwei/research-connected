@@ -49,7 +49,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const parsed = parseEmbed(deps.source);
 	const shell = document.createElement("div");
 	shell.className = "cpo-embed";
-	if (parsed.ok) shell.style.height = `${parsed.spec.height}px`;
 	root.append(shell);
 
 	const bar = document.createElement("div");
@@ -66,6 +65,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const body = document.createElement("div");
 	body.className = "cpo-embed-body";
+	if (parsed.ok) body.style.height = `${parsed.spec.height}px`;
 	shell.append(body);
 
 	const rail = document.createElement("aside");
@@ -110,16 +110,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	stage.append(message, tooltip, zoom, drawer);
 	body.append(rail, stage);
 
+	const actionsBar = document.createElement("div");
+	actionsBar.className = "cpo-actions-bar";
+	shell.append(actionsBar);
+
 	const sheetHost = document.createElement("section");
 	shell.append(sheetHost);
 	const sheet = mountBottomSheet(sheetHost);
-	const actions = document.createElement("div");
 	const detail = document.createElement("div");
 	detail.className = "cpo-embed-detail";
 	const listPanel = document.createElement("div");
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
-	sheet.body.append(actions, detail, listPanel);
+	sheet.body.append(detail, listPanel);
 	filterButton.addEventListener("click", () => {
 		const open = drawer.hidden;
 		drawer.hidden = !open;
@@ -183,7 +186,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		layout: layoutMode,
 		color: colorMode,
 		noteButton: Boolean(deps.createNote),
-		actionsHost: actions,
+		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
@@ -205,7 +208,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			paintLists();
 		},
 		onExport: (kind) => {
-			sheet.setExpanded(true);
 			void exportView(kind);
 		},
 	});
@@ -235,10 +237,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		await copyText(text);
 	};
 
-	shell.style.height = `${spec.height}px`;
 	const anchor = placementAnchor(root);
 	const clearPlacement = applyPlacement(root, anchor, spec);
-	const stopResize = mountResizeHandle(shell, anchor, () => graphView?.resize());
+	const stopResize = mountResizeHandle(body, anchor, () => graphView?.resize());
 	const narrowObserver = new ResizeObserver(() => {
 		shell.classList.toggle("is-narrow", shell.clientWidth < 520);
 	});
@@ -465,13 +466,13 @@ function applyPlacement(root: HTMLElement, anchor: HTMLElement, spec: EmbedSpec)
 	};
 }
 
-function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: () => void): () => void {
+function mountResizeHandle(graphArea: HTMLElement, anchor: HTMLElement, onResize: () => void): () => void {
 	const grip = document.createElement("div");
 	grip.className = "cpo-resize";
 	grip.setAttribute("role", "button");
 	grip.tabIndex = 0;
 	grip.setAttribute("aria-label", "调整图谱大小：拖动，或用方向键（Shift 加速）");
-	shell.append(grip);
+	graphArea.append(grip);
 	let dragging = false;
 	let startX = 0;
 	let startY = 0;
@@ -483,7 +484,7 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 		const clampedHeight = Math.min(EMBED_HEIGHT_LIMIT.max, Math.max(EMBED_HEIGHT_LIMIT.min, Math.round(height)));
 		anchor.style.maxWidth = "none";
 		anchor.style.width = `${clampedWidth}px`;
-		shell.style.height = `${clampedHeight}px`;
+		graphArea.style.height = `${clampedHeight}px`;
 		onResize();
 	};
 
@@ -492,7 +493,7 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 		startX = event.clientX;
 		startY = event.clientY;
 		startW = anchor.getBoundingClientRect().width;
-		startH = shell.getBoundingClientRect().height;
+		startH = graphArea.getBoundingClientRect().height;
 		try {
 			grip.setPointerCapture(event.pointerId);
 		} catch {
@@ -517,7 +518,7 @@ function mountResizeHandle(shell: HTMLElement, anchor: HTMLElement, onResize: ()
 	const onKeyDown = (event: KeyboardEvent): void => {
 		const step = event.shiftKey ? 160 : 40;
 		const width = anchor.getBoundingClientRect().width;
-		const height = shell.getBoundingClientRect().height;
+		const height = graphArea.getBoundingClientRect().height;
 		if (event.key === "ArrowLeft") applySize(width - step, height);
 		else if (event.key === "ArrowRight") applySize(width + step, height);
 		else if (event.key === "ArrowUp") applySize(width, height - step);
