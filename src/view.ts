@@ -35,12 +35,24 @@ export class ConnectedPapersView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass("cpo-host");
+		this.mount();
+	}
+
+	/** Rebuild the pane on a new seed, e.g. from a note embed. */
+	openSeed(target: { kind: "doi" | "openalex"; value: string }): void {
+		this.destroyApp?.();
+		this.contentEl.empty();
+		this.mount(target);
+	}
+
+	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.destroyApp = mountGraphApp(this.contentEl, {
 			getSettings: () => this.host.getSettings(),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
+			initialTarget,
 		});
 	}
 

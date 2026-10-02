@@ -498,6 +498,11 @@
 	max-height: 300px;
 }
 
+/* The analysis view (Sankey / chord) needs more vertical room. */
+.cpo-embed .cpo-sheet-analysis:not(.is-collapsed) {
+	max-height: 480px;
+}
+
 .cpo-side {
 	min-width: 0;
 	min-height: 0;

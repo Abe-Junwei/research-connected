@@ -25,6 +25,8 @@ export interface AppDeps {
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
 	initialDoi?: string;
+	/** Seed to build immediately; wins over initialDoi when both are set. */
+	initialTarget?: { kind: "doi" | "openalex"; value: string };
 }
 
 const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", string> = {
@@ -768,9 +770,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
 
-	if (deps.initialDoi) {
-		input.value = deps.initialDoi;
-		void buildResolved({ kind: "doi", value: deps.initialDoi });
+	const initial = deps.initialTarget ?? (deps.initialDoi ? { kind: "doi" as const, value: deps.initialDoi } : null);
+	if (initial) {
+		input.value = initial.value;
+		void buildResolved(initial);
 	}
 
 	return () => {

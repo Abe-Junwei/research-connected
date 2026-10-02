@@ -1,5 +1,7 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
+import { drawFlows } from "./analysis-view";
 import { semanticAbstract } from "./citation-sources";
+import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { emptyFilter, evidenceText, facetOptions, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -162,14 +164,20 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let tab: GraphTab = "graph";
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
 	let colorMode: ColorMode = saved?.color ?? spec.color;
+	let analysisMode: "sankey" | "chord" = "sankey";
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
 
 	const paintLists = (): void => {
+		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis");
 		if (!currentGraph || tab === "graph") {
 			listPanel.hidden = true;
 			listPanel.replaceChildren();
+			return;
+		}
+		if (tab === "analysis") {
+			paintAnalysis();
 			return;
 		}
 		const visible = new Set(visibleNodes(currentGraph.nodes, viewFilter).map((node) => node.id));
@@ -182,11 +190,67 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		});
 	};
 
+	/** Sankey by decade / chord by community over the visible direct citations. No new requests. */
+	const paintAnalysis = (): void => {
+		listPanel.hidden = false;
+		listPanel.replaceChildren();
+		const heading = document.createElement("h3");
+		heading.className = "cpo-kicker";
+		heading.textContent = "分析视图";
+		const tip = document.createElement("p");
+		tip.className = "cpo-side-tip";
+		tip.textContent = "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。";
+		const controls = document.createElement("div");
+		controls.className = "cpo-tools cpo-tool-row";
+		const sankey = document.createElement("button");
+		sankey.type = "button";
+		sankey.className = analysisMode === "sankey" ? "cpo-tool is-on" : "cpo-tool";
+		sankey.textContent = "桑基";
+		const chord = document.createElement("button");
+		chord.type = "button";
+		chord.className = analysisMode === "chord" ? "cpo-tool is-on" : "cpo-tool";
+		chord.textContent = "弦图";
+		sankey.addEventListener("click", () => { analysisMode = "sankey"; paintAnalysis(); });
+		chord.addEventListener("click", () => { analysisMode = "chord"; paintAnalysis(); });
+		controls.append(sankey, chord);
+		listPanel.append(heading, tip, controls);
+		if (!currentGraph) return;
+		const visible = visibleNodes(currentGraph.nodes, viewFilter);
+		const visibleIds = new Set(visible.map((node) => node.id));
+		const pairs = new Map<string, GraphEdge>();
+		const add = (source: string, target: string): void => {
+			if (!visibleIds.has(source) || !visibleIds.has(target) || source === target) return;
+			pairs.set(source + "\0" + target, { source, target, weight: 0.1, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
+		};
+		for (const [source, refs] of currentGraph.referenceLists) for (const target of refs) add(source, target);
+		for (const e of currentGraph.citationEvidence?.entries() ?? []) add(e.citingId, e.citedId);
+		const edges = [...pairs.values()];
+		const communities = detectCommunities(
+			visible.map((node) => node.id),
+			currentGraph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
+		);
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.classList.add("cpo-analysis-svg");
+		svg.setAttribute("viewBox", "0 0 760 440");
+		svg.setAttribute("role", "img");
+		svg.setAttribute("aria-label", analysisMode === "sankey" ? "按年份聚合的引用流" : "按社区聚合的引用关系");
+		listPanel.append(svg);
+		const selection = document.createElement("div");
+		listPanel.append(selection);
+		drawFlows(svg, visible, edges, analysisMode, communities, (papers) => {
+			selection.replaceChildren();
+			for (const paper of papers) addLink(selection, paper.title, () => {
+				if (currentGraph) showDetail(paper, currentGraph, null);
+			});
+		});
+	};
+
 	chrome = mountGraphChrome(tools, {
 		layouts: ["temporal", "radial", "force2d", "force3d"],
 		layout: layoutMode,
 		color: colorMode,
 		noteButton: Boolean(deps.createNote),
+		analysisButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => {

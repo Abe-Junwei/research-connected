@@ -42,6 +42,15 @@ export default class ConnectedPapersPlugin extends Plugin {
 		return this.settings;
 	}
 
+	/** Note embeds call this to jump to the full graph pane on their seed. */
+	openGraph(target: { kind: "doi" | "openalex"; value: string }): void {
+		void (async () => {
+			await this.openView();
+			const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+			if (view instanceof ConnectedPapersView) view.openSeed(target);
+		})();
+	}
+
 	async loadSettings(): Promise<void> {
 		const stored = (await this.loadData()) as Partial<ConnectedPapersSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);

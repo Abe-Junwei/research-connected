@@ -109,11 +109,11 @@ depth: 1
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
 
-Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph keeps the height you set; it is never squeezed by the panels around it. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. Below the graph an always-visible bar holds the tabs (**图谱 / 先验工作 / 衍生工作**) and the export buttons. The selected paper is a bottom sheet under that bar: one title line until you press **展开** (about 160px), where the evidence and the prior and derivative lists live. Picking a list tab opens the sheet by itself; the drawer and the sheet start collapsed so the graph stays large.
+Nodes show **author + year** by default. The full title is the hover tooltip and the bottom sheet. The graph keeps the height you set; it is never squeezed by the panels around it. A 64px rail on the left holds the layout buttons and **筛选**. **筛选** opens the legend, filters, color, and year scrubber over the graph; that drawer starts closed. Below the graph an always-visible bar holds the tabs (**图谱 / 先验工作 / 衍生工作 / 分析**) and the export buttons. The selected paper is a bottom sheet under that bar: one title line until you press **展开** (about 160px), where the evidence and the prior and derivative lists live. Picking a list tab opens the sheet by itself; the drawer and the sheet start collapsed so the graph stays large.
 
 On **时间**, **放射**, and **平面**, drag pans the graph and right-drag rotates it. On **三维**, drag rotates and right-drag pans. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The grip at the bottom-right changes the graph area’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane uses the same rail and bottom sheet and fills its tab, so it has no grip.
 
-**重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Hover or click an edge for that pair’s explanation.
+**重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Inside Obsidian the detail also offers **在图谱面板中打开此图**, which jumps to the full graph pane on the same seed. Hover or click an edge for that pair’s explanation.
 
 Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation and coupling stay undirected. Thickness is three steps, **弱 / 中 / 强**, matching the legend. Click a legend chip to hide that edge type. **共被引 ≥** and **共享文献 ≥** raise the count threshold. **到种子的路径** keeps the shortest visible path bright when you click a node that is not the seed; neighbors stay bright and the rest dim. Hover or click an edge for the evidence strip: shared-reference count, co-citation count, OpenAlex as the source, and a note that the citation lists can be incomplete.
 
@@ -140,7 +140,7 @@ Thickness is the same three steps as the legend (弱 / 中 / 强), not a continu
 
 ### 多源证据、分析视图与可选 LLM
 
-这些功能仅在命令面板图谱中提供；笔记内嵌保留原来的图谱体验。
+OpenCitations、Semantic Scholar 引用语义和可选 LLM 仅在命令面板图谱中提供；分析视图（桑基 / 弦图）在图谱面板和笔记内嵌中都可用。
 
 - **OpenCitations**：建图后顺序检查最多 20 篇有 DOI 的图内论文的参考文献，只补当前节点之间的引用边。仅在 OpenAlex 同样记录了该方向引用时显示双源。状态栏显示已检查数和失败数；这不是全量覆盖。可在设置中填写访问令牌。
 - **Semantic Scholar**：点击直接引用边，选择“读取 Semantic Scholar 引用语义”。也可从论文详情读取它与种子的关系。查询施引论文的参考文献，最多 3 页 / 3000 条；未匹配或截断会提示。只有返回数据才显示 Background / Method / Result；只有明确为 true 才显示 Influential。原始上下文可在证据详情查看。API key 可选。此外，当 OpenAlex 没有某篇论文的摘要时（Nature 等出版商不寄存摘要），打开该论文详情会自动向 Semantic Scholar 查询一次摘要作为回退，取到后标注“摘要来源：Semantic Scholar”；两个源都没有时如实说明。回退按论文触发、会话内缓存，不会批量预取。
