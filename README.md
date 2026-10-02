@@ -6,7 +6,7 @@ It is not a sidebar of citation cards. Reference Map / Literature Flow–style i
 
 ## Rename
 
-The display name is **Research Connected**. The plugin id is `research-connected`, version 1.5.1.
+The display name is **Research Connected**. The plugin id is `research-connected`, version 1.6.0.
 
 Earlier builds used the id `connected-papers-openalex` and the folder `<vault>/.obsidian/plugins/connected-papers-openalex/`. That id does not carry over. After you install this build:
 
