@@ -6,16 +6,22 @@ import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, 
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
+import { OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation } from "./citation-sources";
+import { mergeOpenCitation, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
+import { drawFlows } from "./analysis-view";
+import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
+import { summarizeWithLlmPost } from "./llm";
 import { classifyQuery, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
-import type { Origin, PaperNode, SearchHit } from "./types";
+import type { GraphEdge, Origin, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 
 export interface AppDeps {
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
+	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
 	initialDoi?: string;
@@ -132,11 +138,23 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const map = new SimilarityMap(canvas, tooltip, stage);
 	let graph: SimilarityGraph | null = null;
 	let tab: GraphTab = "graph";
+	let narrative: ResearchNarrative | null = null;
+	let narrativeInput: NarrativeEvidence | null = null;
+	let narrativeMeta = "";
+	let narrativeError = "";
+	let analysisMode: "sankey" | "chord" = "sankey";
 	let scrubYear: number | null = null;
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
 	let generation = 0;
 	let composing = false;
+	let disposed = false;
+	let narrativeBusy = false;
+	let settingsRevision = 0;
+	const llmReady = (): boolean => {
+		const s = deps.getSettings();
+		return Boolean(s.llmEnabled && s.llmEndpoint.trim() && s.llmModel.trim() && deps.postJson);
+	};
 
 	const showError = (message: string): void => {
 		banner.hidden = false;
@@ -163,6 +181,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	const paintLists = (): void => {
+		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis" || tab === "research");
+		detail.hidden = tab !== "graph";
+		if (tab === "research") {
+			paintResearch();
+			return;
+		}
+		if (tab === "analysis") {
+			paintAnalysis();
+			return;
+		}
 		if (!graph || tab === "graph") {
 			listPanel.hidden = true;
 			listPanel.replaceChildren();
@@ -202,11 +230,143 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		listPanel.append(list);
 	};
 
+	const paintAnalysis = (): void => {
+		listPanel.hidden = false;
+		listPanel.replaceChildren();
+		el(listPanel, "h3", "cpo-kicker", "分析视图");
+		el(listPanel, "p", "cpo-side-tip", "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。");
+		const controls = el(listPanel, "div", "cpo-tools cpo-tool-row");
+		const sankey = el(controls, "button", "cpo-tool", "桑基") as HTMLButtonElement;
+		const chord = el(controls, "button", "cpo-tool", "弦图") as HTMLButtonElement;
+		sankey.classList.toggle("is-on", analysisMode === "sankey");
+		chord.classList.toggle("is-on", analysisMode === "chord");
+		sankey.addEventListener("click", () => { analysisMode = "sankey"; paintAnalysis(); });
+		chord.addEventListener("click", () => { analysisMode = "chord"; paintAnalysis(); });
+		if (!graph) return;
+		const visible = shownNodes();
+		const visibleIds = new Set(visible.map((node) => node.id));
+		const pairs = new Map<string, GraphEdge>();
+		const add = (source: string, target: string) => {
+			if (!visibleIds.has(source) || !visibleIds.has(target) || source === target) return;
+			pairs.set(source + "\0" + target, { source, target, weight: 0.1, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
+		};
+		for (const [source, refs] of graph.referenceLists) for (const target of refs) add(source, target);
+		for (const e of graph.citationEvidence?.entries() ?? []) add(e.citingId, e.citedId);
+		const edges = [...pairs.values()];
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.classList.add("cpo-analysis-svg");
+		svg.setAttribute("viewBox", "0 0 760 440");
+		svg.setAttribute("role", "img");
+		svg.setAttribute("aria-label", analysisMode === "sankey" ? "按年份聚合的引用流" : "按社区聚合的引用关系");
+		listPanel.append(svg);
+		const selection = el(listPanel, "div");
+		drawFlows(svg, visible, edges, analysisMode, papers => {
+			selection.replaceChildren();
+			for (const paper of papers) addLink(selection, paper.title, () => {
+				showDetail(paper); detail.hidden = false;
+			});
+		});
+	};
+
+	const paintResearch = (): void => {
+		listPanel.replaceChildren();
+		listPanel.hidden = !llmReady();
+		if (!llmReady()) { narrative = null; return; }
+		el(listPanel, "h3", "cpo-kicker", "研究脉络");
+		const tip = el(listPanel, "p", "cpo-side-tip", narrativeError || (narrativeBusy ? "正在请求模型…" : "手动生成：向已配置服务发送当前种子的论文元数据、引用关系和已获取的引用上下文。摘要由设置控制。结果覆盖整张采样图，不随年份滑块变化。"));
+		const generate = el(listPanel, "button", "cpo-primary", narrative ? "重新生成" : "生成研究脉络") as HTMLButtonElement;
+		generate.type = "button";
+		generate.disabled = narrativeBusy || !graph;
+		generate.addEventListener("click", () => void generateResearch(generate, tip));
+		if (!narrative) return;
+		const exportText = () => {
+			if (!narrative || !llmReady()) return "";
+			return [
+				"# 研究脉络", narrativeMeta,
+				narrative.synthesis,
+				...(["basedOn", "influenced", "importantWorks"] as const).flatMap(key => narrative![key].map(item => {
+					const paper = [...(graph?.nodes ?? []), ...(graph?.catalog ?? [])].find(p => p.id === item.paperId);
+					return `- ${item.claim}\n  论文：${paper?.title ?? item.paperId} — https://openalex.org/${encodeURIComponent(item.paperId)}\n  证据：${item.evidence.join("；")}`;
+				})), ...narrative.caveats.map(c => "- " + c),
+			].join("\n\n");
+		};
+		addLink(listPanel, "复制总结", () => { const text = exportText(); if (text) void copyPane(text); });
+		if (deps.createNote) addLink(listPanel, "写入总结笔记", () => {
+			const text = exportText(), id = graph?.nodes.find(p => p.isSeed)?.id;
+			if (text && id) void deps.createNote!(`研究脉络-${id}.md`, text).then(() => { tip.textContent = "已写入总结笔记。"; }).catch(() => { tip.textContent = "笔记写入失败。"; });
+		});
+		const evidenceDetails = el(listPanel, "details");
+		el(evidenceDetails, "summary", undefined, "查看使用的论文和证据");
+		el(evidenceDetails, "pre", "cpo-export-text", JSON.stringify(narrativeInput, null, 2));
+		el(listPanel, "h4", "cpo-kicker", "总体总结");
+		el(listPanel, "p", "cpo-abstract", narrative.synthesis);
+		paintNarrativeSection("基于的研究", narrative.basedOn);
+		paintNarrativeSection("后续影响", narrative.influenced);
+		paintNarrativeSection("重要工作", narrative.importantWorks);
+		if (narrative.caveats.length) {
+			el(listPanel, "h4", "cpo-kicker", "限制");
+			for (const caveat of narrative.caveats) el(listPanel, "p", "cpo-side-tip", caveat);
+		}
+	};
+
+	const paintNarrativeSection = (title: string, items: ResearchNarrative["basedOn"]): void => {
+		if (!items.length) return;
+		el(listPanel, "h4", "cpo-kicker", title);
+		for (const item of items) {
+			const paper = graph?.nodes.find((node) => node.id === item.paperId) ?? graph?.catalog.find((node) => node.id === item.paperId);
+			const button = el(listPanel, "button", "cpo-agg-item") as HTMLButtonElement;
+			button.type = "button";
+			button.textContent = `${paper?.year ?? "—"} · ${paper?.title ?? item.paperId} · 模型自评 ${item.confidence}`;
+			button.addEventListener("click", () => { if (paper) { showDetail(paper); detail.hidden = false; } });
+			el(listPanel, "p", "cpo-side-tip", item.claim);
+			if (item.evidence.length) el(listPanel, "p", "cpo-evidence", item.evidence.join("；"));
+		}
+	};
+
+	const generateResearch = async (button: HTMLButtonElement, tip: HTMLElement): Promise<void> => {
+		if (!llmReady() || narrativeBusy || !graph || !deps.postJson) {
+			tip.textContent = "LLM 尚未配置，或当前运行环境不支持 POST 请求。";
+			return;
+		}
+		const settings = deps.getSettings();
+		const requestGraph = graph;
+		const requestGeneration = generation;
+		const revision = settingsRevision;
+		narrativeBusy = true;
+		narrativeError = "";
+		button.disabled = true;
+		tip.textContent = "正在整理引用证据并请求 LLM…";
+		try {
+			const evidence = buildNarrativeEvidence(graph, settings.llmSendAbstracts);
+			const result = await summarizeWithLlmPost(deps.postJson, {
+				enabled: settings.llmEnabled,
+				endpoint: settings.llmEndpoint,
+				apiKey: settings.llmApiKey,
+				model: settings.llmModel,
+			}, evidence);
+			if (disposed || requestGraph !== graph || requestGeneration !== generation || revision !== settingsRevision || !llmReady()) return;
+			narrative = { ...result, caveats: [...new Set([...evidence.caveats, ...result.caveats])] };
+			narrativeInput = evidence;
+			narrativeMeta = `生成时间：${new Date().toISOString()}；模型：${settings.llmModel}；种子：${evidence.seed.title} (${evidence.seed.id})`;
+			if (tab === "research") paintResearch();
+		} catch (error) {
+			if (disposed || requestGraph !== graph || requestGeneration !== generation || revision !== settingsRevision || !llmReady()) return;
+			narrativeError = error instanceof Error ? error.message : "LLM 总结失败。";
+			tip.textContent = narrativeError;
+			button.disabled = false;
+		} finally {
+			narrativeBusy = false;
+			if (!disposed && tab === "research" && llmReady()) paintResearch();
+		}
+	};
+
 	chrome = mountGraphChrome(toolsHost, {
 		layouts: ["force2d", "temporal", "radial"],
 		layout: "force2d",
 		color: "community",
 		noteButton: Boolean(deps.createNote),
+		researchButton: llmReady(),
+		analysisButton: true,
 		actionsHost,
 		layoutHost,
 		onLayout: (mode) => map.setLayout(mode),
@@ -286,7 +446,22 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
 			const from = link ? graph.nodes.find((node) => node.id === link.source) : undefined;
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
-			if (link && from && to) el(detail, "p", "cpo-evidence", evidenceText(link, from, to));
+			if (link && from && to) {
+				el(detail, "p", "cpo-evidence", evidenceText(link, from, to, edgeSources(link)));
+				const pairs = directPairs(link);
+				for (const pair of pairs) {
+					const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
+					if (evidence) {
+						el(detail, "p", "cpo-evidence", `证据：${evidenceLabel(evidence)} · ${evidence.sources.join(" + ")}`);
+						for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
+					}
+				}
+				if (pairs.length > 0) {
+					const semanticButton = el(detail, "button", "cpo-link", "读取 Semantic Scholar 引用语义") as HTMLButtonElement;
+					semanticButton.type = "button";
+					semanticButton.addEventListener("click", () => void loadSemanticEvidence(pairs, semanticButton));
+				}
+			}
 		}
 		el(detail, "h3", "cpo-kicker", "摘要");
 		el(detail, "p", "cpo-abstract", paper.abstract ? snippet(paper.abstract) : "OpenAlex 没有提供摘要。");
@@ -298,11 +473,83 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 	};
 
+	const loadSemanticEvidence = async (
+		pairs: Array<{ citingId: string; citedId: string }>,
+		button: HTMLButtonElement,
+	): Promise<void> => {
+		if (!graph) return;
+		const requestGraph = graph, token = generation;
+		button.disabled = true;
+		button.textContent = "正在读取引用语义…";
+		try {
+			const settings = deps.getSettings();
+			const client = new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey);
+			for (const pair of pairs) {
+				const citing = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citingId);
+				const cited = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citedId);
+				const citedDoi = doiOf(cited?.doiUrl);
+				const citingDoi = doiOf(citing?.doiUrl);
+				if (!citedDoi || !citingDoi) continue;
+				const result = await client.referenceEvidence(citingDoi);
+				if (disposed || graph !== requestGraph || token !== generation) return;
+				const row = result.data.find(item => doiOf(item.citedPaper?.externalIds?.DOI) === citedDoi);
+				if (row) requestGraph.citationEvidence?.set(evidenceFromSemanticCitation(pair.citingId, pair.citedId, row));
+				else { button.textContent = result.partial ? "已查 3000 条参考文献，未匹配（结果不完整）" : "未找到匹配的引用语义"; button.disabled = false; return; }
+			}
+			showDetail(selectedPaper);
+		} catch (error) {
+			if (disposed || graph !== requestGraph || token !== generation) return;
+			button.textContent = error instanceof Error ? error.message : "Semantic Scholar 请求失败";
+			button.disabled = false;
+		}
+	};
+
+	const directPairs = (edge: GraphEdge): Array<{ citingId: string; citedId: string }> => {
+		if (edge.direct === "source-cites-target") return [{ citingId: edge.source, citedId: edge.target }];
+		if (edge.direct === "target-cites-source") return [{ citingId: edge.target, citedId: edge.source }];
+		if (edge.direct === "mutual") return [
+			{ citingId: edge.source, citedId: edge.target },
+			{ citingId: edge.target, citedId: edge.source },
+		];
+		return [];
+	};
+	const edgeSources = (edge: GraphEdge): string => {
+		const sources = new Set(directPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
+		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
+	};
+
 	map.onSelect = (paper) => showDetail(paper);
+	map.onEdgeSelect = edge => {
+		if (!graph) return;
+		const a = graph.nodes.find(p => p.id === edge.source), b = graph.nodes.find(p => p.id === edge.target);
+		if (!a || !b) return;
+		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
+		sheet.setSummary("引用证据", "");
+		el(detail, "p", "cpo-evidence", evidenceText(edge, a, b, edgeSources(edge)));
+		for (const pair of directPairs(edge)) {
+			const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId);
+			if (evidence) {
+				el(detail, "p", "cpo-evidence", evidence.sources.join(" + ") + " · " + evidenceLabel(evidence));
+				for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
+			}
+		}
+		if (directPairs(edge).length) {
+			const button = el(detail, "button", "cpo-link", "读取 Semantic Scholar 引用语义");
+			button.type = "button";
+			button.onclick = async () => {
+				const current = graph;
+				await loadSemanticEvidence(directPairs(edge), button);
+				if (!disposed && current === graph && !button.isConnected) map.onEdgeSelect?.(edge);
+			};
+		}
+	};
 	showDetail(null);
 
 	const applyGraph = (next: SimilarityGraph): void => {
 		graph = next;
+		narrative = null;
+		narrativeInput = null;
+		narrativeError = "";
 		empty.hidden = true;
 		legend.hidden = false;
 		hideResults();
@@ -322,8 +569,38 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		status.textContent = `${next.nodes.length} 篇 · ${next.edges.length} 条关系 · ${strategyNames.join("、")}${
 			warning ? ` · ${warning}` : ""
 		}`;
+		void enrichOpenCitations(next);
 	};
 
+	const enrichOpenCitations = async (next: SimilarityGraph): Promise<void> => {
+		const token = generation;
+		const doiToId = new Map(next.nodes.flatMap(p => {
+			const doi = doiOf(p.doiUrl); return doi ? [[doi, p.id] as const] : [];
+		}));
+		const client = new OpenCitationsClient(deps.getJson, deps.getSettings().openCitationsToken);
+		// Bounded sequential outgoing lookups; no unbounded high-citation responses.
+		const papers = next.nodes.filter(p => doiOf(p.doiUrl)).slice(0, 20);
+		let completed = 0, failed = 0;
+		for (const paper of papers) {
+			if (disposed || graph !== next || token !== generation) return;
+			try {
+				const rows = await client.references(doiOf(paper.doiUrl)!);
+				if (disposed || graph !== next || token !== generation) return;
+				completed++;
+				for (const row of rows) {
+					const pids = doisFromOpenCitation(row);
+					const a = pids.citing.map(d => doiToId.get(d)).find(Boolean);
+					const b = pids.cited.map(d => doiToId.get(d)).find(Boolean);
+					if (a && b) mergeOpenCitation(next, a, b);
+				}
+			} catch { failed++; }
+		}
+		if (disposed || graph !== next || token !== generation) return;
+		map.updateGraphData(next.edges);
+		showDetail(selectedPaper);
+		paintLists();
+		status.textContent += ` · OpenCitations 检查 ${completed}/${papers.length} 篇，失败 ${failed}；当前 ${next.edges.length} 条关系`;
+	};
 	const client = (): OpenAlexClient => {
 		const settings = deps.getSettings();
 		return new OpenAlexClient(deps.getJson, {
@@ -432,6 +709,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (event.key === "Escape") showDetail(null);
 	};
 	root.addEventListener("keydown", onKey);
+	const onSettings = (): void => {
+		settingsRevision++;
+		chrome?.setResearchVisible(llmReady());
+		narrative = null;
+		narrativeInput = null;
+		narrativeError = "";
+		if (!llmReady() && tab === "research") {
+			tab = "graph";
+			listPanel.replaceChildren();
+			listPanel.hidden = true;
+		}
+		paintLists();
+	};
+	window.addEventListener("research-connected-settings", onSettings);
 
 	const observer = new ResizeObserver(() => {
 		root.classList.toggle("is-narrow", root.clientWidth < 520);
@@ -439,6 +730,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (!map.hasAdjusted()) map.fit();
 	});
 	observer.observe(root);
+	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
 
 	if (deps.initialDoi) {
@@ -447,11 +739,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	}
 
 	return () => {
+		disposed = true;
 		generation += 1;
 		chrome?.destroy();
 		sheet.destroy();
 		observer.disconnect();
 		root.removeEventListener("keydown", onKey);
+		window.removeEventListener("research-connected-settings", onSettings);
 		map.destroy();
 		root.replaceChildren();
 		root.classList.remove("cpo-root", "is-narrow");
@@ -470,6 +764,16 @@ function addLink(parent: HTMLElement, label: string, onClick: () => void): void 
 	const button = el(parent, "button", "cpo-link", label) as HTMLButtonElement;
 	button.type = "button";
 	button.addEventListener("click", onClick);
+}
+
+function doiOf(value: string | null | undefined): string | null {
+	if (!value) return null;
+	const raw = value.replace(/^https?:\/\/doi\.org\//i, "").replace(/^doi:/i, "").trim().toLowerCase();
+	return raw || null;
+}
+
+function svgEl<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+	return document.createElementNS("http://www.w3.org/2000/svg", tag);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(

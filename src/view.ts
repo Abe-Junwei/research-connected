@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mountGraphApp } from "./app";
 import { VIEW_TYPE } from "./constants";
-import { obsidianGetJson } from "./obsidian-http";
+import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import { createVaultNote } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
@@ -38,6 +38,7 @@ export class ConnectedPapersView extends ItemView {
 		this.destroyApp = mountGraphApp(this.contentEl, {
 			getSettings: () => this.host.getSettings(),
 			getJson: obsidianGetJson,
+			postJson: obsidianPostJson,
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
 		});

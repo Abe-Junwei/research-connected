@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyEvidence } from "./verify-evidence";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { parseEmbed } from "../src/embed-syntax";
@@ -410,7 +411,9 @@ async function live(): Promise<void> {
 
 async function main(): Promise<void> {
 	unit();
+	await verifyEvidence();
 	console.log("unit checks passed");
+	if (process.argv.includes("--offline")) return;
 	try {
 		await live();
 	} catch (error) {

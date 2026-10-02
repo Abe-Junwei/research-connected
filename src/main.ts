@@ -51,6 +51,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+		window.dispatchEvent(new Event("research-connected-settings"));
 	}
 
 	private async openView(): Promise<void> {

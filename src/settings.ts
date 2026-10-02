@@ -82,6 +82,82 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("OpenCitations 访问令牌")
+			.setDesc("可选。用于补充 OpenAlex 缺失的引用关系。令牌只保存在本机。")
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text.setPlaceholder("可选 token").setValue(this.store.settings.openCitationsToken).onChange(async (value) => {
+					this.store.settings.openCitationsToken = value.trim();
+					await this.store.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Semantic Scholar API 密钥")
+			.setDesc("可选。点击引用边时读取引用意图和 Influential 标记。")
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text.setPlaceholder("可选 API key").setValue(this.store.settings.semanticScholarApiKey).onChange(async (value) => {
+					this.store.settings.semanticScholarApiKey = value.trim();
+					await this.store.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("启用 LLM 研究脉络")
+			.setDesc("关闭时不显示研究脉络入口，也不会发送任何 LLM 请求。")
+			.addToggle((toggle) => {
+				toggle.setValue(this.store.settings.llmEnabled).onChange(async (value) => {
+					this.store.settings.llmEnabled = value;
+					await this.store.saveSettings();
+					this.display();
+				});
+			});
+
+		if (this.store.settings.llmEnabled) {
+			new Setting(containerEl)
+				.setName("LLM Endpoint")
+				.setDesc("兼容 OpenAI 风格 chat/completions 的接口地址。")
+				.addText((text) => {
+					text.setPlaceholder("https://…/v1/chat/completions").setValue(this.store.settings.llmEndpoint).onChange(async (value) => {
+						this.store.settings.llmEndpoint = value.trim();
+						await this.store.saveSettings();
+					});
+				});
+
+			new Setting(containerEl)
+				.setName("LLM API 密钥")
+				.setDesc("只保存在本机；生成总结时才发送。")
+				.addText((text) => {
+					text.inputEl.type = "password";
+					text.setPlaceholder("API key").setValue(this.store.settings.llmApiKey).onChange(async (value) => {
+						this.store.settings.llmApiKey = value.trim();
+						await this.store.saveSettings();
+					});
+				});
+
+			new Setting(containerEl)
+				.setName("LLM 模型")
+				.setDesc("填写所配置服务商支持的模型名。")
+				.addText((text) => {
+					text.setPlaceholder("模型名").setValue(this.store.settings.llmModel).onChange(async (value) => {
+						this.store.settings.llmModel = value.trim();
+						await this.store.saveSettings();
+					});
+				});
+
+			new Setting(containerEl)
+				.setName("发送摘要")
+				.setDesc("关闭时只发送标题、作者、年份和引用关系；开启可提高总结质量。")
+				.addToggle((toggle) => {
+					toggle.setValue(this.store.settings.llmSendAbstracts).onChange(async (value) => {
+						this.store.settings.llmSendAbstracts = value;
+						await this.store.saveSettings();
+					});
+				});
+		}
+
+		new Setting(containerEl)
 			.setName("纳入施引文献")
 			.setDesc("引用了种子的作品。它们的参考文献列表同时作为共被引的上下文。")
 			.addToggle((toggle) => {

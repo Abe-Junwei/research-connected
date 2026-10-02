@@ -1117,3 +1117,8 @@
 		transparent 78%
 	);
 }
+.cpo-analysis-svg { width: 100%; min-height: 280px; display: block; color: var(--text-normal); }
+.cpo-root .cpo-sheet-analysis:not(.is-collapsed) { max-height: 65%; }
+.cpo-root .cpo-sheet-analysis .cpo-sheet-body { max-height: 52vh; }
+.cpo-root .cpo-sheet-analysis .cpo-agg { max-height: none; overflow: visible; }
+.cpo-root button[hidden] { display: none !important; }

@@ -16,6 +16,9 @@
 	</head>
 	<body>
 		<div id="app"></div>
-		<script src="./preview.js"></script>
+		<script type="module">
+			// Keep the development preview fresh after each rebuild.
+			import("./preview.js?preview=" + Date.now());
+		</script>
 	</body>
 </html>

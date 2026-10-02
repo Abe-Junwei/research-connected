@@ -5,6 +5,7 @@ import {
 } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { buildSimilarity } from "./similarity";
+import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import type { ConnectedPapersSettings } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
@@ -25,6 +26,7 @@ export interface SimilarityGraph {
 	referenceLists: ReadonlyMap<string, readonly string[]>;
 	/** Titles we already fetched, including citers that did not become nodes. */
 	catalog: readonly PaperNode[];
+	citationEvidence?: CitationEvidenceStore;
 }
 
 const ORIGIN_RANK: Record<Origin, number> = {
@@ -91,6 +93,7 @@ export async function loadNeighborhood(
 		try {
 			const detailed = await client.worksByIds(batchIds);
 			const byId = new Map<string, PaperNode>([
+				...citePapers.map((paper) => [paper.id, paper] as const),
 				[seed.id, seed],
 				...picked.map((paper) => [paper.id, paper] as const),
 			]);
@@ -131,6 +134,15 @@ export async function loadNeighborhood(
 	catalog.set(seed.id, seed);
 	for (const paper of citePapers) catalog.set(paper.id, paper);
 	for (const paper of [seed, ...picked]) catalog.set(paper.id, paper);
+	const citationEvidence = new CitationEvidenceStore();
+	for (const [id, refs] of referenceLists) {
+		const source = catalog.get(id);
+		if (!source) continue;
+		for (const ref of refs) {
+			const target = catalog.get(ref);
+			if (target) citationEvidence.set(directEvidence(source, target, true, false));
+		}
+	}
 
 	return {
 		nodes: [seed, ...picked],
@@ -144,6 +156,7 @@ export async function loadNeighborhood(
 		},
 		referenceLists,
 		catalog: [...catalog.values()],
+		citationEvidence,
 	};
 }
 

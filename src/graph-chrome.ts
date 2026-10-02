@@ -1,7 +1,7 @@
 import { LAYOUT_HINT, LAYOUT_LABEL, type ColorMode, type LayoutMode } from "./layout-modes";
 
 export type { ColorMode };
-export type GraphTab = "graph" | "prior" | "derivative";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 
 export interface GraphChromeOptions {
@@ -13,6 +13,8 @@ export interface GraphChromeOptions {
 	onColor: (mode: ColorMode) => void;
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
+	researchButton?: boolean;
+	analysisButton?: boolean;
 	onExport: (kind: ExportKind) => void;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
@@ -21,6 +23,7 @@ export interface GraphChromeOptions {
 }
 
 export interface GraphChrome {
+	setResearchVisible(visible: boolean): void;
 	setYears(min: number, max: number): void;
 	setExportText(text: string): void;
 	destroy(): void;
@@ -158,6 +161,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		["prior", "先验工作"],
 		["derivative", "衍生工作"],
 	];
+	if (options.researchButton !== undefined) tabs.push(["research", "研究脉络"]);
+	if (options.analysisButton) tabs.push(["analysis", "分析"]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {
 		const button = pressButton(label, tab === "graph", () => {
@@ -165,6 +170,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			options.onTab(tab);
 		});
 		tabButtons.set(tab, button);
+		if (tab === "research") button.hidden = !options.researchButton;
 		tabRow.append(button);
 	}
 
@@ -182,6 +188,13 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(tabRow, output);
 
 	return {
+		setResearchVisible(visible: boolean): void {
+			const button = tabButtons.get("research");
+			if (button) button.hidden = !visible;
+			if (!visible && button?.getAttribute("aria-pressed") === "true") {
+				for (const [key, item] of tabButtons) setPressed(item, key === "graph");
+			}
+		},
 		setYears(min: number, max: number): void {
 			stop();
 			minYear = min;

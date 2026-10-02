@@ -189,13 +189,14 @@ export function evidenceText(
 	edge: GraphEdge,
 	source: Pick<PaperNode, "authors" | "year">,
 	target: Pick<PaperNode, "authors" | "year">,
+	sources = "OpenAlex 采样",
 ): string {
 	return [
 		explainRelation(edge, source, target),
 		`强度 ${TIER_LABEL[strengthTier(edge)]}`,
 		`共享参考文献 ${edge.sharedRefs} 篇`,
 		`共被引 ${edge.coCitedBy} 次`,
-		"来源：OpenAlex 采样",
+		`来源：${sources}`,
 		"引用列表可能不完整",
 	].join("\n");
 }

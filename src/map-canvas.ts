@@ -24,6 +24,7 @@ type Drag =
  */
 export class SimilarityMap {
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
+	onEdgeSelect: ((edge: GraphEdge) => void) | null = null;
 
 	private ctx: CanvasRenderingContext2D | null = null;
 	private nodes: DrawNode[] = [];
@@ -80,6 +81,18 @@ export class SimilarityMap {
 		this.scrubYear = null;
 		this.colorMode = "community";
 		this.rebuild(nodes, true);
+	}
+
+	/**
+	 * Swap in enriched edges (e.g. OpenCitations gap-filling) without touching
+	 * layout mode, color mode, scrub year, node positions, or the view transform.
+	 */
+	updateGraphData(edges: GraphEdge[]): void {
+		this.edges = edges;
+		this.communities = detectCommunities(this.nodes.map((node) => node.id), edges);
+		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
+		this.recolor();
+		this.draw();
 	}
 
 	setLayout(mode: LayoutMode): void {
@@ -255,6 +268,18 @@ export class SimilarityMap {
 			this.selectedId = node?.id ?? null;
 			this.onSelect?.(node);
 		} else {
+			const local = this.localPoint(this.downX, this.downY);
+			const p = this.screenToWorld(local.x, local.y);
+			let closest: GraphEdge | null = null, distance = 7 / this.k;
+			for (const edge of this.edges) {
+				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
+				if (!a || !b || (this.scrubYear !== null && (a.year === null || b.year === null || a.year > this.scrubYear || b.year > this.scrubYear))) continue;
+				const dx = b.x-a.x, dy = b.y-a.y;
+				const t = Math.max(0, Math.min(1, ((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy || 1)));
+				const d = Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy);
+				if (d < distance) { distance = d; closest = edge; }
+			}
+			if (closest && this.onEdgeSelect) { this.onEdgeSelect(closest); return; }
 			this.selectedId = null;
 			this.onSelect?.(null);
 		}
