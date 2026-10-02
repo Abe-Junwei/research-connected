@@ -285,6 +285,11 @@
 	gap: 4px;
 }
 
+/* The embed keeps a resize grip at the graph's bottom-right corner. */
+.cpo-embed .cpo-zoom {
+	right: 32px;
+}
+
 .cpo-zoom button,
 .cpo-root button.cpo-icon {
 	height: 32px;
@@ -487,6 +492,12 @@
 	max-height: 72px;
 }
 
+/* The expanded embed sheet stacks below the graph, so it can afford room
+   for the abstract and the evidence lines. */
+.cpo-embed .cpo-sheet:not(.is-collapsed) {
+	max-height: 300px;
+}
+
 .cpo-side {
 	min-width: 0;
 	min-height: 0;
@@ -677,7 +688,9 @@
 
 .cpo-embed-body {
 	position: relative;
-	flex: 1;
+	/* flex: none — the shell is sized by content, so flex-basis 0% would
+	   collapse the graph area to zero height. The inline height rules. */
+	flex: none;
 	min-height: 0;
 	display: flex;
 }

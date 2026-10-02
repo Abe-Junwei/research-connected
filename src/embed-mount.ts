@@ -280,14 +280,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}
 		selected = paper;
 		detail.replaceChildren();
-		const title = document.createElement("p");
-		title.className = "cpo-embed-detail-title";
-		title.textContent = paper.title;
+		// The sheet strip already carries the title; the body starts at the meta line.
 		const meta = document.createElement("p");
 		meta.className = "cpo-embed-detail-meta";
 		const year = paper.year === null ? "年份不详" : String(paper.year);
 		meta.textContent = `${year} · 被引 ${formatCount(paper.citedByCount)} · ${paper.authors}`;
-		detail.append(title, meta);
+		detail.append(meta);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -316,12 +314,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				detail.append(line);
 			}
 		}
-		if (paper.abstract) {
-			const abstract = document.createElement("p");
-			abstract.className = "cpo-embed-detail-abstract";
-			abstract.textContent = snippet(paper.abstract, 220);
-			detail.append(abstract);
-		}
+		const abstract = document.createElement("p");
+		abstract.className = "cpo-embed-detail-abstract";
+		abstract.textContent = paper.abstract ? snippet(paper.abstract, 220) : "OpenAlex 没有提供摘要。";
+		detail.append(abstract);
 		const openAlex = allowedExternalUrl(paper.openAlexUrl);
 		if (openAlex) addLink(detail, "在 OpenAlex 中打开", () => deps.openExternal(openAlex));
 		if (paper.doiUrl) {
