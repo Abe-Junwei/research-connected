@@ -1,5 +1,4 @@
 import type { GraphEdge, PaperNode } from "./types";
-import { detectCommunities } from "./communities";
 
 const ns = "http://www.w3.org/2000/svg";
 function shape<K extends keyof SVGElementTagNameMap>(svg: SVGSVGElement, tag: K, attrs: Record<string, string | number>, title?: string): SVGElementTagNameMap[K] {
@@ -12,14 +11,13 @@ function label(svg: SVGSVGElement, x: number, y: number, text: string, anchor = 
 	shape(svg, "text", { x, y, "text-anchor": anchor, fill: "currentColor", "font-size": 12 }).textContent = text;
 }
 
-/** Input edges have been normalized: source cites target; one entry per direction. */
-export function drawFlows(svg: SVGSVGElement, nodes: PaperNode[], edges: GraphEdge[], mode: "sankey" | "chord", onPick: (papers: PaperNode[]) => void): void {
+/** Input edges have been normalized: source cites target; one entry per direction. Communities come from the map so chord groups match node colors. */
+export function drawFlows(svg: SVGSVGElement, nodes: PaperNode[], edges: GraphEdge[], mode: "sankey" | "chord", communities: ReadonlyMap<string, number>, onPick: (papers: PaperNode[]) => void): void {
 	if (!edges.length) { label(svg, 30, 60, "当前范围没有已确认的直接引用。"); return; }
 	const byId = new Map(nodes.map(n => [n.id, n]));
-	const communities = detectCommunities(nodes.map(n => n.id), edges);
 	const group = (id: string): string => mode === "sankey"
 		? (byId.get(id)?.year == null ? "年份未知" : `${Math.floor(byId.get(id)!.year! / 10) * 10}年代`)
-		: `社区 ${Math.min(communities.get(id) ?? 0, 11) + 1}`;
+		: (communities.has(id) ? `社区 ${communities.get(id)! + 1}` : "无社区");
 	const matrix = new Map<string, { a: string; b: string; count: number; ids: Set<string> }>();
 	for (const edge of edges) {
 		let a = group(edge.source), b = group(edge.target);

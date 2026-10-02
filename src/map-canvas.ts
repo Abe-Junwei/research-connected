@@ -117,6 +117,11 @@ export class SimilarityMap {
 		return this.adjusted;
 	}
 
+	/** Community assignment behind node colors; recomputed by setGraph and updateGraphData. */
+	getCommunities(): ReadonlyMap<string, number> {
+		return this.communities;
+	}
+
 	setSelected(id: string | null): void {
 		this.selectedId = id;
 		this.draw();

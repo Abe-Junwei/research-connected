@@ -16,10 +16,6 @@ export class OpenCitationsClient {
 		return this.rows(`https://api.opencitations.net/index/v2/references/doi:${encodeURIComponent(doi)}`);
 	}
 
-	async citations(doi: string): Promise<OpenCitationRow[]> {
-		return this.rows(`https://api.opencitations.net/index/v2/citations/doi:${encodeURIComponent(doi)}`);
-	}
-
 	private async rows(url: string): Promise<OpenCitationRow[]> {
 		const json = await cachedGet(this.getJson, url, {
 			headers: {
@@ -45,12 +41,6 @@ export interface SemanticCitation {
 	isInfluential?: boolean | null;
 }
 
-interface SemanticPaper {
-	paperId?: string;
-	url?: string | null;
-	title?: string | null;
-}
-
 export class SemanticScholarClient {
 	constructor(private readonly getJson: GetJson, private readonly apiKey: string) {}
 
@@ -70,19 +60,6 @@ export class SemanticScholarClient {
 			offset = result.next;
 		}
 		return { data, partial: true };
-	}
-
-	async resolveDoi(doi: string): Promise<string | null> {
-		const paper = await this.get<SemanticPaper>(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=paperId`);
-		return paper.paperId ?? null;
-	}
-
-	async citations(paperId: string): Promise<SemanticCitation[]> {
-		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(paperId)}/citations`);
-		url.searchParams.set("fields", "contexts,intents,isInfluential,citingPaper.title,citingPaper.year,citingPaper.externalIds");
-		url.searchParams.set("limit", "1000");
-		const json = await this.get<{ data?: SemanticCitation[] }>(url.toString());
-		return Array.isArray(json.data) ? json.data : [];
 	}
 
 	private async get<T>(url: string): Promise<T> {

@@ -260,7 +260,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		svg.setAttribute("aria-label", analysisMode === "sankey" ? "按年份聚合的引用流" : "按社区聚合的引用关系");
 		listPanel.append(svg);
 		const selection = el(listPanel, "div");
-		drawFlows(svg, visible, edges, analysisMode, papers => {
+		drawFlows(svg, visible, edges, analysisMode, map.getCommunities(), papers => {
 			selection.replaceChildren();
 			for (const paper of papers) addLink(selection, paper.title, () => {
 				showDetail(paper); detail.hidden = false;
@@ -457,9 +457,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 					}
 				}
 				if (pairs.length > 0) {
-					const semanticButton = el(detail, "button", "cpo-link", "读取 Semantic Scholar 引用语义") as HTMLButtonElement;
+					const loaded = semanticLoaded(pairs);
+					const semanticButton = el(detail, "button", "cpo-link", loaded ? "已加载引用语义" : "读取 Semantic Scholar 引用语义") as HTMLButtonElement;
 					semanticButton.type = "button";
-					semanticButton.addEventListener("click", () => void loadSemanticEvidence(pairs, semanticButton));
+					semanticButton.disabled = loaded;
+					if (!loaded) semanticButton.addEventListener("click", () => void loadSemanticEvidence(pairs, semanticButton));
 				}
 			}
 		}
@@ -484,6 +486,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		try {
 			const settings = deps.getSettings();
 			const client = new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey);
+			let partial = false;
 			for (const pair of pairs) {
 				const citing = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citingId);
 				const cited = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citedId);
@@ -492,11 +495,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				if (!citedDoi || !citingDoi) continue;
 				const result = await client.referenceEvidence(citingDoi);
 				if (disposed || graph !== requestGraph || token !== generation) return;
+				partial = partial || result.partial;
 				const row = result.data.find(item => doiOf(item.citedPaper?.externalIds?.DOI) === citedDoi);
 				if (row) requestGraph.citationEvidence?.set(evidenceFromSemanticCitation(pair.citingId, pair.citedId, row));
 				else { button.textContent = result.partial ? "已查 3000 条参考文献，未匹配（结果不完整）" : "未找到匹配的引用语义"; button.disabled = false; return; }
 			}
 			showDetail(selectedPaper);
+			if (partial) el(detail, "p", "cpo-side-tip", "Semantic Scholar 只返回了前 3000 条参考文献，引用语义可能不完整。");
 		} catch (error) {
 			if (disposed || graph !== requestGraph || token !== generation) return;
 			button.textContent = error instanceof Error ? error.message : "Semantic Scholar 请求失败";
@@ -517,6 +522,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		const sources = new Set(directPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
 		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
 	};
+	const semanticLoaded = (pairs: Array<{ citingId: string; citedId: string }>): boolean =>
+		pairs.every(pair => graph?.citationEvidence?.get(pair.citingId, pair.citedId)?.sources.includes("semantic-scholar"));
 
 	map.onSelect = (paper) => showDetail(paper);
 	map.onEdgeSelect = edge => {
@@ -533,12 +540,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
 			}
 		}
-		if (directPairs(edge).length) {
-			const button = el(detail, "button", "cpo-link", "读取 Semantic Scholar 引用语义");
+		const pairs = directPairs(edge);
+		if (pairs.length) {
+			const loaded = semanticLoaded(pairs);
+			const button = el(detail, "button", "cpo-link", loaded ? "已加载引用语义" : "读取 Semantic Scholar 引用语义");
 			button.type = "button";
-			button.onclick = async () => {
+			button.disabled = loaded;
+			if (!loaded) button.onclick = async () => {
 				const current = graph;
-				await loadSemanticEvidence(directPairs(edge), button);
+				await loadSemanticEvidence(pairs, button);
 				if (!disposed && current === graph && !button.isConnected) map.onEdgeSelect?.(edge);
 			};
 		}
