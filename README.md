@@ -186,6 +186,7 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
    - up to **40** works that cite the seed
    - up to **20** OpenAlex related works
 3. Keep at most `最大节点数 − 1` neighbors:
+   - records whose OpenAlex `type` is non-research (**book-review**, editorial, correction/erratum, letter, retraction, peer-review, paratext) are dropped first — a book review's title embeds the book ("…By Author. Publisher, year. Pp. …") and citations meant for the book land on the review, which would bend the map toward the wrong record; the status line reports how many were filtered. The seed itself is kept regardless of type, with a note in its detail sheet
    - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure
    - remaining slots split between references and citing works
    - unused quota is filled by citation count
@@ -226,7 +227,7 @@ Base: `https://api.openalex.org`. The plugin sends `Accept: application/json` an
 | Related works | `GET /works?filter=related_to:{id}&per_page=20` | Topic-similar candidates |
 | Reference lists and abstracts | `GET /works?filter=openalex:{id}\|{id}…&per_page={n}&select=id,referenced_works,abstract_inverted_index` | Batches of up to 80 ids |
 
-Abstracts are reconstructed from `abstract_inverted_index` when OpenAlex has one. Many works have none; the sheet then says so.
+Abstracts are reconstructed from `abstract_inverted_index` when OpenAlex has one and shown in full. Many works have none; the sheet then asks Semantic Scholar once for that paper, and says so when neither source has one.
 
 Filter names are easy to invert: `cited_by:W…` returns works **in** that work’s `referenced_works` (outgoing). `cites:W…` returns works that **list** that id (incoming).
 

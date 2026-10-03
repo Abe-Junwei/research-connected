@@ -102,6 +102,29 @@ export function isPaper(value: PaperNode | null): value is PaperNode {
 	return value !== null;
 }
 
+/**
+ * OpenAlex records that are not research content. Book reviews are the
+ * common trap: their titles embed the reviewed book ("Title. By Author.
+ * Publisher, year. Pp. …"), citations meant for the book land on them,
+ * and the graph then treats a review as the book itself. OpenAlex flags
+ * these in `type`, which is the reliable detector.
+ */
+export const NON_RESEARCH_TYPES: ReadonlyMap<string, string> = new Map([
+	["book-review", "书评"],
+	["editorial", "编者语"],
+	["erratum", "更正"],
+	["correction", "更正"],
+	["letter", "读者来信"],
+	["retraction", "撤稿"],
+	["peer-review", "评审记录"],
+	["paratext", "附属内容"],
+]);
+
+export function nonResearchLabel(paper: Pick<PaperNode, "workType">): string | null {
+	if (!paper.workType) return null;
+	return NON_RESEARCH_TYPES.get(paper.workType) ?? null;
+}
+
 function cleanToken(value: string | null | undefined): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim().toLowerCase();

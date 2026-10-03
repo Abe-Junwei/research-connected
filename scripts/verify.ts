@@ -222,6 +222,7 @@ function unit(): void {
 			["C", ["S", "A", "B"]],
 		]),
 		catalog: [seedPaper, early, later, survey],
+		skippedNonResearch: 0,
 	};
 	const visible = new Set(["S", "A", "B"]);
 	const priors = priorWorks(rankedGraph, visible);

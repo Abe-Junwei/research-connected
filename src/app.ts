@@ -12,7 +12,7 @@ import { mergeOpenCitation, evidenceFromSemanticCitation, evidenceLabel } from "
 import { drawFlows } from "./analysis-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
 import { summarizeWithLlmPost } from "./llm";
-import { classifyQuery, toSearchHit } from "./paper";
+import { classifyQuery, nonResearchLabel, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
@@ -430,7 +430,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 
 	const abstractText = (paper: PaperNode): string => {
 		if (paper.abstract) {
-			return snippet(paper.abstract) + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+			return paper.abstract + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
 		}
 		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
 		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
@@ -462,6 +462,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			paper.concepts.length > 0 ? `概念 ${paper.concepts.slice(0, 3).join("、")}` : "",
 		].filter(Boolean);
 		if (facets.length > 0) el(detail, "p", "cpo-meta", facets.join(" · "));
+		const flagged = nonResearchLabel(paper);
+		if (flagged) {
+			el(detail, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);
+		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
@@ -612,8 +616,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		].filter(Boolean);
 		const warning = next.warnings.map((item) => WARNING_TEXT[item]).join("；");
 		status.textContent = `${next.nodes.length} 篇 · ${next.edges.length} 条关系 · ${strategyNames.join("、")}${
-			warning ? ` · ${warning}` : ""
-		}`;
+			next.skippedNonResearch ? ` · 滤除书评等非研究记录 ${next.skippedNonResearch} 条` : ""
+		}${warning ? ` · ${warning}` : ""}`;
 		void enrichOpenCitations(next);
 	};
 

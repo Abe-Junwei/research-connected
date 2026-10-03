@@ -3,7 +3,7 @@ import {
 	OpenAlexError,
 	type RawWork,
 } from "./openalex";
-import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
+import { reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import type { ConnectedPapersSettings } from "./settings-model";
@@ -27,6 +27,8 @@ export interface SimilarityGraph {
 	/** Titles we already fetched, including citers that did not become nodes. */
 	catalog: readonly PaperNode[];
 	citationEvidence?: CitationEvidenceStore;
+	/** Book reviews, editorials, and other non-research records dropped from the sample. */
+	skippedNonResearch: number;
 }
 
 const ORIGIN_RANK: Record<Origin, number> = {
@@ -74,9 +76,17 @@ export async function loadNeighborhood(
 		throw new OpenAlexError("没有读到邻居作品。请检查网络、API 密钥或额度。");
 	}
 
-	const refPapers = asPapers(references.works, "reference", seed.id);
-	const citePapers = asPapers(citations.works, "citation", seed.id);
-	const relatedPapers = asPapers(related.works, "related", seed.id);
+	const refAll = asPapers(references.works, "reference", seed.id);
+	const citeAll = asPapers(citations.works, "citation", seed.id);
+	const relatedAll = asPapers(related.works, "related", seed.id);
+	// Reviews and editorials are dropped as nodes and as co-citation context:
+	// their reference lists and citation counts belong to the reviewed work,
+	// so keeping them bends the map toward the wrong record.
+	const refPapers = researchOnly(refAll);
+	const citePapers = researchOnly(citeAll);
+	const relatedPapers = researchOnly(relatedAll);
+	const skippedNonResearch =
+		refAll.length - refPapers.length + (citeAll.length - citePapers.length) + (relatedAll.length - relatedPapers.length);
 	const picked = selectNeighbors(
 		settings,
 		{ reference: refPapers, citation: citePapers, related: relatedPapers },
@@ -157,6 +167,7 @@ export async function loadNeighborhood(
 		referenceLists,
 		catalog: [...catalog.values()],
 		citationEvidence,
+		skippedNonResearch,
 	};
 }
 
@@ -238,6 +249,10 @@ function asPapers(works: RawWork[], origin: Origin, seedId: string): PaperNode[]
 		if (paper && paper.id !== seedId) papers.push(paper);
 	}
 	return papers;
+}
+
+function researchOnly(papers: PaperNode[]): PaperNode[] {
+	return papers.filter((paper) => !nonResearchLabel(paper));
 }
 
 function dedupe(list: PaperNode[], seedId: string): PaperNode[] {

@@ -11,7 +11,7 @@ import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
-import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
+import { nonResearchLabel, reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings-model";
@@ -333,7 +333,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const embedAbstractText = (paper: PaperNode): string => {
 		if (paper.abstract) {
-			return snippet(paper.abstract, 220) + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+			return paper.abstract + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
 		}
 		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
 		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
@@ -365,6 +365,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		meta.textContent = `${year} · 被引 ${formatCount(paper.citedByCount)} · ${paper.authors}`;
 		detail.append(meta);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
+		const flagged = nonResearchLabel(paper);
+		if (flagged) {
+			const note = document.createElement("p");
+			note.className = "cpo-side-tip";
+			note.textContent = `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书——这是 OpenAlex 的数据特点。`;
+			detail.append(note);
+		}
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 		if (!paper.isSeed && seed) {
@@ -449,7 +456,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			return;
 		}
 		const seed = graph.nodes.find((node) => node.isSeed);
-		status.textContent = `${seed?.title ?? "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}`;
+		status.textContent = `${seed?.title ?? "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
+			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
+		}`;
 	};
 
 	const load = async (bypassCache: boolean): Promise<void> => {

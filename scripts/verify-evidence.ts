@@ -18,7 +18,7 @@ export async function verifyEvidence(): Promise<void> {
 		nodes: [seed, prior, later], edges: [], seedScore: new Map(), warnings: [],
 		strategies: { references: true, citations: true, related: false },
 		catalog: [seed, prior, later], referenceLists: new Map([["W1", ["W2"]], ["W3", ["W1"]]]),
-		citationEvidence: new CitationEvidenceStore(),
+		citationEvidence: new CitationEvidenceStore(), skippedNonResearch: 0,
 	};
 	mergeOpenCitation(graph, "W1", "W2");
 	assert.deepEqual(graph.citationEvidence!.get("W1", "W2")!.sources, ["openalex", "opencitations"]);
@@ -78,7 +78,7 @@ export async function verifyEvidence(): Promise<void> {
 		nodes: [seed, prior, later], edges: [], seedScore: new Map(), warnings: [],
 		strategies: { references: true, citations: true, related: false },
 		catalog: [seed, prior, later], referenceLists: new Map(),
-		citationEvidence: new CitationEvidenceStore(),
+		citationEvidence: new CitationEvidenceStore(), skippedNonResearch: 0,
 	};
 	map.setGraph(mapGraph.nodes, mapGraph.edges, mapGraph.seedScore);
 	map.setLayout("temporal");
