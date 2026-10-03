@@ -59,13 +59,13 @@ export class SemanticScholarClient {
 	) {}
 
 	/**
-	 * One batched lookup (POST /paper/bulk, up to 500 ids) that cross-checks
+	 * One batched lookup (POST /paper/batch, up to 500 ids) that cross-checks
 	 * OpenAlex numbers. Keys of the returned map are the lowercased DOIs that
 	 * Semantic Scholar recognized.
 	 */
 	async bulkCounts(dois: string[]): Promise<Map<string, S2Counts>> {
 		if (!this.postJson || dois.length === 0) return new Map();
-		const url = new URL("https://api.semanticscholar.org/graph/v1/paper/bulk");
+		const url = new URL("https://api.semanticscholar.org/graph/v1/paper/batch");
 		url.searchParams.set("fields", "citationCount,referenceCount,externalIds");
 		const out = new Map<string, S2Counts>();
 		for (let i = 0; i < dois.length; i += 500) {

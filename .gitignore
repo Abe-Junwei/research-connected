@@ -12,5 +12,6 @@ data.json
 .DS_Store
 
 scripts/verify.cjs
+scripts/check-review.cjs
 preview/preview.js
 preview/embed.js

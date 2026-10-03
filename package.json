@@ -1,6 +1,6 @@
 {
 	"name": "research-connected",
-	"version": "1.6.1",
+	"version": "1.7.0",
 	"description": "Research Connected: a similarity map inside Obsidian, powered by OpenAlex, with a 3D note embed.",
 	"main": "main.js",
 	"type": "module",

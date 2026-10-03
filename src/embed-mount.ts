@@ -1,6 +1,7 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { drawFlows } from "./analysis-view";
-import { semanticAbstract, SemanticScholarClient, type PostJson } from "./citation-sources";
+import { semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
+import { mergeOpenCitation } from "./citation-evidence";
 import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
@@ -482,6 +483,41 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}`;
 	};
 
+	/** OpenCitations pass: verify and add citation links between visible nodes, then re-render if edges changed. */
+	const enrichOpenCitations = async (graph: SimilarityGraph, depthNote: string): Promise<void> => {
+		const token = generation;
+		const doiToId = new Map<string, string>();
+		for (const paper of graph.nodes) {
+			const doi = doiFromPaper(paper)?.toLowerCase();
+			if (doi) doiToId.set(doi, paper.id);
+		}
+		if (doiToId.size === 0) return;
+		const client = new OpenCitationsClient(deps.getJson, deps.getSettings().openCitationsToken);
+		const papers = graph.nodes.filter((paper) => doiFromPaper(paper)).slice(0, 10);
+		const edgesBefore = graph.edges.length;
+		for (const paper of papers) {
+			if (!alive || token !== generation || currentGraph !== graph) return;
+			try {
+				const rows = await client.references(doiFromPaper(paper)!);
+				if (!alive || token !== generation || currentGraph !== graph) return;
+				for (const row of rows) {
+					const ids = doisFromOpenCitation(row);
+					const citing = ids.citing.map((doi) => doiToId.get(doi)).find(Boolean);
+					const cited = ids.cited.map((doi) => doiToId.get(doi)).find(Boolean);
+					if (citing && cited) mergeOpenCitation(graph, citing, cited);
+				}
+			} catch {
+				// A failed lookup skips that paper; the map is already complete without it.
+			}
+		}
+		if (!alive || token !== generation || currentGraph !== graph) return;
+		const added = graph.edges.length - edgesBefore;
+		if (added > 0) {
+			renderGraph(graph, depthNote);
+			status.textContent += ` · OpenCitations 补充 ${added} 条引用`;
+		}
+	};
+
 	const load = async (bypassCache: boolean): Promise<void> => {
 		const token = ++generation;
 		graphView?.destroy();
@@ -518,6 +554,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			}
 			if (!alive || token !== generation) return;
 			renderGraph(graph, depthNote);
+			void enrichOpenCitations(graph, depthNote);
 		} catch (error) {
 			if (!alive || token !== generation) return;
 			message.hidden = false;
