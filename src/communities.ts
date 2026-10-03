@@ -1,16 +1,20 @@
+import { relationKind } from "./relation";
 import type { GraphEdge } from "./types";
 
 /**
- * Deterministic label propagation on the undirected similarity graph.
- * Returns a dense community index per node, largest community first.
+ * Deterministic weighted label propagation on the undirected similarity graph.
+ * Weak sampling links are excluded so dense neighborhoods do not collapse into
+ * one community. Returns a dense community index per node, largest first.
  * Edge colors stay on the relation type; this map is only for nodes.
  */
 export function detectCommunities(nodeIds: readonly string[], edges: readonly GraphEdge[]): Map<string, number> {
-	const neighbors = new Map<string, string[]>();
+	const neighbors = new Map<string, Array<{ id: string; weight: number }>>();
 	for (const id of nodeIds) neighbors.set(id, []);
 	for (const edge of edges) {
-		neighbors.get(edge.source)?.push(edge.target);
-		neighbors.get(edge.target)?.push(edge.source);
+		if (relationKind(edge) === "weak") continue;
+		const weight = Math.max(edge.weight, 0.01);
+		neighbors.get(edge.source)?.push({ id: edge.target, weight });
+		neighbors.get(edge.target)?.push({ id: edge.source, weight });
 	}
 	const label = new Map<string, string>();
 	for (const id of nodeIds) label.set(id, id);
@@ -19,9 +23,9 @@ export function detectCommunities(nodeIds: readonly string[], edges: readonly Gr
 		for (const id of order) {
 			const counts = new Map<string, number>();
 			for (const next of neighbors.get(id) ?? []) {
-				const assigned = label.get(next);
+				const assigned = label.get(next.id);
 				if (!assigned) continue;
-				counts.set(assigned, (counts.get(assigned) ?? 0) + 1);
+				counts.set(assigned, (counts.get(assigned) ?? 0) + next.weight);
 			}
 			if (counts.size === 0) continue;
 			let best = label.get(id) ?? id;

@@ -196,11 +196,14 @@ function unit(): void {
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
-		[weighted("A", "B", 1), weighted("B", "C", 1), weighted("C", "A", 1), weighted("D", "E", 1), weighted("E", "F", 1), weighted("F", "D", 1)],
+		[weighted("A", "B", 1), weighted("B", "C", 1), weighted("C", "A", 1), weighted("D", "E", 1), weighted("E", "F", 1), weighted("F", "D", 1)]
+			.map((edge) => ({ ...edge, sharedRefs: 4, coupling: 0.5 })),
 	);
 	assert.equal(communities.get("A"), communities.get("B"));
 	assert.equal(communities.get("B"), communities.get("C"));
 	assert.notEqual(communities.get("A"), communities.get("D"));
+	const weakOnly = detectCommunities(["A", "B"], [weighted("A", "B", 1)]);
+	assert.notEqual(weakOnly.get("A"), weakOnly.get("B"));
 
 	const seedPaper = { ...paper("S", "seed", 10), year: 2015, title: "Seed paper", authors: "Yann LeCun", doiUrl: "https://doi.org/10.1038/nature14539" };
 	const early = { ...paper("A", "reference", 50), year: 1986, title: "Backprop", authors: "David Rumelhart" };
