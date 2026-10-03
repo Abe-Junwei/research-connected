@@ -213,6 +213,23 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
 
 Highly cited papers are sampled, not exhaustively expanded. A seed with tens of thousands of citations contributes its 40 most-cited citers, not the full citing set. Reference lists longer than the sampled works are whatever OpenAlex returns on that one page (up to 80, sorted by citations).
 
+## Data quality: known OpenAlex issues
+
+OpenAlex is the best free citation index, but published audits have found recurring defects. What they are, and what this plugin does about each:
+
+| Known issue | What the plugin does |
+| --- | --- |
+| **Book reviews, editorials, corrections** are indexed as works; a book review's title embeds the reviewed book and citations meant for the book land on the review, so the record looks like a highly cited "paper" by the wrong author | Records whose `type` is non-research are dropped from the map (the status line reports the count); the seed is kept with a note. OpenAlex's `type` field is the reliable detector — title heuristics are not |
+| **Retracted articles** stay in citation graphs and keep accumulating citations | `is_retracted` is fetched for every node; the detail sheet shows a prominent retraction warning. Retracted works are kept on the map (they are part of citation history) but flagged |
+| **Missing abstracts** on a large share of records | Abstracts are reconstructed from `abstract_inverted_index` when present; otherwise the sheet asks Semantic Scholar once, and says so when neither source has one |
+| **Incomplete reference lists** — OpenAlex captures fewer references than the original articles list (audits report roughly a fifth to a quarter missing on average, worse for older and non-English works) | Coupling and co-citation scores are computed over the references OpenAlex actually has. Treat edge weights as approximate, and expect the map to skew toward well-indexed (recent, English, big-publisher) works |
+| **Language field is auto-detected** from title and abstract, with published error rates around one in seven records | The language facet and filter are shown as OpenAlex reports them; treat them as best-effort |
+| **Author and institution disambiguation errors** — names are merged or split incorrectly, especially for non-English names | Authors are displayed exactly as OpenAlex sends them. Verify authorship through the DOI link before citing |
+| **Duplicate and versioned records** (preprint vs published version, merging mistakes) | De-duplication is by OpenAlex work id only; a preprint and its published version are separate OpenAlex records and can both appear on one map |
+| **No predatory-journal screening** — OpenAlex indexes by availability, not quality | Not filtered. If that matters for your field, cross-check venues against DOAJ |
+
+Sources for the audits: Alperin et al. 2024 (coverage and metadata completeness), Gusenbauer 2024 (reference-capture error), Haupka 2024 (document-type misclassification), Céspedes et al. 2025 (language detection accuracy), and the 2025 systematic review of OpenAlex criticism (arXiv 2512.16434). The general advice from that literature applies here too: for anything beyond exploration, cross-validate against a second source (Semantic Scholar, Crossref, or the publisher page).
+
 ## OpenAlex endpoints
 
 Base: `https://api.openalex.org`. The plugin sends `Accept: application/json` and, when a key is set, `Authorization: Bearer <key>`.

@@ -462,6 +462,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			paper.concepts.length > 0 ? `概念 ${paper.concepts.slice(0, 3).join("、")}` : "",
 		].filter(Boolean);
 		if (facets.length > 0) el(detail, "p", "cpo-meta", facets.join(" · "));
+		if (paper.retracted) {
+			el(detail, "p", "cpo-side-tip", "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。");
+		}
 		const flagged = nonResearchLabel(paper);
 		if (flagged) {
 			el(detail, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);

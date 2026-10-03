@@ -17,6 +17,8 @@ export interface PaperNode {
 	workType: string | null;
 	/** Concept display names OpenAlex attached to the work. Empty when the field is absent. */
 	concepts: string[];
+	/** True when OpenAlex flags the work as retracted (is_retracted). */
+	retracted: boolean;
 }
 
 /** Which way a direct citation runs, relative to `source` and `target`. */

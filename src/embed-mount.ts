@@ -365,6 +365,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		meta.textContent = `${year} · 被引 ${formatCount(paper.citedByCount)} · ${paper.authors}`;
 		detail.append(meta);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
+		if (paper.retracted) {
+			const note = document.createElement("p");
+			note.className = "cpo-side-tip";
+			note.textContent = "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。";
+			detail.append(note);
+		}
 		const flagged = nonResearchLabel(paper);
 		if (flagged) {
 			const note = document.createElement("p");

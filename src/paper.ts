@@ -82,6 +82,7 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		origin,
 		language: cleanToken(raw.language),
 		workType: cleanToken(raw.type),
+		retracted: raw.is_retracted === true,
 		concepts: conceptNames(raw.concepts),
 	};
 }

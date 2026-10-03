@@ -60,6 +60,7 @@ function paper(id: string, origin: PaperNode["origin"], citedByCount: number): P
 		origin,
 		language: null,
 		workType: null,
+		retracted: false,
 		concepts: [],
 	};
 }
