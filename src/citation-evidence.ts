@@ -1,5 +1,5 @@
 import type { SemanticCitation } from "./citation-sources";
-import type { PaperNode } from "./types";
+import type { GraphEdge, PaperNode } from "./types";
 import type { SimilarityGraph } from "./neighborhood";
 
 export type CitationIntent = "background" | "method" | "result";
@@ -65,6 +65,36 @@ export function evidenceLabel(evidence: CitationEvidence | null): string {
 	const labels = evidence.intents.map((intent) => intent === "result" ? "Result" : `${intent.slice(0, 1).toUpperCase()}${intent.slice(1)}`);
 	if (evidence.influential) labels.push("Influential");
 	return labels.length > 0 ? labels.join(" · ") : "已确认引用关系，暂无引用意图";
+}
+
+export interface EvidenceBadge {
+	label: string;
+	tone: "strong" | "plain" | "warn";
+}
+
+/** 双源确认 / 单源记录 / 数据缺失；低置信时追加采样有限。 */
+export function evidenceBadges(evidence: CitationEvidence | null): EvidenceBadge[] {
+	if (!evidence || evidence.sources.length === 0) return [{ label: "数据缺失", tone: "warn" }];
+	const badges: EvidenceBadge[] = [
+		evidence.sources.length >= 2
+			? { label: "双源确认", tone: "strong" }
+			: { label: "单源记录", tone: "plain" },
+	];
+	if (evidence.confidence === "low") badges.push({ label: "采样有限", tone: "warn" });
+	return badges;
+}
+
+/** Directed citation pairs carried by an edge, citing id first. */
+export function edgeCitationPairs(edge: GraphEdge): Array<{ citingId: string; citedId: string }> {
+	if (edge.direct === "source-cites-target") return [{ citingId: edge.source, citedId: edge.target }];
+	if (edge.direct === "target-cites-source") return [{ citingId: edge.target, citedId: edge.source }];
+	if (edge.direct === "mutual") {
+		return [
+			{ citingId: edge.source, citedId: edge.target },
+			{ citingId: edge.target, citedId: edge.source },
+		];
+	}
+	return [];
 }
 
 /** Sources describe this directed citation, never just the paper metadata. */

@@ -1,4 +1,36 @@
+import type { CitationEvidenceStore } from "./citation-evidence";
 import type { GraphEdge, PaperNode } from "./types";
+
+/** What the flow views need from a loaded graph. Pure data in, no requests out. */
+export interface CitationRecords {
+	referenceLists: ReadonlyMap<string, readonly string[]>;
+	citationEvidence?: CitationEvidenceStore;
+}
+
+/**
+ * Direct citation pairs between visible nodes, from the raw citation records
+ * rather than the thinned similarity edges. Source cites target; one entry per
+ * direction, reference lists and evidence store deduped into the same pair.
+ */
+export function directCitationEdges(records: CitationRecords, visibleIds: ReadonlySet<string>): GraphEdge[] {
+	const pairs = new Map<string, GraphEdge>();
+	const add = (citingId: string, citedId: string): void => {
+		if (!visibleIds.has(citingId) || !visibleIds.has(citedId) || citingId === citedId) return;
+		pairs.set(citingId + "\0" + citedId, {
+			source: citingId,
+			target: citedId,
+			weight: 0.1,
+			coupling: 0,
+			sharedRefs: 0,
+			coCitation: 0,
+			coCitedBy: 0,
+			direct: "source-cites-target",
+		});
+	};
+	for (const [citingId, refs] of records.referenceLists) for (const citedId of refs) add(citingId, citedId);
+	for (const evidence of records.citationEvidence?.entries() ?? []) add(evidence.citingId, evidence.citedId);
+	return [...pairs.values()];
+}
 
 const ns = "http://www.w3.org/2000/svg";
 function shape<K extends keyof SVGElementTagNameMap>(svg: SVGSVGElement, tag: K, attrs: Record<string, string | number>, title?: string): SVGElementTagNameMap[K] {
@@ -11,9 +43,12 @@ function label(svg: SVGSVGElement, x: number, y: number, text: string, anchor = 
 	shape(svg, "text", { x, y, "text-anchor": anchor, fill: "currentColor", "font-size": 12 }).textContent = text;
 }
 
+/** Empty state for the flow views; asserted by the offline checks. */
+export const EMPTY_FLOWS_TEXT = "当前图谱／筛选范围内无可绘制关系。";
+
 /** Input edges have been normalized: source cites target; one entry per direction. Communities come from the map so chord groups match node colors. */
 export function drawFlows(svg: SVGSVGElement, nodes: PaperNode[], edges: GraphEdge[], mode: "sankey" | "chord", communities: ReadonlyMap<string, number>, onPick: (papers: PaperNode[]) => void): void {
-	if (!edges.length) { label(svg, 30, 60, "当前范围没有已确认的直接引用。"); return; }
+	if (!edges.length) { label(svg, 30, 60, EMPTY_FLOWS_TEXT); return; }
 	const byId = new Map(nodes.map(n => [n.id, n]));
 	const group = (id: string): string => mode === "sankey"
 		? (byId.get(id)?.year == null ? "年份未知" : `${Math.floor(byId.get(id)!.year! / 10) * 10}年代`)

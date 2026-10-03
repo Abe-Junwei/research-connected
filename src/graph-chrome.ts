@@ -1,8 +1,22 @@
+import { evidenceBadges, type CitationEvidence } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type ColorMode, type LayoutMode } from "./layout-modes";
 
 export type { ColorMode };
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
+
+/** Source-confidence badges for a citation record; 数据缺失 when there is none. */
+export function paintEvidenceBadges(host: HTMLElement, evidence: CitationEvidence | null): void {
+	const row = document.createElement("span");
+	row.className = "cpo-badges";
+	for (const badge of evidenceBadges(evidence)) {
+		const item = document.createElement("span");
+		item.className = `cpo-badge cpo-badge-${badge.tone}`;
+		item.textContent = badge.label;
+		row.append(item);
+	}
+	host.append(row);
+}
 
 export interface GraphChromeOptions {
 	layouts: readonly LayoutMode[];
@@ -15,6 +29,8 @@ export interface GraphChromeOptions {
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
 	analysisButton?: boolean;
+	/** 引用脉络原型页签，仅主面板开启。 */
+	timelineButton?: boolean;
 	onExport: (kind: ExportKind) => void;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
@@ -63,7 +79,12 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	tabRow.className = "cpo-tool-row";
 	const hint = document.createElement("p");
 	hint.className = "cpo-tool-hint";
-	hint.textContent = LAYOUT_HINT[options.layout];
+	let layout = options.layout;
+	let color = options.color;
+	const updateHint = (): void => {
+		hint.textContent = `${LAYOUT_HINT[layout]}${color === "community" ? " 节点颜色表示算法识别的相似性社区，不等同于研究主题或学派。" : ""}`;
+	};
+	updateHint();
 	const readout = document.createElement("span");
 	readout.className = "cpo-scrub-readout";
 	readout.textContent = "全部年份";
@@ -71,8 +92,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	output.className = "cpo-export-text";
 	output.hidden = true;
 
-	let layout = options.layout;
-	let color = options.color;
 	let minYear = 1900;
 	let maxYear = 2020;
 	let timer = 0;
@@ -90,7 +109,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			stop();
 			layout = mode;
 			for (const [key, item] of layoutButtons) setPressed(item, key === mode);
-			hint.textContent = LAYOUT_HINT[mode];
+			updateHint();
 			options.onLayout(mode);
 		});
 		layoutButtons.set(mode, button);
@@ -102,6 +121,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		const button = pressButton(COLOR_LABEL[mode], mode === color, () => {
 			color = mode;
 			for (const [key, item] of colorButtons) setPressed(item, key === mode);
+			updateHint();
 			options.onColor(mode);
 		});
 		colorButtons.set(mode, button);
@@ -163,6 +183,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", "研究脉络"]);
 	if (options.analysisButton) tabs.push(["analysis", "分析"]);
+	if (options.timelineButton) tabs.push(["timeline", "引用脉络"]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {
 		const button = pressButton(label, tab === "graph", () => {

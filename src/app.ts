@@ -1,18 +1,31 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
-import { buildLegend } from "./filter-controls";
-import { emptyFilter, evidenceText, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { buildLegend, buildPathToggle } from "./filter-controls";
+import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
-import { mergeOpenCitation, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
-import { drawFlows } from "./analysis-view";
+import { mergeOpenCitation, edgeCitationPairs, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
+import { directCitationEdges, drawFlows } from "./analysis-view";
+import {
+	buildCitationTimeline,
+	LIST_VS_TIMELINE_NOTE,
+	TIMELINE_IMPACT_NOTE,
+	TIMELINE_LOADING_TEXT,
+	TIMELINE_META_LIMIT,
+	TIMELINE_META_NOTE,
+	TIMELINE_SAMPLING_NOTE,
+	TIMELINE_SCOPE_NOTE,
+	TIMELINE_TAG,
+	missingReferenceIds,
+} from "./citation-timeline";
+import { drawTimeline } from "./timeline-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
 import { summarizeWithLlmPost } from "./llm";
-import { classifyQuery, nonResearchLabel, toSearchHit } from "./paper";
+import { classifyQuery, nonResearchLabel, toPaper, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
@@ -147,6 +160,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		mapFilter = next;
 		map.setKinds(next.kinds);
 	});
+	kindLegend.after(buildPathToggle(() => mapFilter, (next) => {
+		mapFilter = next;
+		map.setKinds(next.kinds);
+		map.setFocusPath(next.focusPath);
+	}));
 	let graph: SimilarityGraph | null = null;
 	let tab: GraphTab = "graph";
 	let narrative: ResearchNarrative | null = null;
@@ -157,6 +175,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let scrubYear: number | null = null;
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
+	let timelineMetaGraph: SimilarityGraph | null = null;
+	let timelineMetaRequested = false;
+	let timelineMetaLoading = false;
+	let timelineMetaError = "";
+	const timelineExtraMeta = new Map<string, PaperNode>();
 	let generation = 0;
 	let composing = false;
 	let disposed = false;
@@ -196,10 +219,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	const paintLists = (): void => {
-		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis" || tab === "research");
+		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis" || tab === "research" || tab === "timeline");
 		detail.hidden = tab !== "graph";
 		if (tab === "research") {
 			paintResearch();
+			return;
+		}
+		if (tab === "timeline") {
+			paintTimeline();
 			return;
 		}
 		if (tab === "analysis") {
@@ -221,6 +248,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		copy.className = "cpo-agg-def";
 		copy.textContent = definition;
 		listPanel.append(copy);
+		el(listPanel, "p", "cpo-side-tip", LIST_VS_TIMELINE_NOTE);
 		if (rows.length === 0) {
 			const empty = document.createElement("p");
 			empty.className = "cpo-agg-empty";
@@ -245,11 +273,82 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		listPanel.append(list);
 	};
 
+	/** 引用脉络原型：只用原始引用记录，不用相似图边。 */
+	const paintTimeline = (): void => {
+		listPanel.hidden = false;
+		listPanel.replaceChildren();
+		el(listPanel, "h3", "cpo-kicker", `引用脉络 · ${TIMELINE_TAG}`);
+		el(listPanel, "p", "cpo-side-tip", TIMELINE_SCOPE_NOTE);
+		if (!graph) return;
+		if (timelineMetaGraph !== graph) {
+			timelineMetaGraph = graph;
+			timelineMetaRequested = false;
+			timelineMetaLoading = false;
+			timelineMetaError = "";
+			timelineExtraMeta.clear();
+		}
+		const timeline = buildCitationTimeline(graph, timelineExtraMeta);
+		el(
+			listPanel,
+			"p",
+			"cpo-side-tip",
+			`引用关系来源：${timeline.sources.join(" + ") || "OpenAlex 采样"} · 当前采样 ${graph.nodes.length} 篇节点`,
+		);
+		el(listPanel, "p", "cpo-side-tip", `${TIMELINE_SAMPLING_NOTE}${TIMELINE_IMPACT_NOTE}`);
+		const missingCount = missingReferenceIds(graph, timelineExtraMeta, Number.MAX_SAFE_INTEGER).length;
+		el(listPanel, "p", "cpo-side-tip", `${TIMELINE_META_NOTE}${missingCount > TIMELINE_META_LIMIT ? ` 当前缺少 ${missingCount} 条，先补取前 ${TIMELINE_META_LIMIT} 条。` : ""}`);
+		if (timelineMetaLoading) el(listPanel, "p", "cpo-side-tip", TIMELINE_LOADING_TEXT);
+		if (timelineMetaError) el(listPanel, "p", "cpo-side-tip", `元数据补取失败：${timelineMetaError}；仍显示已有引用记录。`);
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.setAttribute("role", "img");
+		svg.setAttribute("aria-label", "种子论文的引用脉络");
+		const scroll = el(listPanel, "div", "cpo-timeline-scroll");
+		scroll.append(svg);
+		const selection = el(listPanel, "div");
+		drawTimeline(svg, timeline, { width: Math.max(320, scroll.clientWidth), onPick: (node) => {
+			selection.replaceChildren();
+			el(selection, "p", "cpo-meta", `${node.title || node.id} · ${node.year ?? "年份不详"}`);
+			paintEvidenceBadges(selection, node.evidence);
+			const paper = graph?.nodes.find((item) => item.id === node.id);
+			if (paper) {
+				addLink(selection, "在详情中查看", () => {
+					tab = "graph";
+					showDetail(paper);
+					detail.hidden = false;
+					listPanel.hidden = true;
+				});
+			}
+		} });
+		if (!timelineMetaRequested && missingCount > 0) {
+			timelineMetaRequested = true;
+			timelineMetaLoading = true;
+			void (async () => {
+				try {
+					const ids = missingReferenceIds(graph!, timelineExtraMeta, TIMELINE_META_LIMIT);
+					const works = await client().workSummaries(ids);
+					if (disposed || graph !== timelineMetaGraph) return;
+					for (const raw of works) {
+						const paper = toPaper(raw, "reference");
+						if (paper) timelineExtraMeta.set(paper.id, paper);
+					}
+					timelineMetaError = "";
+				} catch (error) {
+					if (graph === timelineMetaGraph) timelineMetaError = error instanceof Error ? error.message : "请求未完成";
+				} finally {
+					if (graph === timelineMetaGraph) {
+						timelineMetaLoading = false;
+						if (!disposed && tab === "timeline") paintTimeline();
+					}
+				}
+			})();
+		}
+	};
+
 	const paintAnalysis = (): void => {
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
 		el(listPanel, "h3", "cpo-kicker", "分析视图");
-		el(listPanel, "p", "cpo-side-tip", "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。");
+		el(listPanel, "p", "cpo-side-tip", "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。仅统计当前可见节点之间的直接引用对，不含相似关系。");
 		const controls = el(listPanel, "div", "cpo-tools cpo-tool-row");
 		const sankey = el(controls, "button", "cpo-tool", "桑基") as HTMLButtonElement;
 		const chord = el(controls, "button", "cpo-tool", "弦图") as HTMLButtonElement;
@@ -259,15 +358,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		chord.addEventListener("click", () => { analysisMode = "chord"; paintAnalysis(); });
 		if (!graph) return;
 		const visible = shownNodes();
-		const visibleIds = new Set(visible.map((node) => node.id));
-		const pairs = new Map<string, GraphEdge>();
-		const add = (source: string, target: string) => {
-			if (!visibleIds.has(source) || !visibleIds.has(target) || source === target) return;
-			pairs.set(source + "\0" + target, { source, target, weight: 0.1, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
-		};
-		for (const [source, refs] of graph.referenceLists) for (const target of refs) add(source, target);
-		for (const e of graph.citationEvidence?.entries() ?? []) add(e.citingId, e.citedId);
-		const edges = [...pairs.values()];
+		const edges = directCitationEdges(graph, new Set(visible.map((node) => node.id)));
 		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 		svg.classList.add("cpo-analysis-svg");
 		svg.setAttribute("viewBox", "0 0 760 440");
@@ -376,12 +467,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(toolsHost, {
-		layouts: ["force2d", "temporal", "radial"],
+		layouts: ["kumu", "force2d", "temporal", "radial"],
 		layout: "force2d",
 		color: "community",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		analysisButton: true,
+		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => map.setLayout(mode),
@@ -485,9 +577,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
 			if (link && from && to) {
 				el(detail, "p", "cpo-evidence", evidenceText(link, from, to, edgeSources(link)));
-				const pairs = directPairs(link);
+				const pairs = edgeCitationPairs(link);
 				for (const pair of pairs) {
 					const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
+					paintEvidenceBadges(detail, evidence);
 					if (evidence) {
 						el(detail, "p", "cpo-evidence", `证据：${evidenceLabel(evidence)} · ${evidence.sources.join(" + ")}`);
 						for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
@@ -500,6 +593,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 					semanticButton.disabled = loaded;
 					if (!loaded) semanticButton.addEventListener("click", () => void loadSemanticEvidence(pairs, semanticButton));
 				}
+			} else {
+				const recorded =
+					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
+				if (!recorded) el(detail, "p", "cpo-evidence", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
 			}
 		}
 		el(detail, "h3", "cpo-kicker", "摘要");
@@ -560,17 +657,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 	};
 
-	const directPairs = (edge: GraphEdge): Array<{ citingId: string; citedId: string }> => {
-		if (edge.direct === "source-cites-target") return [{ citingId: edge.source, citedId: edge.target }];
-		if (edge.direct === "target-cites-source") return [{ citingId: edge.target, citedId: edge.source }];
-		if (edge.direct === "mutual") return [
-			{ citingId: edge.source, citedId: edge.target },
-			{ citingId: edge.target, citedId: edge.source },
-		];
-		return [];
-	};
 	const edgeSources = (edge: GraphEdge): string => {
-		const sources = new Set(directPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
+		const sources = new Set(edgeCitationPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
 		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
 	};
 	const semanticLoaded = (pairs: Array<{ citingId: string; citedId: string }>): boolean =>
@@ -584,14 +672,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
 		el(detail, "p", "cpo-evidence", evidenceText(edge, a, b, edgeSources(edge)));
-		for (const pair of directPairs(edge)) {
-			const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId);
+		for (const pair of edgeCitationPairs(edge)) {
+			const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
+			paintEvidenceBadges(detail, evidence);
 			if (evidence) {
 				el(detail, "p", "cpo-evidence", evidence.sources.join(" + ") + " · " + evidenceLabel(evidence));
 				for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
 			}
 		}
-		const pairs = directPairs(edge);
+		const pairs = edgeCitationPairs(edge);
 		if (pairs.length) {
 			const loaded = semanticLoaded(pairs);
 			const button = el(detail, "button", "cpo-link", loaded ? "已加载引用语义" : "读取 Semantic Scholar 引用语义");
@@ -608,6 +697,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 
 	const applyGraph = (next: SimilarityGraph): void => {
 		graph = next;
+		timelineMetaGraph = null;
+		timelineMetaRequested = false;
+		timelineMetaLoading = false;
+		timelineMetaError = "";
+		timelineExtraMeta.clear();
 		narrative = null;
 		narrativeInput = null;
 		narrativeError = "";

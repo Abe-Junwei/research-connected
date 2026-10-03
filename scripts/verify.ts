@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { verifyEvidence } from "./verify-evidence";
+import { verifyUi } from "./verify-ui";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { parseEmbed } from "../src/embed-syntax";
@@ -194,6 +195,8 @@ function unit(): void {
 	const radialA = radial.find((node) => node.id === "A");
 	const radialB = radial.find((node) => node.id === "B");
 	assert.ok(Math.hypot(radialA?.x ?? 0, radialA?.y ?? 0) > Math.hypot(radialB?.x ?? 0, radialB?.y ?? 0));
+	const kumu = placeLayout("kumu", layoutNodes, [weighted("S", "A", 0.7), weighted("A", "B", 0.7)], new Map());
+	assert.ok(kumu.every((node) => node.z === 0 && node.radius <= 8), "Kumu 圈层布局是二维小节点地图");
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
@@ -331,6 +334,9 @@ function unit(): void {
 		assert.equal(laidOut.spec.color, "year");
 	}
 	assert.equal(parseEmbed("doi: 10.1038/nature14539\nlayout: sidebar\n").ok, false);
+	const kumuEmbed = parseEmbed("doi: 10.1038/nature14539\nlayout: kumu\n");
+	assert.equal(kumuEmbed.ok, true, "笔记内嵌可显式切换到 Kumu 风格社区布局");
+	if (kumuEmbed.ok) assert.equal(kumuEmbed.spec.layout, "kumu");
 	const bare = parseEmbed("  W2919115771  ");
 	assert.equal(bare.ok, true);
 	if (bare.ok) assert.deepEqual(bare.spec.target, { kind: "openalex", value: "W2919115771" });
@@ -417,6 +423,7 @@ async function live(): Promise<void> {
 async function main(): Promise<void> {
 	unit();
 	await verifyEvidence();
+	verifyUi();
 	await cursorPaging();
 	await reconcileOffline();
 	console.log("unit checks passed");

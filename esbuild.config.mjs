@@ -23,6 +23,18 @@ if (mode === "verify") {
 	process.exit(0);
 }
 
+if (mode === "perf") {
+	await esbuild.build({
+		entryPoints: ["scripts/perf.ts"],
+		bundle: true,
+		platform: "node",
+		format: "cjs",
+		outfile: "scripts/perf.cjs",
+		logLevel: "info",
+	});
+	process.exit(0);
+}
+
 if (mode === "preview") {
 	await esbuild.build({
 		entryPoints: ["preview/main.ts"],

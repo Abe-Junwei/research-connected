@@ -210,7 +210,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "layout") {
 			const parsed = readLayout(value);
-			if (!parsed) return { ok: false, error: "layout 只能是 temporal、radial、force2d 或 force3d。" };
+			if (!parsed) return { ok: false, error: "layout 只能是 kumu、temporal、radial、force2d 或 force3d。" };
 			layout = parsed;
 			continue;
 		}
@@ -289,6 +289,7 @@ function readAlign(value: string): EmbedAlign | null {
 
 function readLayout(value: string): LayoutMode | null {
 	const key = value.trim().toLowerCase().replace(/[\s_]+/g, "");
+	if (key === "kumu" || key === "community") return "kumu";
 	if (key === "temporal" || key === "time" || key === "year") return "temporal";
 	if (key === "radial") return "radial";
 	if (key === "force2d" || key === "2d" || key === "flat") return "force2d";

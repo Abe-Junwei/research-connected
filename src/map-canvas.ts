@@ -1,4 +1,5 @@
-import { communityColor, detectCommunities } from "./communities";
+import { communityColor, communityRgba, detectCommunities } from "./communities";
+import { buildCommunityRegions } from "./community-regions";
 import { focusNodes, strengthTier } from "./graph-filter";
 import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
@@ -39,6 +40,7 @@ export class SimilarityMap {
 	private selectedId: string | null = null;
 	private hoverId: string | null = null;
 	private focus: Set<string> | null = null;
+	private focusPath = true;
 	private kindVisible: Record<RelationKind, boolean> = { direct: true, cocitation: true, coupling: true, weak: false };
 	private dragging: Drag | null = null;
 	private moved = false;
@@ -121,6 +123,10 @@ export class SimilarityMap {
 
 	setLayout(mode: LayoutMode): void {
 		this.layoutMode = mode === "force3d" ? "force2d" : mode;
+		this.stage.classList?.toggle("cpo-kumu-view", this.layoutMode === "kumu");
+		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
+		this.bgStart = this.layoutMode === "kumu" ? "#fbfaf7" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#171c28");
+		this.bgEnd = this.layoutMode === "kumu" ? "#f1eee8" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#0b0d12");
 		this.rebuild(this.nodes, false);
 	}
 
@@ -152,10 +158,20 @@ export class SimilarityMap {
 		this.draw();
 	}
 
-	/** One-hop neighborhood of the hovered (else selected) node, over visible edges only. */
+	/** Whether the focus highlight also keeps the shortest visible path to the seed. */
+	setFocusPath(on: boolean): void {
+		this.focusPath = on;
+		this.refreshFocus();
+		this.draw();
+	}
+
+	/** One-hop neighborhood of the hovered (else selected) node, plus the path to the seed when enabled. */
 	private refreshFocus(): void {
 		const id = this.hoverId ?? this.selectedId;
-		this.focus = id ? focusNodes(id, id, this.edges, (edge) => this.kindVisible[relationKind(edge)], false) : null;
+		const seedId = this.nodes.find((node) => node.isSeed)?.id ?? "";
+		this.focus = id
+			? focusNodes(id, seedId, this.edges, (edge) => this.kindVisible[relationKind(edge)], this.focusPath)
+			: null;
 	}
 
 	resize(): void {
@@ -173,8 +189,8 @@ export class SimilarityMap {
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		this.fontFamily = getComputedStyle(this.stage).fontFamily || "sans-serif";
 		const canvasStyles = getComputedStyle(this.canvas);
-		this.bgStart = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#171c28");
-		this.bgEnd = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#0b0d12");
+		this.bgStart = this.layoutMode === "kumu" ? "#fbfaf7" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#171c28");
+		this.bgEnd = this.layoutMode === "kumu" ? "#f1eee8" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#0b0d12");
 		this.draw();
 	}
 
@@ -504,6 +520,7 @@ export class SimilarityMap {
 		background.addColorStop(1, this.bgEnd);
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
+		if (this.layoutMode === "kumu") this.drawCommunityRegions(ctx, false);
 
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
@@ -515,8 +532,8 @@ export class SimilarityMap {
 			const kind = relationKind(edge);
 			if (!this.kindVisible[kind]) continue;
 			const tier = strengthTier(edge);
-			let width = tier === "strong" ? 2.8 : tier === "mid" ? 1.7 : 0.85;
-			let alpha = kind === "weak" ? 0.35 : 0.8;
+			let width = this.layoutMode === "kumu" ? 1 : tier === "strong" ? 2.8 : tier === "mid" ? 1.7 : 0.85;
+			let alpha = this.layoutMode === "kumu" ? 0.3 : kind === "weak" ? 0.35 : 0.8;
 			let dimmed = false;
 			if (focus && !(focus.has(edge.source) && focus.has(edge.target))) {
 				dimmed = true;
@@ -533,17 +550,75 @@ export class SimilarityMap {
 			ctx.strokeStyle = hexRgba(RELATION_COLOR[kind], alpha);
 			ctx.lineWidth = width;
 			ctx.stroke();
-			if (kind !== "direct" || dimmed) continue;
+			if (kind !== "direct" || dimmed || this.layoutMode === "kumu") continue;
 			ctx.fillStyle = hexRgba(RELATION_COLOR.direct, 0.95);
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
 		}
+		if (this.layoutMode === "kumu") this.drawCommunityRegions(ctx, true);
 
 		const ordered = [...this.nodes].sort((a, b) => a.radius - b.radius || (a.isSeed ? 1 : 0) - (b.isSeed ? 1 : 0));
 		for (const node of ordered) {
 			if (node.shown) this.drawNode(ctx, node);
 		}
 		this.drawLabels(ctx);
+	}
+
+	private drawCommunityRegions(ctx: CanvasRenderingContext2D, labelsOnly: boolean): void {
+		const regions = buildCommunityRegions(
+			this.nodes.map((node) => ({
+				id: node.id,
+				community: this.communities.get(node.id) ?? 0,
+				x: node.x * this.k + this.tx,
+				y: node.y * this.k + this.ty,
+				shown: node.shown,
+			})),
+			Math.max(18, Math.min(32, 24 * this.k)),
+		);
+		ctx.save();
+		for (const region of regions) {
+			if (region.points.length < 3) continue;
+			const color = communityRgba(region.community, 1);
+			if (!labelsOnly) {
+				const first = region.points[0]!;
+				const last = region.points[region.points.length - 1]!;
+				ctx.beginPath();
+				ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+				for (let i = 0; i < region.points.length; i++) {
+					const point = region.points[i]!;
+					const next = region.points[(i + 1) % region.points.length]!;
+					ctx.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
+				}
+				ctx.closePath();
+				ctx.fillStyle = color.replace(", 1)", ", 0.07)");
+				ctx.strokeStyle = color.replace(", 1)", ", 0.30)");
+				ctx.lineWidth = 1.2;
+				ctx.fill();
+				ctx.stroke();
+			}
+
+			const label = `相似性社区 ${region.community + 1}`;
+			ctx.font = `11px ${this.fontFamily}`;
+			const labelWidth = ctx.measureText(label).width + 14;
+			const x = Math.max(6, Math.min(this.cssWidth - labelWidth - 6, region.left + 6));
+			const y = Math.max(8, Math.min(this.cssHeight - 22, region.top + 8));
+			ctx.fillStyle = color.replace(", 1)", ", 0.16)");
+			ctx.beginPath();
+			ctx.moveTo(x + 7, y);
+			ctx.lineTo(x + labelWidth - 7, y);
+			ctx.quadraticCurveTo(x + labelWidth, y, x + labelWidth, y + 7);
+			ctx.lineTo(x + labelWidth, y + 17);
+			ctx.quadraticCurveTo(x + labelWidth, y + 24, x + labelWidth - 7, y + 24);
+			ctx.lineTo(x + 7, y + 24);
+			ctx.quadraticCurveTo(x, y + 24, x, y + 17);
+			ctx.lineTo(x, y + 7);
+			ctx.quadraticCurveTo(x, y, x + 7, y);
+			ctx.fill();
+			ctx.fillStyle = "rgba(239, 242, 247, 0.88)";
+			ctx.textBaseline = "middle";
+			ctx.fillText(label, x + 7, y + 12, labelWidth - 14);
+		}
+		ctx.restore();
 	}
 
 	private drawNode(ctx: CanvasRenderingContext2D, node: DrawNode): void {
@@ -637,13 +712,13 @@ export class SimilarityMap {
 		if (seed) prominent.add(seed.id);
 		if (this.selectedId) prominent.add(this.selectedId);
 		if (this.hoverId) prominent.add(this.hoverId);
-		for (const node of ranked.slice(0, 8)) prominent.add(node.id);
+		for (const node of ranked.slice(0, this.layoutMode === "kumu" ? 18 : 8)) prominent.add(node.id);
 
 		ctx.textBaseline = "middle";
-		ctx.font = `12px ${this.fontFamily}`;
+		ctx.font = `${this.layoutMode === "kumu" ? 11 : 12}px ${this.fontFamily}`;
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
 		const place = (node: DrawNode, maxWidth: number): void => {
-			const x = node.x * this.k + this.tx + node.radius + 6;
+			const x = node.x * this.k + this.tx + node.radius + (this.layoutMode === "kumu" ? 3 : 6);
 			const y = node.y * this.k + this.ty;
 			const text = fitText(ctx, authorYear(node), maxWidth);
 			const width = ctx.measureText(text).width;
@@ -653,10 +728,10 @@ export class SimilarityMap {
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
 			if (dimmed) ctx.globalAlpha = 0.35;
-			ctx.lineWidth = 3;
-			ctx.strokeStyle = "rgba(11, 13, 18, 0.88)";
+			ctx.lineWidth = this.layoutMode === "kumu" ? 2 : 3;
+			ctx.strokeStyle = this.layoutMode === "kumu" ? "rgba(251, 250, 247, 0.94)" : "rgba(11, 13, 18, 0.88)";
 			ctx.strokeText(text, x, y);
-			ctx.fillStyle = node.isSeed ? "#fff8e8" : "#e7ebf4";
+			ctx.fillStyle = this.layoutMode === "kumu" ? (node.isSeed ? "#333943" : "#41464e") : node.isSeed ? "#fff8e8" : "#e7ebf4";
 			ctx.fillText(text, x, y);
 			if (dimmed) ctx.globalAlpha = 1;
 		};

@@ -184,6 +184,9 @@ export function facetOptions(nodes: readonly PaperNode[]): {
 	};
 }
 
+/** Shown whenever a connection rests on similarity signals without a direct citation record. */
+export const SIMILARITY_NOT_CITATION = "图谱相似关系，不代表直接引用";
+
 /** Counts, tier, and the OpenAlex sampling caveat. Shown on edge hover and click. */
 export function evidenceText(
 	edge: GraphEdge,
@@ -193,6 +196,7 @@ export function evidenceText(
 ): string {
 	return [
 		explainRelation(edge, source, target),
+		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
 		`强度 ${TIER_LABEL[strengthTier(edge)]}`,
 		`共享参考文献 ${edge.sharedRefs} 篇`,
 		`共被引 ${edge.coCitedBy} 次`,

@@ -1,13 +1,13 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
-import { drawFlows } from "./analysis-view";
+import { directCitationEdges, drawFlows } from "./analysis-view";
 import { semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
-import { mergeOpenCitation } from "./citation-evidence";
+import { mergeOpenCitation, edgeCitationPairs } from "./citation-evidence";
 import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { buildFilters, buildLegend } from "./filter-controls";
-import { emptyFilter, evidenceText, visibleNodes, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
@@ -202,7 +202,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		heading.textContent = "分析视图";
 		const tip = document.createElement("p");
 		tip.className = "cpo-side-tip";
-		tip.textContent = "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。";
+		tip.textContent = "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。仅统计当前可见节点之间的直接引用对，不含相似关系。";
 		const controls = document.createElement("div");
 		controls.className = "cpo-tools cpo-tool-row";
 		const sankey = document.createElement("button");
@@ -220,14 +220,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (!currentGraph) return;
 		const visible = visibleNodes(currentGraph.nodes, viewFilter);
 		const visibleIds = new Set(visible.map((node) => node.id));
-		const pairs = new Map<string, GraphEdge>();
-		const add = (source: string, target: string): void => {
-			if (!visibleIds.has(source) || !visibleIds.has(target) || source === target) return;
-			pairs.set(source + "\0" + target, { source, target, weight: 0.1, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
-		};
-		for (const [source, refs] of currentGraph.referenceLists) for (const target of refs) add(source, target);
-		for (const e of currentGraph.citationEvidence?.entries() ?? []) add(e.citingId, e.citedId);
-		const edges = [...pairs.values()];
+		const edges = directCitationEdges(currentGraph, visibleIds);
 		const communities = detectCommunities(
 			visible.map((node) => node.id),
 			currentGraph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
@@ -249,7 +242,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(tools, {
-		layouts: ["temporal", "radial", "force2d", "force3d"],
+		layouts: ["kumu", "temporal", "radial", "force2d", "force3d"],
 		layout: layoutMode,
 		color: colorMode,
 		noteButton: Boolean(deps.createNote),
@@ -396,6 +389,15 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+		const edgeEvidence = (edge: GraphEdge): void => {
+			const pairs = edgeCitationPairs(edge);
+			if (pairs.length === 0) return;
+			const evidence =
+				pairs
+					.map((pair) => graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null)
+					.find((item) => item !== null) ?? null;
+			paintEvidenceBadges(detail, evidence);
+		};
 		if (!paper.isSeed && seed) {
 			const toSeed = findEdge(graph.edges, paper.id, seed.id);
 			const line = document.createElement("p");
@@ -407,9 +409,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			} else {
 				const score = graph.seedScore.get(paper.id);
 				line.textContent =
-					score === undefined ? "与种子没有直接连线" : `与种子没有直接连线 · 相近 ${score.toFixed(2)}`;
+					score === undefined
+						? "与种子没有直接连线"
+						: `与种子没有直接连线 · 相近 ${score.toFixed(2)} · ${SIMILARITY_NOT_CITATION}`;
 			}
 			detail.append(line);
+			if (toSeed) edgeEvidence(toSeed);
 		}
 		if (link && seed && !samePair(link, paper.id, seed.id)) {
 			const from = byId.get(link.source);
@@ -419,6 +424,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				line.className = "cpo-embed-detail-rel";
 				line.textContent = evidenceText(link, from, to);
 				detail.append(line);
+				edgeEvidence(link);
 			}
 		}
 	const abstract = document.createElement("p");

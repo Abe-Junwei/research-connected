@@ -61,18 +61,7 @@ export function buildFilters(
 	workType.label.hidden = true;
 	concept.label.hidden = true;
 	host.append(language.label, workType.label, concept.label);
-	const path = document.createElement("button");
-	path.type = "button";
-	path.className = read().focusPath ? "cpo-path-toggle is-on" : "cpo-path-toggle";
-	path.setAttribute("aria-pressed", read().focusPath ? "true" : "false");
-	path.textContent = "到种子的路径";
-	path.addEventListener("click", () => {
-		const on = !read().focusPath;
-		path.classList.toggle("is-on", on);
-		path.setAttribute("aria-pressed", on ? "true" : "false");
-		commit({ focusPath: on });
-	});
-	host.append(path);
+	host.append(buildPathToggle(read, write));
 
 	const fill = (nodes: PaperNode[]): void => {
 		const options = facetOptions(nodes);
@@ -82,6 +71,22 @@ export function buildFilters(
 		fillSelect(concept, options.concepts, current.concept, (conceptValue) => commit({ concept: conceptValue }));
 	};
 	return { fill };
+}
+
+/** "到种子的路径"开关，嵌入端筛选和主面板抽屉共用。 */
+export function buildPathToggle(read: () => GraphFilter, write: (next: GraphFilter) => void): HTMLButtonElement {
+	const path = document.createElement("button");
+	path.type = "button";
+	path.className = read().focusPath ? "cpo-path-toggle is-on" : "cpo-path-toggle";
+	path.setAttribute("aria-pressed", read().focusPath ? "true" : "false");
+	path.textContent = "到种子的路径";
+	path.addEventListener("click", () => {
+		const on = !read().focusPath;
+		path.classList.toggle("is-on", on);
+		path.setAttribute("aria-pressed", on ? "true" : "false");
+		write({ ...read(), focusPath: on });
+	});
+	return path;
 }
 
 function numberField(label: string, value: number, min: number, max: number, onChange: (value: number) => void): HTMLLabelElement {

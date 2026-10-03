@@ -53,17 +53,22 @@ export function detectCommunities(nodeIds: readonly string[], edges: readonly Gr
 
 /** Node palette. Kept off the gold / teal / indigo edge colors. */
 const COMMUNITY_RGB: ReadonlyArray<readonly [number, number, number]> = [
-	[227, 109, 109],
-	[91, 141, 239],
-	[192, 132, 252],
-	[245, 158, 11],
-	[244, 114, 182],
-	[52, 211, 153],
-	[251, 113, 133],
-	[125, 211, 252],
+	[214, 142, 142],
+	[132, 159, 208],
+	[177, 147, 194],
+	[211, 174, 113],
+	[202, 145, 177],
+	[112, 177, 151],
+	[206, 130, 147],
+	[128, 176, 195],
 ];
 
 export function communityColor(index: number): string {
 	const channels = COMMUNITY_RGB[index % COMMUNITY_RGB.length] ?? COMMUNITY_RGB[0] ?? [227, 109, 109];
 	return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`;
+}
+
+export function communityRgba(index: number, alpha: number): string {
+	const channels = COMMUNITY_RGB[index % COMMUNITY_RGB.length] ?? COMMUNITY_RGB[0] ?? [227, 109, 109];
+	return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`;
 }

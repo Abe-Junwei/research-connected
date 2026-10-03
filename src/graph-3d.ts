@@ -1,5 +1,6 @@
 import {
 	AmbientLight,
+	CircleGeometry,
 	Color,
 	ConeGeometry,
 	CylinderGeometry,
@@ -24,6 +25,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { communityColor, detectCommunities } from "./communities";
+import { buildCommunityRegions } from "./community-regions";
 import {
 	edgeVisible,
 	evidenceText,
@@ -74,6 +76,9 @@ interface SphereEntry {
 	cited: number;
 	seed: boolean;
 	dim: boolean;
+	radius: number;
+	standardMaterial: MeshStandardMaterial;
+	flatMaterial: MeshBasicMaterial;
 }
 
 interface DrawnEdge {
@@ -112,14 +117,18 @@ export function mountGraph3D(
 		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setClearColor(0x0c0e13, 1);
+	renderer.setClearColor(layoutMode === "kumu" ? 0xf8f7f2 : 0x0c0e13, 1);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
 	viewport.append(canvas);
+	const communitySvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	communitySvg.classList.add("cpo-community-overlay");
+	viewport.append(communitySvg);
 
 	const labelLayer = document.createElement("div");
 	labelLayer.className = "cpo-embed-labels";
 	viewport.append(labelLayer);
+	viewport.classList.toggle("cpo-kumu-view", layoutMode === "kumu");
 
 	const scene = new Scene();
 	scene.add(new AmbientLight(0xffffff, 0.7));
@@ -142,8 +151,9 @@ export function mountGraph3D(
 	let placed = placeLayout(layoutMode, graph.nodes, graph.edges, graph.seedScore);
 	const byId = new Map(placed.map((node) => [node.id, node]));
 	const sphere = new SphereGeometry(1, 22, 16);
+	const circle = new CircleGeometry(1, 32);
 	const entries: SphereEntry[] = [];
-	const geometries: Array<SphereGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [sphere];
+	const geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [sphere, circle];
 	const materials: Material[] = [];
 
 	for (const node of graph.nodes) {
@@ -158,14 +168,15 @@ export function mountGraph3D(
 			transparent: true,
 			opacity: 1,
 		});
-		materials.push(material);
-		const mesh = new Mesh(sphere, material);
+		const flatMaterial = new MeshBasicMaterial({ color: colorToHex(nodeColor(node)) });
+		materials.push(material, flatMaterial);
+		const mesh = new Mesh(layoutMode === "kumu" ? circle : sphere, layoutMode === "kumu" ? flatMaterial : material);
 		mesh.position.set(at.x, at.y, at.z);
 		mesh.scale.setScalar(at.radius);
 		mesh.userData.paperId = node.id;
 		mesh.userData.seed = node.isSeed;
 		if (node.isSeed) {
-			const ringMaterial = new MeshBasicMaterial({ color: 0xfff8e6 });
+			const ringMaterial = new MeshBasicMaterial({ color: layoutMode === "kumu" ? 0xb48e52 : 0xfff8e6 });
 			materials.push(ringMaterial);
 			const torus = new TorusGeometry(1.42, 0.05, 8, 40);
 			geometries.push(torus);
@@ -191,10 +202,14 @@ export function mountGraph3D(
 			cited: node.citedByCount,
 			seed: node.isSeed,
 			dim: false,
+			radius: at.radius,
+			standardMaterial: material,
+			flatMaterial,
 		});
 	}
 
 	const drawn = drawEdges(graph, byId, scene, geometries, materials);
+	drawn.setKumuStyle(layoutMode === "kumu");
 
 	const camera = new PerspectiveCamera(45, 1, 0.1, 4000);
 	const controls = new OrbitControls(camera, canvas);
@@ -338,10 +353,10 @@ export function mountGraph3D(
 	};
 
 	const placeLabels = (): void => {
-		if (options.labels === "off") return;
 		const width = viewport.clientWidth;
 		const height = viewport.clientHeight;
-		const gap = options.labels === "both" ? 58 : 44;
+		if (options.labels !== "off") {
+		const gap = layoutMode === "kumu" ? 28 : options.labels === "both" ? 58 : 44;
 		const ranked = [...entries].sort(
 			(a, b) => Number(b.seed) - Number(a.seed) || b.cited - a.cited || a.id.localeCompare(b.id),
 		);
@@ -370,6 +385,52 @@ export function mountGraph3D(
 			el.style.left = `${x}px`;
 			el.style.top = `${y}px`;
 			kept.push({ x, y });
+		}
+		}
+		placeCommunityOverlay(width, height);
+	};
+
+	const placeCommunityOverlay = (width: number, height: number): void => {
+		communitySvg.setAttribute("width", String(width));
+		communitySvg.setAttribute("height", String(height));
+		communitySvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+		communitySvg.replaceChildren();
+		communitySvg.style.display = layoutMode === "kumu" ? "block" : "none";
+		if (layoutMode !== "kumu") return;
+		const projectedPoints = entries.filter((entry) => entry.mesh.visible).map((entry) => {
+			projected.copy(entry.mesh.position).project(camera);
+			return {
+				id: entry.id,
+				community: communities.get(entry.id) ?? 0,
+				x: (projected.x * 0.5 + 0.5) * width,
+				y: (-projected.y * 0.5 + 0.5) * height,
+				shown: projected.z <= 1 && projected.x >= -1.2 && projected.x <= 1.2 && projected.y >= -1.2 && projected.y <= 1.2,
+			};
+		});
+		for (const region of buildCommunityRegions(projectedPoints, 22)) {
+			if (region.points.length < 3) continue;
+			const hue = communityColor(region.community).replace("rgb(", "").replace(")", "");
+			const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+			const first = region.points[0]!;
+			const last = region.points[region.points.length - 1]!;
+			let d = `M ${(last.x + first.x) / 2} ${(last.y + first.y) / 2}`;
+			for (let i = 0; i < region.points.length; i++) {
+				const point = region.points[i]!;
+				const next = region.points[(i + 1) % region.points.length]!;
+				d += ` Q ${point.x} ${point.y} ${(point.x + next.x) / 2} ${(point.y + next.y) / 2}`;
+			}
+			path.setAttribute("d", `${d} Z`);
+			path.setAttribute("fill", `rgba(${hue}, 0.055)`);
+			path.setAttribute("stroke", `rgba(${hue}, 0.3)`);
+			path.setAttribute("stroke-width", "1.2");
+			communitySvg.append(path);
+			const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+			label.setAttribute("x", String(Math.max(6, region.left + 7)));
+			label.setAttribute("y", String(Math.max(18, region.top + 16)));
+			label.setAttribute("fill", "#61656b");
+			label.setAttribute("font-size", "11");
+			label.textContent = `相似性社区 ${region.community + 1}`;
+			communitySvg.append(label);
 		}
 	};
 
@@ -530,22 +591,31 @@ export function mountGraph3D(
 	const applyColors = (): void => {
 		for (const entry of entries) {
 			const paper = papers.get(entry.id);
-			const material = entry.mesh.material;
-			if (!paper || !(material instanceof MeshStandardMaterial)) continue;
-			material.color.set(colorToHex(nodeColor(paper)));
+			if (!paper) continue;
+			const color = colorToHex(nodeColor(paper));
+			entry.standardMaterial.color.set(color);
+			entry.flatMaterial.color.set(color);
 		}
 		schedule();
 	};
 
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
+		const kumuStyle = mode === "kumu";
+		renderer.setClearColor(kumuStyle ? 0xf8f7f2 : 0x0c0e13, 1);
+		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
+		drawn.setKumuStyle(kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
 		for (const entry of entries) {
 			const at = next.get(entry.id);
 			if (!at) continue;
+			entry.mesh.geometry = kumuStyle ? circle : sphere;
+			entry.mesh.material = kumuStyle ? entry.flatMaterial : entry.standardMaterial;
 			entry.mesh.position.set(at.x, at.y, at.z);
+			entry.mesh.scale.setScalar(at.radius);
 		}
+		drawn.setKumuStyle(kumuStyle);
 		drawn.relayout(next);
 		applyPointerMode();
 		frameCamera();
@@ -616,13 +686,14 @@ function drawEdges(
 	graph: SimilarityGraph,
 	byId: ReadonlyMap<string, { x: number; y: number; z: number; radius: number }>,
 	scene: Scene,
-	geometries: Array<SphereGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
+	geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
 	materials: Material[],
 ): {
 	edges: DrawnEdge[];
 	hitMesh: InstancedMesh | null;
 	sync: (visible: (edge: GraphEdge) => boolean, focus: Set<string> | null) => void;
 	relayout: (at: ReadonlyMap<string, { x: number; y: number; z: number; radius: number }>) => void;
+	setKumuStyle: (on: boolean) => void;
 } {
 	const edges: DrawnEdge[] = [];
 	for (const edge of graph.edges) {
@@ -643,7 +714,7 @@ function drawEdges(
 		});
 	}
 	if (edges.length === 0) {
-		return { edges, hitMesh: null, sync: () => undefined, relayout: () => undefined };
+		return { edges, hitMesh: null, sync: () => undefined, relayout: () => undefined, setKumuStyle: () => undefined };
 	}
 
 	const shaft = new CylinderGeometry(1, 1, 1, 6, 1);
@@ -696,6 +767,7 @@ function drawEdges(
 
 	let lastVisible: (edge: GraphEdge) => boolean = () => true;
 	let lastFocus: Set<string> | null = null;
+	let kumuStyle = false;
 	const sync = (visible: (edge: GraphEdge) => boolean, focus: Set<string> | null): void => {
 		lastVisible = visible;
 		lastFocus = focus;
@@ -712,13 +784,13 @@ function drawEdges(
 				continue;
 			}
 			const tier = strengthTier(item.edge);
-			const radius = emphasized ? TIER_RADIUS[tier] : TIER_RADIUS.weak * 0.7;
+			const radius = kumuStyle ? (emphasized ? 0.55 : 0.35) : emphasized ? TIER_RADIUS[tier] : TIER_RADIUS.weak * 0.7;
 			placeShaft(i, item, radius);
 			visibleMesh.setColorAt(i, emphasized ? new Color(RELATION_COLOR[relationKind(item.edge)]) : dim);
 			dummy.scale.set(Math.max(radius, 1.8), dummy.scale.y, Math.max(radius, 1.8));
 			dummy.updateMatrix();
 			hitMesh.setMatrixAt(i, dummy.matrix);
-			if (!emphasized || relationKind(item.edge) !== "direct") continue;
+			if (kumuStyle || !emphasized || relationKind(item.edge) !== "direct") continue;
 			const kind = item.edge.direct;
 			if (kind === "source-cites-target" || kind === "mutual") {
 				placeArrow(arrowSlot, item.bx, item.by, item.bz, item.bRadius, item.bx - item.ax, item.by - item.ay, item.bz - item.az);
@@ -762,7 +834,13 @@ function drawEdges(
 		sync(lastVisible, lastFocus);
 	};
 	sync(() => true, null);
-	return { edges, hitMesh, sync, relayout };
+	const setKumuStyle = (on: boolean): void => {
+		kumuStyle = on;
+		visibleMaterial.opacity = on ? 0.30 : 0.92;
+		arrowMaterial.opacity = on ? 0 : 0.95;
+		sync(lastVisible, lastFocus);
+	};
+	return { edges, hitMesh, sync, relayout, setKumuStyle };
 }
 
 function colorToHex(rgb: string): number {

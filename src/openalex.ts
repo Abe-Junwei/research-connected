@@ -109,6 +109,22 @@ export class OpenAlexClient {
 		return all;
 	}
 
+	/** 列表级元数据（标题/年份/被引），给引用脉络按需补取非图节点用。 */
+	async workSummaries(ids: string[]): Promise<RawWork[]> {
+		const unique = [...new Set(ids)];
+		const all: RawWork[] = [];
+		for (let i = 0; i < unique.length; i += 80) {
+			const chunk = unique.slice(i, i + 80);
+			if (chunk.length === 0) continue;
+			const url = new URL(`${OPENALEX_API}/works`);
+			url.searchParams.set("filter", `openalex:${chunk.join("|")}`);
+			url.searchParams.set("per_page", String(chunk.length));
+			url.searchParams.set("select", LIST_SELECT);
+			all.push(...(await this.getResults(url)));
+		}
+		return all;
+	}
+
 	private listFilter(filter: string, perPage: number, sort: string | undefined, pages = 1): Promise<RawWork[]> {
 		const url = new URL(`${OPENALEX_API}/works`);
 		url.searchParams.set("filter", filter);

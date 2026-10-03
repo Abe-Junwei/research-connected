@@ -1,10 +1,11 @@
 import { runForceLayout, type ForceNode } from "./layout";
 import { runForceLayout3D, type ForceNode3D } from "./layout-3d";
+import { detectCommunities } from "./communities";
 import type { GraphEdge, PaperNode } from "./types";
 import { citationRadius } from "./visual";
 
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
-export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial";
+export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
 /** `community` is the note-embed default. `year` restores the citation-year ramp. */
 export type ColorMode = "year" | "community";
@@ -14,13 +15,15 @@ export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	radial: "放射",
 	force2d: "平面",
 	force3d: "三维",
+	kumu: "圈层",
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横轴是年份，纵轴是对数被引。笔记里推荐这个布局。",
-	radial: "种子在中心，越近表示和种子越相似。",
+	temporal: "横轴是年份，纵轴是对数被引。这只是排布方式，不是引用脉络。笔记里推荐这个布局。",
+	radial: "种子在中心，越近表示和种子越相似；角度只是均匀排开，不代表引用方向。",
 	force2d: "平面力导向，种子固定在中心。",
 	force3d: "三维力导向。拖拽旋转，滚轮缩放。",
+	kumu: "Kumu 风格社区图：浅色画布、柔和节点与社区圈层；圈层表示算法相似分组，不是主题边界。",
 };
 
 export interface PlacedNode {
@@ -47,10 +50,44 @@ export function placeLayout(
 	}));
 	const seed = nodes.find((node) => node.isSeed);
 	if (!seed) return placed;
+	if (mode === "kumu") return placeKumuCommunities(placed, nodes, edges);
 	if (mode === "force3d") return placeForce3d(placed, edges, seed.id, seedScore);
 	if (mode === "force2d") return placeForce2d(placed, edges, seed.id, seedScore);
 	if (mode === "radial") return placeRadial(placed, nodes, seed.id, seedScore);
 	return placeTemporal(placed, nodes);
+}
+
+function placeKumuCommunities(placed: PlacedNode[], papers: readonly PaperNode[], edges: readonly GraphEdge[]): PlacedNode[] {
+	const labels = detectCommunities(papers.map((paper) => paper.id), edges);
+	const groups = new Map<number, PlacedNode[]>();
+	for (const node of placed) {
+		const id = labels.get(node.id) ?? 0;
+		const group = groups.get(id) ?? [];
+		group.push(node);
+		groups.set(id, group);
+	}
+	const ranked = [...groups.entries()]
+		.sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
+	const maxRadius = Math.max(...ranked.map(([, members]) => Math.max(46, Math.sqrt(members.length) * 18)));
+	const ring = ranked.length <= 1 ? 0 : (maxRadius + 55) * Math.sqrt(ranked.length);
+	const golden = Math.PI * (3 - Math.sqrt(5));
+	ranked.forEach(([, members], groupIndex) => {
+		members.sort((a, b) => a.id.localeCompare(b.id));
+		const angle = -Math.PI / 2 + groupIndex * golden;
+		const groupDistance = ranked.length <= 1 ? 0 : ring;
+		const centerX = Math.cos(angle) * groupDistance;
+		const centerY = Math.sin(angle) * groupDistance;
+		const radius = Math.max(46, Math.sqrt(members.length) * 18);
+		members.forEach((node, index) => {
+			const distance = members.length <= 1 ? 0 : Math.sqrt((index + 0.5) / members.length) * radius;
+			const theta = index * golden;
+			node.x = centerX + Math.cos(theta) * distance;
+			node.y = centerY + Math.sin(theta) * distance;
+			node.z = 0;
+			node.radius = Math.min(node.radius, 8);
+		});
+	});
+	return placed;
 }
 
 function placeForce3d(

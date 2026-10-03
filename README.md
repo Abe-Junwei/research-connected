@@ -104,7 +104,7 @@ depth: 1
 | `yearFrom:` / `yearTo:` | no | Inclusive year range for the other papers. The seed stays. If both are set and reversed, they are swapped. |
 | `language:` / `type:` / `concept:` | no | Preset filters. They apply only when OpenAlex included that field (`language`, `type`, `concepts`). |
 | `minCoCite:` / `minShared:` | no | Hide co-citation edges below that count, and coupling edges below that shared-reference count. Default 1. |
-| `layout:` | no | `temporal` (default; year on X, log citation count on Y — recommended in a note), `radial` (seed at the center), `force2d`, or `force3d`. |
+| `layout:` | no | `temporal` (default; year on X, log citation count on Y — recommended in a note), `radial` (seed at the center), `force2d`, `force3d`, or `kumu` (2D similarity-community circles). |
 | `color:` | no | `community` (default) or `year`. Edge colors stay the relation type. `year` is the older year ramp. |
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
@@ -119,7 +119,7 @@ Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation 
 
 After the graph loads, language, work type, and concept menus appear only when at least one paper has that OpenAlex field. Node size is still citation count. Author–year labels stay.
 
-**时间 / 放射 / 平面 / 三维** switch the layout without another OpenAlex request. The default in a note is **时间** (`layout: temporal`): left to right is year, bottom to top is log citation count. **社区 / 年份** recolors nodes only. The year scrubber hides papers published after the chosen year, including the seed, and **播放** walks forward one year at a time. At the right end the full filtered graph returns, undated papers included.
+**圈层 / 时间 / 放射 / 平面 / 三维** switch the layout without another OpenAlex request. **圈层** is a Kumu-inspired 2D view with muted nodes, low-contrast links, and soft enclosures for the largest algorithmic similarity communities; these are not inferred research topics or schools. The default in a note remains **时间** (`layout: temporal`): left to right is year, bottom to top is log citation count. **社区 / 年份** controls node coloring in the other layouts. The year scrubber hides papers published after the chosen year, including the seed, and **播放** walks forward one year at a time. At the right end the full filtered graph returns, undated papers included.
 
 **先验工作** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **衍生工作** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out. **BibTeX**, **YAML**, and **表格** export the papers still on screen. **写入笔记** creates a note whose frontmatter is only title, authors, year, DOI, and the OpenAlex link.
 
