@@ -117,7 +117,7 @@ export function mountGraph3D(
 		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setClearColor(layoutMode === "kumu" ? 0xf8f7f2 : 0x0c0e13, 1);
+	renderer.setClearColor(layoutMode === "kumu" ? 0xffffff : 0x0c0e13, 1);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
 	viewport.append(canvas);
@@ -176,7 +176,7 @@ export function mountGraph3D(
 		mesh.userData.paperId = node.id;
 		mesh.userData.seed = node.isSeed;
 		if (node.isSeed) {
-			const ringMaterial = new MeshBasicMaterial({ color: layoutMode === "kumu" ? 0xb48e52 : 0xfff8e6 });
+			const ringMaterial = new MeshBasicMaterial({ color: layoutMode === "kumu" ? 0x333943 : 0xfff8e6 });
 			materials.push(ringMaterial);
 			const torus = new TorusGeometry(1.42, 0.05, 8, 40);
 			geometries.push(torus);
@@ -420,15 +420,15 @@ export function mountGraph3D(
 				d += ` Q ${point.x} ${point.y} ${(point.x + next.x) / 2} ${(point.y + next.y) / 2}`;
 			}
 			path.setAttribute("d", `${d} Z`);
-			path.setAttribute("fill", `rgba(${hue}, 0.055)`);
-			path.setAttribute("stroke", `rgba(${hue}, 0.3)`);
-			path.setAttribute("stroke-width", "1.2");
+			path.setAttribute("fill", `rgba(${hue}, 0.04)`);
+			path.setAttribute("stroke", `rgba(${hue}, 0.25)`);
+			path.setAttribute("stroke-width", "1");
 			communitySvg.append(path);
 			const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
 			label.setAttribute("x", String(Math.max(6, region.left + 7)));
 			label.setAttribute("y", String(Math.max(18, region.top + 16)));
-			label.setAttribute("fill", "#61656b");
-			label.setAttribute("font-size", "11");
+			label.setAttribute("fill", "#9aa0a6");
+			label.setAttribute("font-size", "10");
 			label.textContent = `相似性社区 ${region.community + 1}`;
 			communitySvg.append(label);
 		}
@@ -602,7 +602,7 @@ export function mountGraph3D(
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
 		const kumuStyle = mode === "kumu";
-		renderer.setClearColor(kumuStyle ? 0xf8f7f2 : 0x0c0e13, 1);
+		renderer.setClearColor(kumuStyle ? 0xffffff : 0x0c0e13, 1);
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		drawn.setKumuStyle(kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
