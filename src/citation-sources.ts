@@ -28,6 +28,16 @@ export class OpenCitationsClient {
 	}
 }
 
+export type PostJson = (
+	url: string,
+	init: { headers: Record<string, string>; body: string },
+) => Promise<unknown>;
+
+export interface S2Counts {
+	citationCount: number | null;
+	referenceCount: number | null;
+}
+
 export interface SemanticCitation {
 	citedPaper?: { paperId?: string; externalIds?: Record<string, string | null> | null };
 	citingPaper?: {
@@ -42,7 +52,66 @@ export interface SemanticCitation {
 }
 
 export class SemanticScholarClient {
-	constructor(private readonly getJson: GetJson, private readonly apiKey: string) {}
+	constructor(
+		private readonly getJson: GetJson,
+		private readonly apiKey: string,
+		private readonly postJson?: PostJson,
+	) {}
+
+	/**
+	 * One batched lookup (POST /paper/bulk, up to 500 ids) that cross-checks
+	 * OpenAlex numbers. Keys of the returned map are the lowercased DOIs that
+	 * Semantic Scholar recognized.
+	 */
+	async bulkCounts(dois: string[]): Promise<Map<string, S2Counts>> {
+		if (!this.postJson || dois.length === 0) return new Map();
+		const url = new URL("https://api.semanticscholar.org/graph/v1/paper/bulk");
+		url.searchParams.set("fields", "citationCount,referenceCount,externalIds");
+		const out = new Map<string, S2Counts>();
+		for (let i = 0; i < dois.length; i += 500) {
+			const chunk = dois.slice(i, i + 500);
+			const json = await this.postJson(url.toString(), {
+				headers: {
+					Accept: "application/json",
+					"Content-Type": "application/json",
+					...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+				},
+				body: JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) }),
+			});
+			if (!Array.isArray(json)) throw new CitationSourceError("Semantic Scholar 批量接口返回格式错误。");
+			for (const item of json as Array<{
+				citationCount?: number | null;
+				referenceCount?: number | null;
+				externalIds?: Record<string, string | null> | null;
+			} | null>) {
+				const doi = item?.externalIds?.DOI?.toLowerCase();
+				if (!item || !doi) continue;
+				out.set(doi, {
+					citationCount: typeof item.citationCount === "number" ? item.citationCount : null,
+					referenceCount: typeof item.referenceCount === "number" ? item.referenceCount : null,
+				});
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * DOIs of the works this paper references, one page of up to 1000. Used to
+	 * backfill reference lists that OpenAlex does not have.
+	 */
+	async referenceDois(doi: string): Promise<string[]> {
+		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}/references`);
+		url.searchParams.set("fields", "externalIds");
+		url.searchParams.set("limit", "1000");
+		const result = await this.get<{ data?: Array<{ citedPaper?: { externalIds?: Record<string, string | null> | null } | null }> }>(url.toString());
+		if (!Array.isArray(result.data)) throw new CitationSourceError("Semantic Scholar 返回格式错误。");
+		const dois: string[] = [];
+		for (const row of result.data) {
+			const ref = row?.citedPaper?.externalIds?.DOI?.toLowerCase();
+			if (ref) dois.push(ref);
+		}
+		return dois;
+	}
 
 	async referenceEvidence(doi: string): Promise<{ data: SemanticCitation[]; partial: boolean }> {
 		const data: SemanticCitation[] = [];

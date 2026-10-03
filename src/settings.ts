@@ -122,6 +122,18 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("Semantic Scholar 交叉比对")
+			.setDesc(
+				"建图时用 Semantic Scholar 批量核对每篇的被引数与参考文献数：差异悬殊的节点（通常是记录错配，如书评继承了原书引用）会在详情里标注；OpenAlex 缺失的参考文献列表会从 Semantic Scholar 回填并参与连线。失败不影响建图。",
+			)
+			.addToggle((toggle) => {
+				toggle.setValue(this.store.settings.s2Reconcile).onChange(async (value) => {
+					this.store.settings.s2Reconcile = value;
+					await this.store.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
 			.setName("启用 LLM 研究脉络")
 			.setDesc("关闭时不显示研究脉络入口，也不会发送任何 LLM 请求。")
 			.addToggle((toggle) => {

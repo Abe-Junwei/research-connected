@@ -6,11 +6,12 @@ import {
 import { reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
+import { doiFromPaper, type S2Counts } from "./citation-sources";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
 export type LoadStage = "resolving" | "fetching" | "scoring";
-export type LoadWarning = "references" | "citations" | "related" | "details";
+export type LoadWarning = "references" | "citations" | "related" | "details" | "crosscheck";
 
 /**
  * Sampling tiers. Standard matches the historical behavior. Extended pulls a
@@ -47,7 +48,36 @@ export interface SimilarityGraph {
 	citationEvidence?: CitationEvidenceStore;
 	/** Book reviews, editorials, and other non-research records dropped from the sample. */
 	skippedNonResearch: number;
+	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
+	crossCheck?: ReadonlyMap<string, CrossCheck>;
 }
+
+/** Semantic Scholar numbers for the same DOI, plus what backfill changed. */
+export interface CrossCheck {
+	s2Citations: number | null;
+	s2References: number | null;
+	/** Reference links to other graph nodes that came from the S2 backfill. */
+	refsAdded: number;
+	/** True when the two sources disagree by an order of magnitude — usually a misattributed record. */
+	mismatched: boolean;
+}
+
+/** What loadNeighborhood needs from Semantic Scholar for reconciliation. */
+export interface ReconcileSource {
+	bulkCounts(dois: string[]): Promise<Map<string, S2Counts>>;
+	referenceDois(doi: string): Promise<string[]>;
+}
+
+/** Citation counts this far apart almost always mean a misattributed record (e.g. a review carrying the book's citations). */
+export function countsMismatched(openAlexCitations: number, s2Citations: number | null): boolean {
+	if (s2Citations === null) return false;
+	const hi = Math.max(openAlexCitations, s2Citations);
+	const lo = Math.min(openAlexCitations, s2Citations);
+	return hi >= 50 && hi >= 10 * Math.max(lo, 1);
+}
+
+/** S2 rate limits are tight without a key, so backfill only the worst gaps. */
+const MAX_RECONCILE_BACKFILL = 12;
 
 const ORIGIN_RANK: Record<Origin, number> = {
 	seed: 4,
@@ -65,6 +95,7 @@ export async function loadNeighborhood(
 	target: { kind: "doi" | "openalex"; value: string },
 	settings: ConnectedPapersSettings,
 	onStage?: (stage: LoadStage) => void,
+	reconcile?: ReconcileSource | null,
 ): Promise<SimilarityGraph> {
 	if (!settings.includeReferences && !settings.includeCitations && !settings.includeRelated) {
 		throw new OpenAlexError("请至少开启一种邻居策略（参考文献、施引或相关作品）。");
@@ -143,6 +174,68 @@ export async function loadNeighborhood(
 		}
 	}
 
+	// Cross-check against Semantic Scholar: one bulk POST compares citation and
+	// reference counts per DOI, then reference lists that OpenAlex lacks are
+	// backfilled from S2 (only links into this graph matter for scoring).
+	const crossCheck = new Map<string, CrossCheck>();
+	const s2Links = new Set<string>();
+	if (reconcile && settings.s2Reconcile) {
+		try {
+			const doiToId = new Map<string, string>();
+			for (const paper of [seed, ...picked]) {
+				const doi = doiFromPaper(paper);
+				if (doi) doiToId.set(doi.toLowerCase(), paper.id);
+			}
+			if (doiToId.size > 0) {
+				const counts = await reconcile.bulkCounts([...doiToId.keys()]);
+				const byId = new Map([seed, ...picked].map((paper) => [paper.id, paper] as const));
+				for (const [doi, count] of counts) {
+					const id = doiToId.get(doi);
+					const paper = id ? byId.get(id) : undefined;
+					if (!id || !paper) continue;
+					crossCheck.set(id, {
+						s2Citations: count.citationCount,
+						s2References: count.referenceCount,
+						refsAdded: 0,
+						mismatched: countsMismatched(paper.citedByCount, count.citationCount),
+					});
+				}
+				const gaps = [seed, ...picked]
+					.filter((paper) => {
+						const check = crossCheck.get(paper.id);
+						return (
+							doiFromPaper(paper) !== null &&
+							(refLists.get(paper.id) ?? []).length === 0 &&
+							(check?.s2References ?? 0) > 0
+						);
+					})
+					.slice(0, MAX_RECONCILE_BACKFILL);
+				for (const paper of gaps) {
+					const doi = doiFromPaper(paper);
+					if (!doi) continue;
+					try {
+						const refDois = await reconcile.referenceDois(doi);
+						const hits = unique(
+							refDois
+								.map((ref) => doiToId.get(ref) ?? "")
+								.filter((id) => id !== "" && id !== paper.id),
+						);
+						if (hits.length > 0) {
+							refLists.set(paper.id, hits);
+							for (const hit of hits) s2Links.add(`${paper.id}\0${hit}`);
+							const check = crossCheck.get(paper.id);
+							if (check) check.refsAdded = hits.length;
+						}
+					} catch {
+						// One failed backfill is not a failed map.
+					}
+				}
+			}
+		} catch {
+			warnings.push("crosscheck");
+		}
+	}
+
 	const referencesMap = new Map<string, Set<string>>();
 	for (const paper of [seed, ...picked]) {
 		referencesMap.set(paper.id, new Set(refLists.get(paper.id) ?? []));
@@ -171,7 +264,13 @@ export async function loadNeighborhood(
 		if (!source) continue;
 		for (const ref of refs) {
 			const target = catalog.get(ref);
-			if (target) citationEvidence.set(directEvidence(source, target, true, false));
+			if (!target) continue;
+			const evidence = directEvidence(source, target, true, false);
+			if (s2Links.has(`${id}\0${ref}`)) {
+				// Backfilled link: OpenAlex never listed it, Semantic Scholar did.
+				evidence.sources = ["semantic-scholar"];
+			}
+			citationEvidence.set(evidence);
 		}
 	}
 
@@ -189,6 +288,7 @@ export async function loadNeighborhood(
 		catalog: [...catalog.values()],
 		citationEvidence,
 		skippedNonResearch,
+		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 	};
 }
 

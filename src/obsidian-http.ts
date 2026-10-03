@@ -53,6 +53,7 @@ export const obsidianPostJson = async (
 	url: string,
 	init: { headers: Record<string, string>; body: string },
 ): Promise<unknown> => {
+	const service = postServiceName(url);
 	let response;
 	try {
 		response = await bounded(requestUrl({
@@ -63,15 +64,24 @@ export const obsidianPostJson = async (
 			throw: false,
 		}), 60000);
 	} catch {
-		throw new OpenAlexError("无法连接配置的 LLM 服务。");
+		throw new OpenAlexError(`无法连接 ${service}。`);
 	}
-	if (response.status >= 400) throw new OpenAlexError(`LLM 请求失败（HTTP ${response.status}）。`, response.status);
+	if (response.status >= 400) throw new OpenAlexError(`${service} 请求失败（HTTP ${response.status}）。`, response.status);
 	try {
 		return response.json;
 	} catch {
-		throw new OpenAlexError("LLM 返回了无法解析的内容。", response.status);
+		throw new OpenAlexError(`${service} 返回了无法解析的内容。`, response.status);
 	}
 };
+
+/** POST targets are Semantic Scholar or the configured LLM; unknown hosts are the LLM. */
+function postServiceName(url: string): string {
+	try {
+		return SERVICE_NAME[new URL(url).hostname] ?? "LLM 服务";
+	} catch {
+		return "LLM 服务";
+	}
+}
 
 /** requestUrl cannot physically abort; timeout bounds waiting and callers discard stale results. */
 async function bounded<T>(request: Promise<T>, ms: number): Promise<T> {

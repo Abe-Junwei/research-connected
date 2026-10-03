@@ -1,6 +1,6 @@
 import { MarkdownRenderChild, Plugin, type MarkdownPostProcessorContext } from "obsidian";
 import { mountEmbed } from "./embed-mount";
-import { obsidianGetJson } from "./obsidian-http";
+import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { createVaultNote } from "./vault-note";
@@ -44,6 +44,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			source: this.source,
 			getSettings: () => plugin.getSettings(),
 			getJson: obsidianGetJson,
+			postJson: obsidianPostJson,
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(plugin.app, filename, markdown),
 			openGraph: plugin.openGraph ? (target) => plugin.openGraph?.(target) : undefined,

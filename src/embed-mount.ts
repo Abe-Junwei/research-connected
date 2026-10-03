@@ -1,6 +1,6 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { drawFlows } from "./analysis-view";
-import { semanticAbstract } from "./citation-sources";
+import { semanticAbstract, SemanticScholarClient, type PostJson } from "./citation-sources";
 import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
@@ -23,6 +23,7 @@ export interface EmbedDeps {
 	source: string;
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
+	postJson?: PostJson;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
 	/** Open the full graph pane on this seed, when the host supports it. */
@@ -378,6 +379,20 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			note.textContent = `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书——这是 OpenAlex 的数据特点。`;
 			detail.append(note);
 		}
+		const check = graph.crossCheck?.get(paper.id);
+		if (check?.mismatched) {
+			const note = document.createElement("p");
+			note.className = "cpo-side-tip";
+			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
+			note.textContent = `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。通常是记录错配（例如书评继承了原书的引用），引用前请核实。`;
+			detail.append(note);
+		}
+		if (check && check.refsAdded > 0) {
+			const note = document.createElement("p");
+			note.className = "cpo-embed-detail-meta";
+			note.textContent = `参考文献由 Semantic Scholar 回填（OpenAlex 缺失），其中 ${check.refsAdded} 条指向本图节点。`;
+			detail.append(note);
+		}
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 		if (!paper.isSeed && seed) {
@@ -492,6 +507,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					(stage) => {
 						if (token === generation) message.textContent = STAGE_TEXT[stage];
 					},
+					reconcileFor(deps, settings),
 				);
 				if (spec.depth === 2) {
 					const expanded = await expandDepth(clientFor(deps, settings), graph, cap);
@@ -676,6 +692,11 @@ function clientFor(deps: EmbedDeps, settings: ConnectedPapersSettings): OpenAlex
 		apiKey: settings.apiKey,
 		contactEmail: settings.contactEmail,
 	});
+}
+
+function reconcileFor(deps: EmbedDeps, settings: ConnectedPapersSettings): SemanticScholarClient | null {
+	if (!deps.postJson || !settings.s2Reconcile) return null;
+	return new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey, deps.postJson);
 }
 
 async function expandDepth(

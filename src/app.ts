@@ -42,6 +42,7 @@ const WARNING_TEXT: Record<LoadWarning, string> = {
 	citations: "施引文献没有读到",
 	related: "相关作品没有读到",
 	details: "部分参考文献列表没有读到，相似度只基于拿到的数据",
+	crosscheck: "Semantic Scholar 交叉比对没有完成（额度或网络），图谱仍基于 OpenAlex",
 };
 
 const ORIGIN_TEXT: Record<Origin, string> = {
@@ -469,6 +470,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (flagged) {
 			el(detail, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);
 		}
+		const check = graph.crossCheck?.get(paper.id);
+		if (check?.mismatched) {
+			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
+			el(detail, "p", "cpo-side-tip", `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`);
+		}
+		if (check && check.refsAdded > 0) {
+			el(detail, "p", "cpo-meta", `参考文献列表在 OpenAlex 缺失，已由 Semantic Scholar 回填，其中 ${check.refsAdded} 条指向本图节点并参与了连线。`);
+		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
@@ -660,6 +669,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			contactEmail: settings.contactEmail,
 		});
 	};
+	const reconcileSource = (): SemanticScholarClient | null => {
+		if (!deps.postJson) return null;
+		const settings = deps.getSettings();
+		if (!settings.s2Reconcile) return null;
+		return new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey, deps.postJson);
+	};
 
 	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }): Promise<void> => {
 		const token = ++generation;
@@ -668,10 +683,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		hideResults();
 		status.textContent = STAGE_TEXT.resolving;
 		try {
-			const next = await loadNeighborhood(client(), target, deps.getSettings(), (stage) => {
-				if (token !== generation) return;
-				status.textContent = STAGE_TEXT[stage];
-			});
+			const next = await loadNeighborhood(
+				client(),
+				target,
+				deps.getSettings(),
+				(stage) => {
+					if (token !== generation) return;
+					status.textContent = STAGE_TEXT[stage];
+				},
+				reconcileSource(),
+			);
 			if (token !== generation) return;
 			applyGraph(next);
 		} catch (error) {

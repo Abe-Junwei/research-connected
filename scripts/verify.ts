@@ -21,7 +21,7 @@ import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
 import { runForceLayout } from "../src/layout";
 import { runForceLayout3D } from "../src/layout-3d";
-import { loadNeighborhood, selectNeighbors } from "../src/neighborhood";
+import { loadNeighborhood, selectNeighbors, countsMismatched, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
 import { classifyQuery, reconstructAbstract } from "../src/paper";
 import { allowedExternalUrl } from "../src/safe-url";
@@ -418,6 +418,7 @@ async function main(): Promise<void> {
 	unit();
 	await verifyEvidence();
 	await cursorPaging();
+	await reconcileOffline();
 	console.log("unit checks passed");
 	if (process.argv.includes("--offline")) return;
 	try {
@@ -429,7 +430,76 @@ async function main(): Promise<void> {
 	console.log("verify passed");
 }
 
-/** Deep sampling cursor-pages: results accumulate and paging stops at the list end. */
+/** Reconcile: S2 counts flag a mismatch, and a missing reference list is backfilled into an edge. */
+async function reconcileOffline(): Promise<void> {
+	assert.equal(countsMismatched(1328, 2), true, "book review vs book-scale citations mismatch");
+	assert.equal(countsMismatched(60, 6), true);
+	assert.equal(countsMismatched(49, 1), false, "small counts are too noisy to flag");
+	assert.equal(countsMismatched(100, null), false, "no S2 record is not a mismatch");
+	assert.equal(countsMismatched(100, 60), false);
+
+	const seedWork = {
+		id: "https://openalex.org/W1",
+		display_name: "Seed paper",
+		doi: "https://doi.org/10.1/seed",
+		referenced_works: [],
+		authorships: [],
+		type: "article",
+	};
+	const neighborWork = {
+		id: "https://openalex.org/W2",
+		display_name: "Neighbor paper",
+		doi: "https://doi.org/10.1/neighbor",
+		publication_year: 2020,
+		cited_by_count: 500,
+		authorships: [],
+		type: "article",
+	};
+	const mock: GetJson = async (url) => {
+		const parsed = new URL(url);
+		if (parsed.pathname === "/works/W1") return seedWork;
+		const filter = parsed.searchParams.get("filter") ?? "";
+		if (filter === "cited_by:W1") return { results: [neighborWork] };
+		if (filter.startsWith("openalex:")) {
+			return { results: [{ id: neighborWork.id, referenced_works: [], abstract_inverted_index: null }] };
+		}
+		return { results: [] };
+	};
+	const client = new OpenAlexClient(mock, { apiKey: "", contactEmail: "" });
+	const reconcile: ReconcileSource = {
+		bulkCounts: async () => new Map([["10.1/neighbor", { citationCount: 5, referenceCount: 30 }]]),
+		referenceDois: async () => ["10.1/seed"],
+	};
+	const graph = await loadNeighborhood(
+		client,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, maxNodes: 20 },
+		undefined,
+		reconcile,
+	);
+	const check = graph.crossCheck?.get("W2");
+	assert.ok(check, "cross-check recorded for the neighbor");
+	assert.equal(check.mismatched, true, "500 vs 5 is an order-of-magnitude mismatch");
+	assert.equal(check.refsAdded, 1, "one backfilled link into the graph");
+	const edge = graph.edges.find(
+		(item) =>
+			(item.source === "W2" && item.target === "W1") || (item.source === "W1" && item.target === "W2"),
+	);
+	assert.ok(edge && edge.direct !== "none", "backfilled reference creates a direct edge");
+	const evidence = graph.citationEvidence?.get("W2", "W1");
+	assert.ok(evidence?.sources.includes("semantic-scholar"), "backfilled edge credits Semantic Scholar");
+	assert.ok(!evidence?.sources.includes("openalex"), "backfilled edge is not credited to OpenAlex");
+
+	// Toggle off: no cross-check, no backfill.
+	const off = await loadNeighborhood(
+		client,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, s2Reconcile: false, maxNodes: 20 },
+		undefined,
+		reconcile,
+	);
+	assert.equal(off.crossCheck, undefined);
+}
 async function cursorPaging(): Promise<void> {
 	const requested: string[] = [];
 	const pages: Record<string, { results: Array<{ id: string }>; next: string | null }> = {
