@@ -1,8 +1,9 @@
 import { communityColor, detectCommunities } from "./communities";
-import { strengthTier } from "./graph-filter";
+import { focusNodes, strengthTier } from "./graph-filter";
+import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { placeLayout } from "./layout-modes";
-import { RELATION_COLOR, relationKind } from "./relation";
+import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import type { GraphEdge, PaperNode } from "./types";
 import { clamp, yearColor } from "./visual";
 
@@ -37,6 +38,8 @@ export class SimilarityMap {
 	private cssHeight = 1;
 	private selectedId: string | null = null;
 	private hoverId: string | null = null;
+	private focus: Set<string> | null = null;
+	private kindVisible: Record<RelationKind, boolean> = { direct: true, cocitation: true, coupling: true, weak: false };
 	private dragging: Drag | null = null;
 	private moved = false;
 	private downX = 0;
@@ -105,6 +108,14 @@ export class SimilarityMap {
 		this.communities = detectCommunities(this.nodes.map((node) => node.id), edges);
 		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		this.recolor();
+		this.refreshFocus();
+		this.draw();
+	}
+
+	/** Edge-type visibility for the 2D panel. Weak links start hidden. */
+	setKinds(kinds: Record<RelationKind, boolean>): void {
+		this.kindVisible = { ...kinds };
+		this.refreshFocus();
 		this.draw();
 	}
 
@@ -137,7 +148,14 @@ export class SimilarityMap {
 
 	setSelected(id: string | null): void {
 		this.selectedId = id;
+		this.refreshFocus();
 		this.draw();
+	}
+
+	/** One-hop neighborhood of the hovered (else selected) node, over visible edges only. */
+	private refreshFocus(): void {
+		const id = this.hoverId ?? this.selectedId;
+		this.focus = id ? focusNodes(id, id, this.edges, (edge) => this.kindVisible[relationKind(edge)], false) : null;
 	}
 
 	resize(): void {
@@ -301,6 +319,7 @@ export class SimilarityMap {
 			const nextHover = hit?.id ?? null;
 			if (nextHover !== this.hoverId) {
 				this.hoverId = nextHover;
+				this.refreshFocus();
 				this.draw();
 			}
 			this.canvas.style.cursor = hit ? "pointer" : "grab";
@@ -362,6 +381,7 @@ export class SimilarityMap {
 			const p = this.screenToWorld(local.x, local.y);
 			let closest: GraphEdge | null = null, distance = 7 / this.k;
 			for (const edge of this.edges) {
+				if (!this.kindVisible[relationKind(edge)]) continue;
 				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
 				if (!a || !b || (this.scrubYear !== null && (a.year === null || b.year === null || a.year > this.scrubYear || b.year > this.scrubYear))) continue;
 				const dx = b.x-a.x, dy = b.y-a.y;
@@ -379,6 +399,7 @@ export class SimilarityMap {
 	private onPointerLeave(): void {
 		if (this.dragging) return;
 		this.hoverId = null;
+		this.refreshFocus();
 		this.hideTooltip();
 		this.draw();
 	}
@@ -485,14 +506,23 @@ export class SimilarityMap {
 		ctx.fillRect(0, 0, width, height);
 
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
+		const focus = this.focus;
 		ctx.lineCap = "round";
 		for (const edge of this.edges) {
 			const a = byId.get(edge.source);
 			const b = byId.get(edge.target);
 			if (!a || !b || !a.shown || !b.shown) continue;
 			const kind = relationKind(edge);
+			if (!this.kindVisible[kind]) continue;
 			const tier = strengthTier(edge);
-			const width = tier === "strong" ? 2.8 : tier === "mid" ? 1.7 : 0.85;
+			let width = tier === "strong" ? 2.8 : tier === "mid" ? 1.7 : 0.85;
+			let alpha = kind === "weak" ? 0.35 : 0.8;
+			let dimmed = false;
+			if (focus && !(focus.has(edge.source) && focus.has(edge.target))) {
+				dimmed = true;
+				alpha = 0.07;
+				width *= 0.6;
+			}
 			const ax = a.x * this.k + this.tx;
 			const ay = a.y * this.k + this.ty;
 			const bx = b.x * this.k + this.tx;
@@ -500,10 +530,10 @@ export class SimilarityMap {
 			ctx.beginPath();
 			ctx.moveTo(ax, ay);
 			ctx.lineTo(bx, by);
-			ctx.strokeStyle = hexRgba(RELATION_COLOR[kind], kind === "weak" ? 0.35 : 0.8);
+			ctx.strokeStyle = hexRgba(RELATION_COLOR[kind], alpha);
 			ctx.lineWidth = width;
 			ctx.stroke();
-			if (kind !== "direct") continue;
+			if (kind !== "direct" || dimmed) continue;
 			ctx.fillStyle = hexRgba(RELATION_COLOR.direct, 0.95);
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
@@ -520,6 +550,8 @@ export class SimilarityMap {
 		const x = node.x * this.k + this.tx;
 		const y = node.y * this.k + this.ty;
 		const radius = node.radius + (node.id === this.hoverId ? 1.6 : 0);
+		const dimmed = this.focus !== null && !this.focus.has(node.id);
+		if (dimmed) ctx.globalAlpha = 0.18;
 		if (node.isSeed) {
 			const glow = ctx.createRadialGradient(x, y, radius, x, y, radius + 22);
 			glow.addColorStop(0, "rgba(255, 244, 214, 0.38)");
@@ -554,6 +586,7 @@ export class SimilarityMap {
 			ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
 			ctx.stroke();
 		}
+		if (dimmed) ctx.globalAlpha = 1;
 	}
 
 	private rebuild(nodes: readonly PaperNode[], resetView: boolean): void {
@@ -574,6 +607,7 @@ export class SimilarityMap {
 		if (resetView) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
 			this.hoverId = null;
+			this.refreshFocus();
 			this.adjusted = false;
 			this.hideTooltip();
 			this.resize();
@@ -611,17 +645,20 @@ export class SimilarityMap {
 		const place = (node: DrawNode, maxWidth: number): void => {
 			const x = node.x * this.k + this.tx + node.radius + 6;
 			const y = node.y * this.k + this.ty;
-			const text = fitText(ctx, node.title, maxWidth);
+			const text = fitText(ctx, authorYear(node), maxWidth);
 			const width = ctx.measureText(text).width;
 			const box = { x, y: y - 8, w: width, h: 16 };
 			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
 			if (!must && overlaps(box, boxes)) return;
 			boxes.push(box);
+			const dimmed = this.focus !== null && !this.focus.has(node.id);
+			if (dimmed) ctx.globalAlpha = 0.35;
 			ctx.lineWidth = 3;
 			ctx.strokeStyle = "rgba(11, 13, 18, 0.88)";
 			ctx.strokeText(text, x, y);
 			ctx.fillStyle = node.isSeed ? "#fff8e8" : "#e7ebf4";
 			ctx.fillText(text, x, y);
+			if (dimmed) ctx.globalAlpha = 1;
 		};
 
 		for (const node of this.nodes) {

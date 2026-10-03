@@ -1,7 +1,8 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
-import { evidenceText } from "./graph-filter";
+import { buildLegend } from "./filter-controls";
+import { emptyFilter, evidenceText, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
@@ -105,6 +106,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	drawer.hidden = true;
 	el(drawer, "p", "cpo-drawer-title", "筛选 / 图例");
 	el(drawer, "p", "cpo-side-tip", "拖拽空白处平移，滚轮或右下角按钮缩放。点选节点后，题名在底部，展开可看证据。");
+	const kindLegend = el(drawer, "div", "cpo-drawer-legend");
 	const legend = el(drawer, "div", "cpo-legend");
 	legend.hidden = true;
 	const rampWrap = el(legend, "span", "cpo-ramp-wrap");
@@ -138,6 +140,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
 	const map = new SimilarityMap(canvas, tooltip, stage);
+	let mapFilter: GraphFilter = { ...emptyFilter(), kinds: { direct: true, cocitation: true, coupling: true, weak: false } };
+	map.setKinds(mapFilter.kinds);
+	buildLegend(kindLegend, () => mapFilter, (next) => {
+		mapFilter = next;
+		map.setKinds(next.kinds);
+	});
 	let graph: SimilarityGraph | null = null;
 	let tab: GraphTab = "graph";
 	let narrative: ResearchNarrative | null = null;

@@ -871,7 +871,8 @@
 	margin-right: calc(var(--file-margins, 0px) * -1);
 }
 
-.cpo-embed-legend {
+.cpo-embed-legend,
+.cpo-drawer-legend {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px 10px;
@@ -880,7 +881,8 @@
 	font-size: 11px;
 }
 
-.cpo-embed-legend i[data-kind] {
+.cpo-embed-legend i[data-kind],
+.cpo-drawer-legend i[data-kind] {
 	display: inline-block;
 	width: 16px;
 	height: 3px;
@@ -889,10 +891,14 @@
 	vertical-align: middle;
 }
 
-.cpo-embed-legend i[data-kind="direct"] { background: #e7c27a; }
-.cpo-embed-legend i[data-kind="cocitation"] { background: #3ecfb2; }
-.cpo-embed-legend i[data-kind="coupling"] { background: #8a97f0; }
-.cpo-embed-legend i[data-kind="weak"] { background: #8b93a7; }
+.cpo-embed-legend i[data-kind="direct"],
+.cpo-drawer-legend i[data-kind="direct"] { background: #e7c27a; }
+.cpo-embed-legend i[data-kind="cocitation"],
+.cpo-drawer-legend i[data-kind="cocitation"] { background: #3ecfb2; }
+.cpo-embed-legend i[data-kind="coupling"],
+.cpo-drawer-legend i[data-kind="coupling"] { background: #8a97f0; }
+.cpo-embed-legend i[data-kind="weak"],
+.cpo-drawer-legend i[data-kind="weak"] { background: #8b93a7; }
 
 .cpo-embed-labels {
 	position: absolute;
@@ -931,7 +937,8 @@
 }
 
 .cpo-embed button.cpo-legend-kind,
-.cpo-embed button.cpo-path-toggle {
+.cpo-embed button.cpo-path-toggle,
+.cpo-drawer button.cpo-legend-kind {
 	padding: 2px 6px;
 	border: none;
 	border-radius: 6px;
@@ -943,7 +950,8 @@
 }
 
 .cpo-embed button.cpo-legend-kind:not(.is-on),
-.cpo-embed button.cpo-path-toggle:not(.is-on) {
+.cpo-embed button.cpo-path-toggle:not(.is-on),
+.cpo-drawer button.cpo-legend-kind:not(.is-on) {
 	opacity: 0.35;
 }
 
@@ -960,9 +968,12 @@
 	background: #d5dbe8;
 }
 
-.cpo-embed-legend i.cpo-tier-weak { height: 2px; }
-.cpo-embed-legend i.cpo-tier-mid { height: 4px; }
-.cpo-embed-legend i.cpo-tier-strong { height: 7px; }
+.cpo-embed-legend i.cpo-tier-weak,
+.cpo-drawer-legend i.cpo-tier-weak { height: 2px; }
+.cpo-embed-legend i.cpo-tier-mid,
+.cpo-drawer-legend i.cpo-tier-mid { height: 4px; }
+.cpo-embed-legend i.cpo-tier-strong,
+.cpo-drawer-legend i.cpo-tier-strong { height: 7px; }
 
 .cpo-embed-filters {
 	display: flex;
