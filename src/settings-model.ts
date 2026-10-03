@@ -1,3 +1,5 @@
+export type SampleDepth = "standard" | "extended" | "deep";
+
 export interface ConnectedPapersSettings {
 	apiKey: string;
 	contactEmail: string;
@@ -9,6 +11,7 @@ export interface ConnectedPapersSettings {
 	llmModel: string;
 	llmSendAbstracts: boolean;
 	maxNodes: number;
+	sampleDepth: SampleDepth;
 	includeReferences: boolean;
 	includeCitations: boolean;
 	includeRelated: boolean;
@@ -25,6 +28,7 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	llmModel: "",
 	llmSendAbstracts: false,
 	maxNodes: 50,
+	sampleDepth: "standard",
 	includeReferences: true,
 	includeCitations: true,
 	includeRelated: true,

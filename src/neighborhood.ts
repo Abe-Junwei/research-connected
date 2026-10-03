@@ -6,11 +6,29 @@ import {
 import { reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
-import type { ConnectedPapersSettings } from "./settings-model";
+import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
 export type LoadStage = "resolving" | "fetching" | "scoring";
 export type LoadWarning = "references" | "citations" | "related" | "details";
+
+/**
+ * Sampling tiers. Standard matches the historical behavior. Extended pulls a
+ * full 200-per-page list; deep cursor-pages references and citations up to
+ * 1000 works each. Deep costs roughly 20 requests per map and wants an API key.
+ * Related works are never paged (the list has no meaningful sort).
+ */
+export const SAMPLE_TIERS: Record<
+	SampleDepth,
+	{ references: number; citations: number; related: number; pages: number }
+> = {
+	standard: { references: 80, citations: 40, related: 20, pages: 1 },
+	extended: { references: 200, citations: 200, related: 50, pages: 1 },
+	deep: { references: 200, citations: 200, related: 100, pages: 5 },
+};
+
+/** Co-citation context (reference lists of citing papers) is capped so deep sampling stays within budget. */
+const MAX_CONTEXT_CITERS = 400;
 
 export interface SimilarityGraph {
 	nodes: PaperNode[];
@@ -59,10 +77,11 @@ export async function loadNeighborhood(
 	if (!seed) throw new OpenAlexError("OpenAlex 返回的种子作品缺少标题或 ID。");
 
 	onStage?.("fetching");
+	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
 	const [references, citations, related] = await Promise.all([
-		loadGroup(settings.includeReferences, () => client.referencedBySeed(seed.id, 80)),
-		loadGroup(settings.includeCitations, () => client.citingSeed(seed.id, 40)),
-		loadGroup(settings.includeRelated, () => client.relatedTo(seed.id, 20)),
+		loadGroup(settings.includeReferences, () => client.referencedBySeed(seed.id, tier.references, tier.pages)),
+		loadGroup(settings.includeCitations, () => client.citingSeed(seed.id, tier.citations, tier.pages)),
+		loadGroup(settings.includeRelated, () => client.relatedTo(seed.id, tier.related, 1)),
 	]);
 
 	const warnings: LoadWarning[] = [];
@@ -96,7 +115,9 @@ export async function loadNeighborhood(
 	const refLists = new Map<string, string[]>();
 	refLists.set(seed.id, referenceIds(seedRaw.referenced_works));
 
-	const contextIds = citePapers.map((paper) => paper.id);
+	// Citing papers arrive most-cited first; the context cap bounds the batched
+	// reference-list fetch when deep sampling returned hundreds of citers.
+	const contextIds = citePapers.slice(0, MAX_CONTEXT_CITERS).map((paper) => paper.id);
 	const batchIds = unique([seed.id, ...picked.map((paper) => paper.id), ...contextIds]);
 	if (batchIds.length > 1 || !seed.abstract) {
 		onStage?.("scoring");
@@ -179,7 +200,7 @@ export function selectNeighbors(
 	groups: { reference: PaperNode[]; citation: PaperNode[]; related: PaperNode[] },
 	seedId: string,
 ): PaperNode[] {
-	const maxNodes = clampInt(settings.maxNodes, 20, 80);
+	const maxNodes = clampInt(settings.maxNodes, 20, 300);
 	const slots = maxNodes - 1;
 	const pools = {
 		reference: settings.includeReferences ? dedupe(groups.reference, seedId) : [],

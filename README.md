@@ -174,18 +174,18 @@ A free key from [openalex.org/settings/api](https://openalex.org/settings/api) r
 
 The old polite pool is gone. Since February 2026 OpenAlex **ignores `mailto`**. The email setting is still sent when you fill it in, for older gateways, and it does **not** raise the limit. A key is the way to get a higher budget. See [OpenAlex authentication](https://help.openalex.org/api/authentication/).
 
-One map is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Title search is a separate, slightly more expensive call.
+One map on standard sampling is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Deep sampling cursor-pages the reference and citation lists (up to 5 pages each) and fetches more batched details, around 20 calls in total. Title search is a separate, slightly more expensive call.
 
 ## Algorithm
 
 Connected Papers builds a similarity map from co-citation and bibliographic coupling over a large citation graph. This plugin approximates that with a **sampled** OpenAlex neighborhood. It is not a citation tree and not a ranked list.
 
 1. Resolve the seed work.
-2. Sample candidates (each list is one page, most-cited first when a sort applies):
-   - up to **80** works the seed cites
-   - up to **40** works that cite the seed
-   - up to **20** OpenAlex related works
-3. Keep at most `最大节点数 − 1` neighbors:
+2. Sample candidates (most-cited first when a sort applies). The **采样深度** setting picks the tier:
+   - **standard** — up to 80 works the seed cites, 40 that cite it, 20 related works; about 5 requests per map
+   - **extended** — one full 200-per-page list of references and citing works, 50 related; about 7 requests
+   - **deep** — references and citing works cursor-paged up to 1000 each, 100 related; about 20 requests, so set an OpenAlex API key first
+3. Keep at most `最大节点数 − 1` neighbors (20–300; pair anything above ~80 with extended or deep sampling so the pools can fill the slots):
    - records whose OpenAlex `type` is non-research (**book-review**, editorial, correction/erratum, letter, retraction, peer-review, paratext) are dropped first — a book review's title embeds the book ("…By Author. Publisher, year. Pp. …") and citations meant for the book land on the review, which would bend the map toward the wrong record; the status line reports how many were filtered. The seed itself is kept regardless of type, with a note in its detail sheet
    - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure
    - remaining slots split between references and citing works
@@ -211,7 +211,7 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
 
 `related_works` in OpenAlex means “recent papers that share topics”, not a Connected Papers score. Related works are only **candidates**. Edge weight is always the score above.
 
-Highly cited papers are sampled, not exhaustively expanded. A seed with tens of thousands of citations contributes its 40 most-cited citers, not the full citing set. Reference lists longer than the sampled works are whatever OpenAlex returns on that one page (up to 80, sorted by citations).
+Highly cited papers are sampled, not exhaustively expanded. With standard sampling a seed with tens of thousands of citations contributes its 40 most-cited citers, not the full citing set; deep sampling raises that to 1000. Co-citation is counted over the reference lists of at most 400 sampled citers, so deep sampling improves edge quality but never covers the whole citing population.
 
 ## Data quality: known OpenAlex issues
 

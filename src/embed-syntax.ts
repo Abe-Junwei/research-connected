@@ -40,7 +40,7 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * narrower than the column. Ignored for floats.
  * `labels`: `author-year` (default), `title`, `both`, or `off`.
  * `depth` 1 is the seed neighborhood; `depth` 2 also samples references of
- * the two closest papers. `maxNodes` overrides the setting (20–80).
+ * the two closest papers. `maxNodes` overrides the setting (20–300).
  * `yearFrom` / `yearTo`: keep papers in that inclusive year range. The seed always stays.
  * `language`, `type`, `concept`: optional preset filters. They apply only when OpenAlex sent that field.
  * `minCoCite` / `minShared`: hide co-citation edges below that co-cite count, and coupling edges below that shared-reference count. Default 1.
@@ -141,7 +141,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		if (key === "maxnodes") {
 			const parsed = readInt(value, "maxNodes");
 			if (!parsed.ok) return parsed;
-			maxNodes = clampInt(parsed.value, 20, 80);
+			maxNodes = clampInt(parsed.value, 20, 300);
 			continue;
 		}
 		if (key === "height") {

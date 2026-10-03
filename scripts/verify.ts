@@ -417,6 +417,7 @@ async function live(): Promise<void> {
 async function main(): Promise<void> {
 	unit();
 	await verifyEvidence();
+	await cursorPaging();
 	console.log("unit checks passed");
 	if (process.argv.includes("--offline")) return;
 	try {
@@ -426,6 +427,33 @@ async function main(): Promise<void> {
 		await live();
 	}
 	console.log("verify passed");
+}
+
+/** Deep sampling cursor-pages: results accumulate and paging stops at the list end. */
+async function cursorPaging(): Promise<void> {
+	const requested: string[] = [];
+	const pages: Record<string, { results: Array<{ id: string }>; next: string | null }> = {
+		"*": { results: [{ id: "W1" }, { id: "W2" }], next: "p2" },
+		p2: { results: [{ id: "W3" }], next: "p3" },
+		p3: { results: [], next: null },
+	};
+	const mock: GetJson = async (url) => {
+		requested.push(url);
+		const cursor = new URL(url).searchParams.get("cursor") ?? "*";
+		const page = pages[cursor];
+		if (!page) throw new Error(`unexpected cursor ${cursor}`);
+		return { results: page.results, meta: { next_cursor: page.next } };
+	};
+	const client = new OpenAlexClient(mock, { apiKey: "", contactEmail: "" });
+	const works = await client.citingSeed("W0", 200, 5);
+	assert.deepEqual(works.map((work) => work.id), ["W1", "W2", "W3"]);
+	assert.equal(requested.length, 3, "stops when a page comes back empty");
+	assert.ok(new URL(requested[0] ?? "").searchParams.get("cursor") === "*");
+	assert.ok(new URL(requested[1] ?? "").searchParams.get("cursor") === "p2");
+
+	const single = await client.referencedBySeed("W0", 80);
+	assert.equal(single.length, 2, "single-page mode ignores cursors");
+	assert.equal(new URL(requested[3] ?? "").searchParams.get("cursor"), null);
 }
 
 main().catch((error: unknown) => {

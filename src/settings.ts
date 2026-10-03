@@ -2,6 +2,7 @@ import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	type ConnectedPapersSettings,
+	type SampleDepth,
 } from "./settings-model";
 import { clamp } from "./visual";
 
@@ -59,14 +60,31 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("最大节点数")
-			.setDesc("含种子论文。默认 50，建议 40–60。下次构建图谱时生效。")
+			.setDesc("含种子论文。默认 50，标准采样建议 40–60；配合扩展或深度采样可到 300。下次构建图谱时生效。")
 			.addSlider((slider) => {
 				slider
-					.setLimits(20, 80, 1)
+					.setLimits(20, 300, 1)
 					.setValue(this.store.settings.maxNodes)
 					.setDynamicTooltip()
 					.onChange(async (value) => {
-						this.store.settings.maxNodes = clamp(value, 20, 80);
+						this.store.settings.maxNodes = clamp(value, 20, 300);
+						await this.store.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("采样深度")
+			.setDesc(
+				"标准：80 参考文献 + 40 施引 + 20 相关，约 5 次请求；扩展：参考文献和施引各 200；深度：各最多 1000（翻页获取，约 20 次请求，建议先配置 OpenAlex API 密钥）。下次构建图谱时生效。",
+			)
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption("standard", "标准")
+					.addOption("extended", "扩展")
+					.addOption("deep", "深度")
+					.setValue(this.store.settings.sampleDepth)
+					.onChange(async (value) => {
+						this.store.settings.sampleDepth = value as SampleDepth;
 						await this.store.saveSettings();
 					});
 			});

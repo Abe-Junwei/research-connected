@@ -77,20 +77,21 @@ export class OpenAlexClient {
 
 	/**
 	 * Works the seed cites. OpenAlex names this filter `cited_by` (outgoing).
+	 * `pages > 1` follows the cursor for deeper sampling.
 	 */
-	referencedBySeed(seedId: string, perPage: number): Promise<RawWork[]> {
-		return this.listFilter(`cited_by:${seedId}`, perPage, "cited_by_count:desc");
+	referencedBySeed(seedId: string, perPage: number, pages = 1): Promise<RawWork[]> {
+		return this.listFilter(`cited_by:${seedId}`, perPage, "cited_by_count:desc", pages);
 	}
 
 	/**
 	 * Works that cite the seed. OpenAlex names this filter `cites` (incoming).
 	 */
-	citingSeed(seedId: string, perPage: number): Promise<RawWork[]> {
-		return this.listFilter(`cites:${seedId}`, perPage, "cited_by_count:desc");
+	citingSeed(seedId: string, perPage: number, pages = 1): Promise<RawWork[]> {
+		return this.listFilter(`cites:${seedId}`, perPage, "cited_by_count:desc", pages);
 	}
 
-	relatedTo(seedId: string, perPage: number): Promise<RawWork[]> {
-		return this.listFilter(`related_to:${seedId}`, perPage);
+	relatedTo(seedId: string, perPage: number, pages = 1): Promise<RawWork[]> {
+		return this.listFilter(`related_to:${seedId}`, perPage, undefined, pages);
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {
@@ -108,13 +109,40 @@ export class OpenAlexClient {
 		return all;
 	}
 
-	private listFilter(filter: string, perPage: number, sort?: string): Promise<RawWork[]> {
+	private listFilter(filter: string, perPage: number, sort: string | undefined, pages = 1): Promise<RawWork[]> {
 		const url = new URL(`${OPENALEX_API}/works`);
 		url.searchParams.set("filter", filter);
 		url.searchParams.set("per_page", String(perPage));
 		if (sort) url.searchParams.set("sort", sort);
 		url.searchParams.set("select", LIST_SELECT);
-		return this.getResults(url);
+		if (pages <= 1) return this.getResults(url);
+		return this.getPaged(url, perPage, pages);
+	}
+
+	/** Cursor pagination: one request per page, stops early at the end of the list. */
+	private async getPaged(url: URL, perPage: number, pages: number): Promise<RawWork[]> {
+		url.searchParams.set("cursor", "*");
+		const all: RawWork[] = [];
+		for (let page = 0; page < pages; page++) {
+			const { results, nextCursor } = await this.getPage(url);
+			all.push(...results);
+			if (!nextCursor || results.length === 0) break;
+			url.searchParams.set("cursor", nextCursor);
+		}
+		return all;
+	}
+
+	private async getPage(url: URL): Promise<{ results: RawWork[]; nextCursor: string | null }> {
+		const json = await this.get(url);
+		if (!json || typeof json !== "object" || !("results" in json)) {
+			throw new OpenAlexError("OpenAlex 返回了无法识别的列表。");
+		}
+		const body = json as { results?: unknown; meta?: { next_cursor?: unknown } };
+		const results = Array.isArray(body.results)
+			? body.results.filter((item): item is RawWork => Boolean(item) && typeof item === "object")
+			: [];
+		const cursor = body.meta?.next_cursor;
+		return { results, nextCursor: typeof cursor === "string" && cursor ? cursor : null };
 	}
 
 	private async getObject(url: URL): Promise<RawWork> {

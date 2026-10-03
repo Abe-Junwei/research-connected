@@ -55,7 +55,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		const stored = (await this.loadData()) as Partial<ConnectedPapersSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
 		const maxNodes = Number(this.settings.maxNodes);
-		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 80) : DEFAULT_SETTINGS.maxNodes;
+		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
 	}
 
 	async saveSettings(): Promise<void> {
