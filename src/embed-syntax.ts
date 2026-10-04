@@ -26,7 +26,7 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * minCoCite: 2
  * minShared: 3
  * layout: temporal
- * color: community
+ * color: graph
  * ```
  *
  * `position`: `inline` (default, in the column), `float-left`, `float-right`
@@ -45,7 +45,7 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * `language`, `type`, `concept`: optional preset filters. They apply only when OpenAlex sent that field.
  * `minCoCite` / `minShared`: hide co-citation edges below that co-cite count, and coupling edges below that shared-reference count. Default 1.
  * `layout`: `temporal` (default; year on X, log citations on Y), `radial`, `force2d`, or `force3d`.
- * `color`: `community` (default) or `year`. Edge colors stay the relation type either way.
+ * `color`: `graph` (default, monochrome like Obsidian's Graph view), `community`, or `year`. Edge colors stay the relation type either way.
  * `doi`, `openalex` / `id`, or `seed`. A bare DOI or `W…` id also works.
  */
 export type EmbedPosition = "inline" | "float-left" | "float-right" | "full";
@@ -116,7 +116,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 	let minCoCite = 1;
 	let minShared = 1;
 	let layout: LayoutMode = "temporal";
-	let color: ColorMode = "community";
+	let color: ColorMode = "graph";
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -216,7 +216,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "color") {
 			const parsed = readColor(value);
-			if (!parsed) return { ok: false, error: "color 只能是 community 或 year。" };
+			if (!parsed) return { ok: false, error: "color 只能是 graph、community 或 year。" };
 			color = parsed;
 			continue;
 		}
@@ -299,6 +299,7 @@ function readLayout(value: string): LayoutMode | null {
 
 function readColor(value: string): ColorMode | null {
 	const key = value.trim().toLowerCase();
+	if (key === "graph" || key === "mono" || key === "plain") return "graph";
 	if (key === "community" || key === "cluster") return "community";
 	if (key === "year") return "year";
 	return null;

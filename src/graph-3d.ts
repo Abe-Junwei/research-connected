@@ -31,8 +31,6 @@ import {
 	evidenceText,
 	focusNodes,
 	nodeVisible,
-	strengthTier,
-	TIER_RADIUS,
 	type GraphFilter,
 } from "./graph-filter";
 import type { LabelMode } from "./labels";
@@ -123,6 +121,7 @@ export function mountGraph3D(
 	viewport.append(canvas);
 	const communitySvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 	communitySvg.classList.add("cpo-community-overlay");
+	communitySvg.style.display = "none";
 	viewport.append(communitySvg);
 
 	const labelLayer = document.createElement("div");
@@ -144,9 +143,15 @@ export function mountGraph3D(
 	const years = graph.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 	const minYear = years.length ? Math.min(...years) : 0;
 	const maxYear = years.length ? Math.max(...years) : 0;
+	const viewStyles = getComputedStyle(viewport);
+	const readVar = (name: string, fallback: string): string =>
+		viewStyles.getPropertyValue(name).trim() || fallback;
+	const graphNodeColor = readVar("--graph-node", "rgb(138, 127, 216)");
+	const graphNodeFocused = colorToHex(readVar("--graph-node-focused", "rgb(74, 144, 217)"));
 	const nodeColor = (node: PaperNode): string => {
 		if (colorMode === "community") return communityColor(communities.get(node.id) ?? 0);
-		return yearColor(node.year, minYear, maxYear);
+		if (colorMode === "year") return yearColor(node.year, minYear, maxYear);
+		return graphNodeColor;
 	};
 	let placed = placeLayout(layoutMode, graph.nodes, graph.edges, graph.seedScore);
 	const byId = new Map(placed.map((node) => [node.id, node]));
@@ -209,7 +214,7 @@ export function mountGraph3D(
 	}
 
 	const drawn = drawEdges(graph, byId, scene, geometries, materials);
-	drawn.setKumuStyle(layoutMode === "kumu");
+	drawn.setKumuStyle();
 
 	const camera = new PerspectiveCamera(45, 1, 0.1, 4000);
 	const controls = new OrbitControls(camera, canvas);
@@ -262,7 +267,7 @@ export function mountGraph3D(
 			const material = entry.mesh.material;
 			if (!(material instanceof MeshStandardMaterial)) continue;
 			if (entry.id === selectedId) {
-				material.emissive.set(0x4a90d9);
+				material.emissive.set(graphNodeFocused);
 				material.emissiveIntensity = 0.62;
 			} else if (entry.id === hoverId) {
 				material.emissive.set(0x9aa0a6);
@@ -361,11 +366,17 @@ export function mountGraph3D(
 			(a, b) => Number(b.seed) - Number(a.seed) || b.cited - a.cited || a.id.localeCompare(b.id),
 		);
 		const kept: Array<{ x: number; y: number }> = [];
+		let shown = 0;
 		for (const entry of ranked) {
 			const el = entry.label;
 			if (!el) continue;
 			projected.copy(entry.mesh.position).project(camera);
 			const force = entry.id === selectedId || entry.id === hoverId || entry.seed;
+			// 对齐 Obsidian 图谱：默认只给最高被引的一小撮节点出标签。
+			if (!force && shown >= 24) {
+				el.hidden = true;
+				continue;
+			}
 			if (projected.z > 1) {
 				el.hidden = true;
 				continue;
@@ -385,6 +396,7 @@ export function mountGraph3D(
 			el.style.left = `${x}px`;
 			el.style.top = `${y}px`;
 			kept.push({ x, y });
+			if (!force) shown += 1;
 		}
 		}
 		placeCommunityOverlay(width, height);
@@ -604,7 +616,6 @@ export function mountGraph3D(
 		const kumuStyle = mode === "kumu";
 		renderer.setClearColor(0xffffff, 1);
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
-		drawn.setKumuStyle(kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
 		for (const entry of entries) {
@@ -615,7 +626,7 @@ export function mountGraph3D(
 			entry.mesh.position.set(at.x, at.y, at.z);
 			entry.mesh.scale.setScalar(at.radius);
 		}
-		drawn.setKumuStyle(kumuStyle);
+		drawn.setKumuStyle();
 		drawn.relayout(next);
 		applyPointerMode();
 		frameCamera();
@@ -676,6 +687,7 @@ export function mountGraph3D(
 			renderer.dispose();
 			renderer.forceContextLoss();
 			canvas.remove();
+			communitySvg.remove();
 			labelLayer.remove();
 			tooltip.hidden = true;
 		},
@@ -693,7 +705,7 @@ function drawEdges(
 	hitMesh: InstancedMesh | null;
 	sync: (visible: (edge: GraphEdge) => boolean, focus: Set<string> | null) => void;
 	relayout: (at: ReadonlyMap<string, { x: number; y: number; z: number; radius: number }>) => void;
-	setKumuStyle: (on: boolean) => void;
+	setKumuStyle: () => void;
 } {
 	const edges: DrawnEdge[] = [];
 	for (const edge of graph.edges) {
@@ -720,9 +732,9 @@ function drawEdges(
 	const shaft = new CylinderGeometry(1, 1, 1, 6, 1);
 	const head = new ConeGeometry(1, 1, 8);
 	geometries.push(shaft, head);
-	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.92 });
+	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8 });
 	const hitMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.95 });
+	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.7 });
 	materials.push(visibleMaterial, hitMaterial, arrowMaterial);
 	const visibleMesh = new InstancedMesh(shaft, visibleMaterial, edges.length);
 	const hitMesh = new InstancedMesh(shaft, hitMaterial, edges.length);
@@ -730,7 +742,8 @@ function drawEdges(
 	const dummy = new Object3D();
 	const direction = new Vector3();
 	const up = new Vector3(0, 1, 0);
-	const dim = new Color(0x3a4154);
+	const edgeGray = new Color(0xaab0bb);
+	const edgeFaint = new Color(0xe0e3e9);
 
 	const hide = (): void => {
 		dummy.position.set(0, -100000, 0);
@@ -767,7 +780,6 @@ function drawEdges(
 
 	let lastVisible: (edge: GraphEdge) => boolean = () => true;
 	let lastFocus: Set<string> | null = null;
-	let kumuStyle = false;
 	const sync = (visible: (edge: GraphEdge) => boolean, focus: Set<string> | null): void => {
 		lastVisible = visible;
 		lastFocus = focus;
@@ -783,23 +795,26 @@ function drawEdges(
 				hitMesh.setMatrixAt(i, dummy.matrix);
 				continue;
 			}
-			const tier = strengthTier(item.edge);
-			const radius = kumuStyle ? (emphasized ? 0.55 : 0.35) : emphasized ? TIER_RADIUS[tier] : TIER_RADIUS.weak * 0.7;
+			// 对齐 Obsidian 图谱：默认细浅中性灰，聚焦时才按关系类型着色。
+			const focused = focus !== null && emphasized;
+			const radius = focused ? 0.7 : 0.4;
 			placeShaft(i, item, radius);
-			visibleMesh.setColorAt(i, emphasized ? new Color(RELATION_COLOR[relationKind(item.edge)]) : dim);
+			const kind = relationKind(item.edge);
+			visibleMesh.setColorAt(i, focused ? new Color(RELATION_COLOR[kind]) : emphasized ? edgeGray : edgeFaint);
 			dummy.scale.set(Math.max(radius, 1.8), dummy.scale.y, Math.max(radius, 1.8));
 			dummy.updateMatrix();
 			hitMesh.setMatrixAt(i, dummy.matrix);
-			if (kumuStyle || !emphasized || relationKind(item.edge) !== "direct") continue;
-			const kind = item.edge.direct;
-			if (kind === "source-cites-target" || kind === "mutual") {
+			if (kind !== "direct") continue;
+			const arrowColor = focused ? new Color(RELATION_COLOR.direct) : edgeGray;
+			const direct = item.edge.direct;
+			if (direct === "source-cites-target" || direct === "mutual") {
 				placeArrow(arrowSlot, item.bx, item.by, item.bz, item.bRadius, item.bx - item.ax, item.by - item.ay, item.bz - item.az);
-				arrowMesh.setColorAt(arrowSlot, new Color(RELATION_COLOR.direct));
+				arrowMesh.setColorAt(arrowSlot, arrowColor);
 				arrowSlot += 1;
 			}
-			if (kind === "target-cites-source" || kind === "mutual") {
+			if (direct === "target-cites-source" || direct === "mutual") {
 				placeArrow(arrowSlot, item.ax, item.ay, item.az, item.aRadius, item.ax - item.bx, item.ay - item.by, item.az - item.bz);
-				arrowMesh.setColorAt(arrowSlot, new Color(RELATION_COLOR.direct));
+				arrowMesh.setColorAt(arrowSlot, arrowColor);
 				arrowSlot += 1;
 			}
 		}
@@ -834,10 +849,7 @@ function drawEdges(
 		sync(lastVisible, lastFocus);
 	};
 	sync(() => true, null);
-	const setKumuStyle = (on: boolean): void => {
-		kumuStyle = on;
-		visibleMaterial.opacity = on ? 0.30 : 0.92;
-		arrowMaterial.opacity = on ? 0 : 0.95;
+	const setKumuStyle = (): void => {
 		sync(lastVisible, lastFocus);
 	};
 	return { edges, hitMesh, sync, relayout, setKumuStyle };

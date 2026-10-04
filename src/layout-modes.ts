@@ -7,8 +7,8 @@ import { citationRadius } from "./visual";
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
-/** `community` is the note-embed default. `year` restores the citation-year ramp. */
-export type ColorMode = "year" | "community";
+/** `graph` is the default: monochrome like Obsidian's Graph view. `community`/`year` stay optional. */
+export type ColorMode = "year" | "community" | "graph";
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: "时间",

@@ -325,7 +325,7 @@ function unit(): void {
 		assert.equal(ranged.spec.concept, "Deep learning");
 		assert.equal(ranged.spec.minCoCite, 2);
 		assert.equal(ranged.spec.layout, "temporal");
-		assert.equal(ranged.spec.color, "community");
+		assert.equal(ranged.spec.color, "graph");
 	}
 	const laidOut = parseEmbed("doi: 10.1038/nature14539\nlayout: force2d\ncolor: year\n");
 	assert.equal(laidOut.ok, true);

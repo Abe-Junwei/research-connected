@@ -128,7 +128,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	el(rampWrap, "span", undefined, "较早");
 	el(rampWrap, "span", "cpo-ramp");
 	el(rampWrap, "span", undefined, "较新");
-	el(legend, "span", undefined, "圆越大，被引越多");
+	el(legend, "span", undefined, "圆点略大表示被引更多");
 	el(legend, "span", undefined, "双环是种子");
 	const toolsHost = el(drawer, "div");
 	filterButton.addEventListener("click", () => {
@@ -469,7 +469,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	chrome = mountGraphChrome(toolsHost, {
 		layouts: ["kumu", "force2d", "temporal", "radial"],
 		layout: "force2d",
-		color: "community",
+		color: "graph",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		analysisButton: true,

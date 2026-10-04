@@ -19,8 +19,8 @@ export function yearColor(year: number | null, minYear: number, maxYear: number)
 export function citationRadius(citedByCount: number, maxCited: number, isSeed: boolean): number {
 	const maxLog = Math.log10(maxCited + 1) || 1;
 	const t = Math.log10(Math.max(0, citedByCount) + 1) / maxLog;
-	const radius = 7 + clamp(t, 0, 1) * 15;
-	return isSeed ? Math.max(radius, 13) : radius;
+	const radius = 3.5 + clamp(t, 0, 1) * 5;
+	return isSeed ? Math.max(radius, 9) : radius;
 }
 
 export function formatCount(value: number): string {

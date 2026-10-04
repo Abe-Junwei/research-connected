@@ -1,6 +1,6 @@
 import { communityColor, communityRgba, detectCommunities } from "./communities";
 import { buildCommunityRegions } from "./community-regions";
-import { focusNodes, strengthTier } from "./graph-filter";
+import { focusNodes } from "./graph-filter";
 import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { placeLayout } from "./layout-modes";
@@ -54,8 +54,12 @@ export class SimilarityMap {
 	private coarse: boolean | null = null;
 	private bgStart = "#ffffff";
 	private bgEnd = "#f7f6f3";
+	private graphNode = "#8a7fd8";
+	private graphNodeFocused = "#4a90d9";
+	private graphLine = "rgba(90, 96, 106, 0.28)";
+	private graphText = "#4b5563";
 	private layoutMode: LayoutMode = "force2d";
-	private colorMode: ColorMode = "community";
+	private colorMode: ColorMode = "graph";
 	private scrubYear: number | null = null;
 	private seedScore = new Map<string, number>();
 	private communities = new Map<string, number>();
@@ -97,7 +101,7 @@ export class SimilarityMap {
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
 		this.layoutMode = "force2d";
 		this.scrubYear = null;
-		this.colorMode = "community";
+		this.colorMode = "graph";
 		this.rebuild(nodes, true);
 	}
 
@@ -191,6 +195,11 @@ export class SimilarityMap {
 		const canvasStyles = getComputedStyle(this.canvas);
 		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#ffffff");
 		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#f7f6f3");
+		this.graphNode = themeColor(canvasStyles.getPropertyValue("--graph-node"), "#8a7fd8");
+		this.graphNodeFocused = themeColor(canvasStyles.getPropertyValue("--graph-node-focused"), "#4a90d9");
+		this.graphLine = themeColor(canvasStyles.getPropertyValue("--graph-line"), "rgba(90, 96, 106, 0.28)");
+		this.graphText = themeColor(canvasStyles.getPropertyValue("--graph-text"), "#4b5563");
+		this.recolor();
 		this.draw();
 	}
 
@@ -524,7 +533,6 @@ export class SimilarityMap {
 
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
-		const kumu = this.layoutMode === "kumu";
 		ctx.lineCap = "round";
 		for (const edge of this.edges) {
 			const a = byId.get(edge.source);
@@ -532,35 +540,26 @@ export class SimilarityMap {
 			if (!a || !b || !a.shown || !b.shown) continue;
 			const kind = relationKind(edge);
 			if (!this.kindVisible[kind]) continue;
-			const tier = strengthTier(edge);
-			let width = kumu ? 1 : tier === "strong" ? 2.8 : tier === "mid" ? 1.7 : 0.85;
-			let alpha = kumu ? 1 : kind === "weak" ? 0.35 : 0.8;
-			let dimmed = false;
-			if (focus && !(focus.has(edge.source) && focus.has(edge.target))) {
-				dimmed = true;
-				alpha = 0.1;
-				width *= 0.6;
-			}
+			const dimmed = focus !== null && !(focus.has(edge.source) && focus.has(edge.target));
+			const focused = focus !== null && !dimmed;
 			const ax = a.x * this.k + this.tx;
 			const ay = a.y * this.k + this.ty;
 			const bx = b.x * this.k + this.tx;
 			const by = b.y * this.k + this.ty;
-			// Kumu 模式默认是安静的中性浅灰；聚焦时才按关系类型着色。
-			const strokeStyle = kumu
-				? dimmed
-					? "rgba(216, 219, 224, 0.25)"
-					: focus
-						? hexRgba(RELATION_COLOR[kind], 0.8)
-						: "#d8dbe0"
-				: hexRgba(RELATION_COLOR[kind], alpha);
+			// 默认对齐 Obsidian 图谱：细、浅、中性灰；聚焦时才按关系类型着色。
+			const strokeStyle = dimmed
+				? "rgba(90, 96, 106, 0.1)"
+				: focused
+					? hexRgba(RELATION_COLOR[kind], 0.85)
+					: this.graphLine;
 			ctx.beginPath();
 			ctx.moveTo(ax, ay);
 			ctx.lineTo(bx, by);
 			ctx.strokeStyle = strokeStyle;
-			ctx.lineWidth = kumu ? 1 : width;
+			ctx.lineWidth = focused ? 1.6 : 1;
 			ctx.stroke();
 			if (kind !== "direct" || dimmed) continue;
-			ctx.fillStyle = kumu ? strokeStyle : hexRgba(RELATION_COLOR.direct, 0.95);
+			ctx.fillStyle = strokeStyle;
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
 		}
@@ -636,7 +635,8 @@ export class SimilarityMap {
 		}
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
-		ctx.fillStyle = node.color;
+		const active = node.id === this.hoverId || node.id === this.selectedId;
+		ctx.fillStyle = this.colorMode === "graph" && active ? this.graphNodeFocused : node.color;
 		ctx.shadowColor = "rgba(60, 64, 70, 0.18)";
 		ctx.shadowBlur = 5;
 		ctx.fill();
@@ -660,7 +660,7 @@ export class SimilarityMap {
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 3, 0, Math.PI * 2);
 			ctx.lineWidth = 2;
-			ctx.strokeStyle = "#4a90d9";
+			ctx.strokeStyle = this.graphNodeFocused;
 			ctx.stroke();
 		}
 		if (dimmed) ctx.globalAlpha = 1;
@@ -700,7 +700,8 @@ export class SimilarityMap {
 
 	private colorOf(node: PaperNode): string {
 		if (this.colorMode === "community") return communityColor(this.communities.get(node.id) ?? 0);
-		return yearColor(node.year, this.minYear, this.maxYear);
+		if (this.colorMode === "year") return yearColor(node.year, this.minYear, this.maxYear);
+		return this.graphNode;
 	}
 
 	private isShown(node: PaperNode): boolean {
@@ -715,10 +716,10 @@ export class SimilarityMap {
 		if (seed) prominent.add(seed.id);
 		if (this.selectedId) prominent.add(this.selectedId);
 		if (this.hoverId) prominent.add(this.hoverId);
-		for (const node of ranked.slice(0, kumu ? 18 : 8)) prominent.add(node.id);
+		for (const node of ranked.slice(0, 5)) prominent.add(node.id);
 
 		ctx.textBaseline = "middle";
-		ctx.font = `${kumu ? 11 : 12}px ${this.fontFamily}`;
+		ctx.font = `11px ${this.fontFamily}`;
 		// Kumu 标签在节点正下方居中，其余布局在右侧。
 		ctx.textAlign = kumu ? "center" : "left";
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
@@ -737,10 +738,10 @@ export class SimilarityMap {
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
 			if (dimmed) ctx.globalAlpha = 0.35;
-			ctx.lineWidth = kumu ? 2 : 3;
+			ctx.lineWidth = 2;
 			ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
 			ctx.strokeText(text, x, y);
-			ctx.fillStyle = "#3a3f45";
+			ctx.fillStyle = this.graphText;
 			ctx.fillText(text, x, y);
 			if (dimmed) ctx.globalAlpha = 1;
 		};
@@ -810,7 +811,7 @@ function strokeArrow(
 	const angle = Math.atan2(y2 - y1, x2 - x1);
 	const tipX = x2 - Math.cos(angle) * (nodeRadius + 2);
 	const tipY = y2 - Math.sin(angle) * (nodeRadius + 2);
-	const length = 9;
+	const length = 7;
 	ctx.beginPath();
 	ctx.moveTo(tipX, tipY);
 	ctx.lineTo(tipX - length * Math.cos(angle - 0.4), tipY - length * Math.sin(angle - 0.4));

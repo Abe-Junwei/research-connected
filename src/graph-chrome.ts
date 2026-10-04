@@ -53,6 +53,7 @@ export interface BottomSheet {
 }
 
 const COLOR_LABEL: Record<ColorMode, string> = {
+	graph: "单色",
 	community: "社区",
 	year: "年份",
 };
@@ -117,7 +118,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	}
 
 	const colorButtons = new Map<ColorMode, HTMLButtonElement>();
-	for (const mode of ["community", "year"] as const) {
+	for (const mode of ["graph", "community", "year"] as const) {
 		const button = pressButton(COLOR_LABEL[mode], mode === color, () => {
 			color = mode;
 			for (const [key, item] of colorButtons) setPressed(item, key === mode);
