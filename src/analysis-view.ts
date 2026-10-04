@@ -20,6 +20,7 @@ export function directCitationEdges(records: CitationRecords, visibleIds: Readon
 			source: citingId,
 			target: citedId,
 			weight: 0.1,
+			structuralSimilarity: null,
 			coupling: 0,
 			sharedRefs: 0,
 			coCitation: 0,

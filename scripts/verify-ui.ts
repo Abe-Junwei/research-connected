@@ -57,9 +57,9 @@ const grace = { authors: "Grace Hopper", year: 1990 };
 
 /** Detail and edge evidence copy: source labels and the four relation kinds. */
 function evidenceCopy(): void {
-	const direct = edge({ direct: "source-cites-target", weight: 0.42 });
+	const direct = edge({ direct: "source-cites-target", weight: 0.42, structuralSimilarity: 0.42 });
 	assert.match(explainRelation(direct, ada, grace), /Lovelace 2015 引用了 Hopper 1990/);
-	assert.match(explainRelation(direct, ada, grace), /相近 0\.42/);
+	assert.match(explainRelation(direct, ada, grace), /结构相似 0\.42/);
 	assert.match(explainRelation(edge({ direct: "target-cites-source" }), ada, grace), /Hopper 1990 引用了 Lovelace 2015/);
 	assert.match(explainRelation(edge({ direct: "mutual" }), ada, grace), /互相引用/);
 	const cocitation = edge({ coCitedBy: 3, coCitation: 0.5 });

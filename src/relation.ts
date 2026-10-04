@@ -50,5 +50,10 @@ export function explainRelation(
 	if (edge.coCitedBy > 0) bits.push(`共被引 ${edge.coCitedBy} 次`);
 	if (edge.sharedRefs > 0) bits.push(`共享参考文献 ${edge.sharedRefs} 篇`);
 	if (bits.length === 0) bits.push("采样邻域里的弱连线");
-	return `${bits.join(" · ")} · 相近 ${edge.weight.toFixed(2)}`;
+	const scoreLabel = edge.structuralSimilarity === null
+		? "结构相似度不可用（当前缺少可比较数据）"
+		: edge.structuralSimilarity === undefined
+			? `图谱相近度 ${edge.weight.toFixed(2)}`
+			: `结构相似 ${edge.structuralSimilarity.toFixed(2)}`;
+	return `${bits.join(" · ")} · ${scoreLabel}`;
 }

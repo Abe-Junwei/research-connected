@@ -35,6 +35,7 @@ import { nodeLabel } from "./labels";
 import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
 import type { SimilarityGraph } from "./neighborhood";
 import { RELATION_COLOR, relationKind } from "./relation";
+import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { yearColor } from "./visual";
 
@@ -155,9 +156,11 @@ export function mountGraph3D(
 		viewStyles.getPropertyValue(name).trim() || fallback;
 	const graphNodeColor = readVar("--graph-node", "rgb(138, 127, 216)");
 	const graphNodeFocused = colorToHex(readVar("--graph-node-focused", "rgb(74, 144, 217)"));
+	const seedPaper = graph.nodes.find((node) => node.isSeed);
 	const nodeColor = (node: PaperNode): string => {
 		if (colorMode === "community") return communityColor(communities.get(node.id) ?? 0);
 		if (colorMode === "year") return yearColor(node.year, minYear, maxYear);
+		if (colorMode === "topic") return topicSimilarityColor(topicSimilarity(node.topicTags, seedPaper?.topicTags));
 		return graphNodeColor;
 	};
 	let placed = placeLayout(layoutMode, graph.nodes, graph.edges, graph.seedScore);
@@ -1045,7 +1048,8 @@ function drawEdges(
 			}
 			// 对齐 Obsidian 图谱：默认细浅中性灰，聚焦时才按关系类型着色。
 			const focused = focus !== null && emphasized;
-			const radius = focused ? 0.7 : 0.4;
+			const relatedness = Math.max(0, Math.min(1, item.edge.structuralSimilarity === null ? 0 : item.edge.structuralSimilarity ?? item.edge.weight));
+			const radius = 0.35 + Math.sqrt(relatedness) * 0.85 + (focused ? 0.15 : 0);
 			placeShaft(i, item, radius);
 			const kind = relationKind(item.edge);
 			visibleMesh.setColorAt(i, focused ? new Color(RELATION_COLOR[kind]) : emphasized ? edgeGray : edgeFaint);

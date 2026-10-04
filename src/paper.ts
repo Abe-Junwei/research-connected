@@ -83,7 +83,8 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		language: cleanToken(raw.language),
 		workType: cleanToken(raw.type),
 		retracted: raw.is_retracted === true,
-		concepts: conceptNames(raw.concepts),
+		concepts: conceptNames(raw.topics, raw.concepts),
+		topicTags: topicTags(raw.topics, raw.concepts),
 	};
 }
 
@@ -132,8 +133,8 @@ function cleanToken(value: string | null | undefined): string | null {
 	return trimmed || null;
 }
 
-function conceptNames(concepts: RawWork["concepts"]): string[] {
-	const ranked = [...(concepts ?? [])].sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0));
+function conceptNames(topics: RawWork["topics"], concepts: RawWork["concepts"]): string[] {
+	const ranked = [...(topics?.length ? topics : concepts ?? [])].sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0));
 	const names: string[] = [];
 	const seen = new Set<string>();
 	for (const item of ranked) {
@@ -146,6 +147,22 @@ function conceptNames(concepts: RawWork["concepts"]): string[] {
 		if (names.length >= 8) break;
 	}
 	return names;
+}
+
+function topicTags(topics: RawWork["topics"], concepts: RawWork["concepts"]): Array<{ id: string; name: string; score: number }> {
+	if (topics?.length) {
+		return topics.flatMap((topic) => {
+			const id = topic?.id?.trim();
+			const name = topic?.display_name?.trim();
+			if (!id || !name) return [];
+			return [{ id, name, score: Math.max(0, Math.min(1, topic?.score ?? 1)) }];
+		});
+	}
+	return (concepts ?? []).flatMap((concept) => {
+		const name = concept?.display_name?.trim();
+		if (!name) return [];
+		return [{ id: `name:${name.toLocaleLowerCase()}`, name, score: Math.max(0, Math.min(1, concept?.score ?? 1)) }];
+	});
 }
 
 function formatAuthors(authorships: RawWork["authorships"]): string {

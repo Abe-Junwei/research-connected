@@ -302,6 +302,7 @@ function readColor(value: string): ColorMode | null {
 	if (key === "graph" || key === "mono" || key === "plain") return "graph";
 	if (key === "community" || key === "cluster") return "community";
 	if (key === "year") return "year";
+	if (key === "topic" || key === "topics") return "topic";
 	return null;
 }
 

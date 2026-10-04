@@ -56,7 +56,7 @@ export function buildFilters(
 	);
 	const language = selectField("语言");
 	const workType = selectField("类型");
-	const concept = selectField("概念");
+	const concept = selectField("主题");
 	language.label.hidden = true;
 	workType.label.hidden = true;
 	concept.label.hidden = true;

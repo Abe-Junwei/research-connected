@@ -8,7 +8,7 @@ import { citationRadius } from "./visual";
 export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
 /** `graph` is the default: monochrome like Obsidian's Graph view. `community`/`year` stay optional. */
-export type ColorMode = "year" | "community" | "graph";
+export type ColorMode = "year" | "community" | "graph" | "topic";
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: "时间",

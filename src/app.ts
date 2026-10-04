@@ -124,9 +124,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	legend.hidden = true;
 	const rampWrap = el(legend, "span", "cpo-ramp-wrap");
 	rampWrap.hidden = true;
-	el(rampWrap, "span", undefined, "较早");
-	el(rampWrap, "span", "cpo-ramp");
-	el(rampWrap, "span", undefined, "较新");
+	const rampStart = el(rampWrap, "span", undefined, "较早");
+	const ramp = el(rampWrap, "span", "cpo-ramp");
+	const rampEnd = el(rampWrap, "span", undefined, "较新");
 	el(legend, "span", undefined, "圆点略大表示被引更多");
 	el(legend, "span", undefined, "双环是种子");
 	const toolsHost = el(drawer, "div");
@@ -478,7 +478,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		onLayout: (mode) => map.setLayout(mode),
 		onColor: (mode) => {
 			map.setColorMode(mode);
-			rampWrap.hidden = mode !== "year";
+			rampWrap.hidden = mode !== "year" && mode !== "topic";
+			rampStart.textContent = mode === "topic" ? "较低" : "较早";
+			rampEnd.textContent = mode === "topic" ? "较高" : "较新";
+			ramp.classList.toggle("cpo-topic-ramp", mode === "topic");
 		},
 		onScrub: (year) => {
 			scrubYear = year;
@@ -544,14 +547,21 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (!paper.isSeed) {
 			const score = graph.seedScore.get(paper.id);
 			if (score !== undefined) {
-				el(detail, "p", "cpo-score", `与种子相近程度 ${score.toFixed(2)}`);
+				el(detail, "p", "cpo-score", `图谱综合相近度 ${score.toFixed(2)}（含引用与结构信号）`);
+				const seedId = graph.nodes.find((node) => node.isSeed)?.id;
+				const edge = seedId ? findEdge(graph.edges, seedId, paper.id) : null;
+				if (edge?.structuralSimilarity === null) {
+					el(detail, "p", "cpo-score", "文献结构相似度不可用（当前缺少可比较数据）");
+				} else if (typeof edge?.structuralSimilarity === "number") {
+					el(detail, "p", "cpo-score", `文献结构相似度 ${edge.structuralSimilarity.toFixed(2)}（共享参考文献 / 共被引）`);
+				}
 			}
 		}
 		el(detail, "p", "cpo-authors", paper.authors);
 		const facets = [
 			paper.language ? `语言 ${paper.language}` : "",
 			paper.workType ? `类型 ${paper.workType}` : "",
-			paper.concepts.length > 0 ? `概念 ${paper.concepts.slice(0, 3).join("、")}` : "",
+			paper.concepts.length > 0 ? `主题 ${paper.concepts.slice(0, 3).join("、")}` : "",
 		].filter(Boolean);
 		if (facets.length > 0) el(detail, "p", "cpo-meta", facets.join(" · "));
 		const check = graph.crossCheck?.get(paper.id);

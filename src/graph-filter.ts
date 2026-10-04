@@ -48,18 +48,9 @@ export function emptyFilter(): GraphFilter {
 export function strengthTier(edge: GraphEdge): StrengthTier {
 	const kind = relationKind(edge);
 	if (kind === "weak") return "weak";
-	if (kind === "direct") {
-		if (edge.direct === "mutual" || edge.weight >= 0.35) return "strong";
-		if (edge.weight >= 0.18) return "mid";
-		return "weak";
-	}
-	if (kind === "cocitation") {
-		if (edge.coCitedBy >= 4) return "strong";
-		if (edge.coCitedBy >= 2) return "mid";
-		return "weak";
-	}
-	if (edge.sharedRefs >= 8) return "strong";
-	if (edge.sharedRefs >= 3) return "mid";
+	const score = edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight;
+	if (score >= 0.55) return "strong";
+	if (score >= 0.22) return "mid";
 	return "weak";
 }
 

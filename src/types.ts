@@ -15,8 +15,10 @@ export interface PaperNode {
 	language: string | null;
 	/** OpenAlex work type, such as `article`, when present. */
 	workType: string | null;
-	/** Concept display names OpenAlex attached to the work. Empty when the field is absent. */
+	/** Topic/concept display names OpenAlex attached to the work. Empty when absent. */
 	concepts: string[];
+	/** Current OpenAlex topic classifications, with IDs and per-work scores. */
+	topicTags?: Array<{ id: string; name: string; score: number }>;
 	/** True when OpenAlex flags the work as retracted (is_retracted). */
 	retracted: boolean;
 }
@@ -27,8 +29,10 @@ export type DirectLink = "none" | "source-cites-target" | "target-cites-source" 
 export interface GraphEdge {
 	source: string;
 	target: string;
-	/** Combined similarity, 0–1. Layout and thickness use this. */
+	/** Combined graph score, 0–1. Used for graph sampling and layout. */
 	weight: number;
+	/** Reference/citation-network similarity, normalized 0–1 and excluding direct citations. */
+	structuralSimilarity?: number | null;
 	/** Bibliographic-coupling cosine of the two reference sets. */
 	coupling: number;
 	/** Size of the reference-set intersection. */

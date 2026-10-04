@@ -13,6 +13,7 @@ export interface RawWork {
 	type?: string | null;
 	is_retracted?: boolean;
 	concepts?: Array<{ display_name?: string | null; score?: number | null } | null> | null;
+	topics?: Array<{ id?: string | null; display_name?: string | null; score?: number | null } | null> | null;
 }
 
 export type GetJson = (
@@ -25,7 +26,7 @@ export interface OpenAlexAuth {
 	contactEmail: string;
 }
 
-const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,concepts";
+const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts";
 const WORK_SELECT = `${LIST_SELECT},abstract_inverted_index,referenced_works,related_works`;
 const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
 

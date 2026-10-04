@@ -3,14 +3,17 @@ import type { DirectLink, GraphEdge } from "./types";
 /**
  * Connected Papers-style approximation from a sampled OpenAlex neighborhood.
  *
- * score(A, B) = 0.55 * bibliographic coupling
- *             + 0.35 * co-citation
- *             + 0.10 * direct citation
+ * graphScore(A, B) = 0.55 * bibliographic coupling
+ *                  + 0.35 * co-citation
+ *                  + 0.10 * direct citation
+ *
+ * structuralSimilarity is the first two signals normalized to 0–1. It is
+ * kept separate so visual edge thickness does not mistake a citation arrow
+ * for scholarly resemblance.
  *
  * Coupling is the cosine of the two reference sets. Co-citation uses the
- * reference lists of papers that cite the seed as contexts (how often A and B
- * are cited together in that sample). Direct citation is 1 when either work
- * lists the other.
+ * reference lists of sampled papers as contexts (how often A and B are cited
+ * together in that sample). Direct citation is 1 when either work lists the other.
  *
  * The seed keeps its top SEED_LINKS neighbors. Every other node keeps up to
  * PEER_LINKS neighbors above MIN_SCORE. Isolates still get their single best
@@ -88,6 +91,7 @@ function connect(
 			source: a,
 			target: b,
 			weight: Math.min(1, weight),
+			structuralSimilarity: parts ? parts.structuralSimilarity : null,
 			coupling: parts?.coupling ?? 0,
 			sharedRefs: parts?.sharedRefs ?? 0,
 			coCitation: parts?.coCitation ?? 0,
@@ -149,6 +153,7 @@ function connect(
 
 interface PairParts {
 	weight: number;
+	structuralSimilarity: number | null;
 	coupling: number;
 	sharedRefs: number;
 	coCitation: number;
@@ -175,11 +180,13 @@ function pairParts(
 	const lowCitesHigh = lowRefs.has(high);
 	const highCitesLow = highRefs.has(low);
 	const direct = lowCitesHigh || highCitesLow ? 1 : 0;
+	const structuralRaw = COUPLING_WEIGHT * overlapped.cosine + COCITATION_WEIGHT * cited.score;
+	const hasStructureCoverage = (aRefs.size > 0 && bRefs.size > 0) || contexts.some((context) => context.size > 0);
 	return {
-		weight: Math.min(
-			1,
-			COUPLING_WEIGHT * overlapped.cosine + COCITATION_WEIGHT * cited.score + DIRECT_WEIGHT * direct,
-		),
+		weight: Math.min(1, structuralRaw + DIRECT_WEIGHT * direct),
+		structuralSimilarity: hasStructureCoverage
+			? Math.min(1, structuralRaw / (COUPLING_WEIGHT + COCITATION_WEIGHT))
+			: null,
 		coupling: overlapped.cosine,
 		sharedRefs: overlapped.shared,
 		coCitation: cited.score,

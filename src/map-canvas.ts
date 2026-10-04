@@ -5,6 +5,7 @@ import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { placeLayout } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
+import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { clamp, yearColor } from "./visual";
 
@@ -722,9 +723,10 @@ export class SimilarityMap {
 			ctx.moveTo(ax, ay);
 			ctx.lineTo(bx, by);
 			ctx.strokeStyle = strokeStyle;
-			ctx.lineWidth = focused ? 1.6 : 1;
+			const relatedness = clamp(edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight, 0, 1);
+			ctx.lineWidth = clamp(0.8 + Math.sqrt(relatedness) * 2.1 + (focused ? 0.35 : 0), 0.8, 3.25);
 			ctx.stroke();
-			if (kind !== "direct" || dimmed) continue;
+			if (kind !== "direct") continue;
 			ctx.fillStyle = strokeStyle;
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
@@ -867,6 +869,10 @@ export class SimilarityMap {
 	private colorOf(node: PaperNode): string {
 		if (this.colorMode === "community") return communityColor(this.communities.get(node.id) ?? 0);
 		if (this.colorMode === "year") return yearColor(node.year, this.minYear, this.maxYear);
+		if (this.colorMode === "topic") {
+			const seed = this.nodes.find((candidate) => candidate.isSeed);
+			return topicSimilarityColor(topicSimilarity(node.topicTags, seed?.topicTags));
+		}
 		return this.graphNode;
 	}
 

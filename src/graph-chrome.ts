@@ -67,6 +67,7 @@ const COLOR_LABEL: Record<ColorMode, string> = {
 	graph: "单色",
 	community: "社区",
 	year: "年份",
+	topic: "主题相似",
 };
 
 /** Layout, color, year scrubber, list tabs, and export actions. Shared by the embed and the pane. */
@@ -94,7 +95,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	let layout = options.layout;
 	let color = options.color;
 	const updateHint = (): void => {
-		hint.textContent = `${LAYOUT_HINT[layout]}${color === "community" ? " 节点颜色表示算法识别的相似性社区，不等同于研究主题或学派。" : ""}`;
+		hint.textContent = `${LAYOUT_HINT[layout]} 线宽表示文献结构相似度；箭头表示直接引用方向。${color === "community" ? " 节点颜色表示算法识别的相似性社区，不等同于研究主题或学派。" : color === "topic" ? " 节点颜色表示与种子共享 OpenAlex 主题的相似度；缺少主题元数据时显示灰色。" : ""}`;
 	};
 	updateHint();
 	const readout = document.createElement("span");
@@ -129,7 +130,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	}
 
 	const colorButtons = new Map<ColorMode, HTMLButtonElement>();
-	for (const mode of ["graph", "community", "year"] as const) {
+	for (const mode of ["graph", "community", "year", "topic"] as const) {
 		const button = pressButton(COLOR_LABEL[mode], mode === color, () => {
 			color = mode;
 			for (const [key, item] of colorButtons) setPressed(item, key === mode);

@@ -134,7 +134,7 @@ export function mergeOpenCitation(graph: SimilarityGraph, citingId: string, cite
 	graph.citationEvidence.set(directEvidence(a, b, inOpenAlex, true));
 	const edge = graph.edges.find(e => (e.source === citingId && e.target === citedId) || (e.target === citingId && e.source === citedId));
 	if (!edge) {
-		graph.edges.push({ source: citingId, target: citedId, weight: 0.1, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
+		graph.edges.push({ source: citingId, target: citedId, weight: 0.1, structuralSimilarity: null, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target" });
 	} else {
 		const direction = edge.source === citingId ? "source-cites-target" : "target-cites-source";
 		if (edge.direct === "none") edge.direct = direction;

@@ -24,11 +24,12 @@ import { runForceLayout } from "../src/layout";
 import { runForceLayout3D } from "../src/layout-3d";
 import { loadNeighborhood, selectNeighbors, countsMismatched, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
-import { classifyQuery, reconstructAbstract } from "../src/paper";
+import { classifyQuery, reconstructAbstract, toPaper } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
+import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
 import type { PaperNode } from "../src/types";
 
 function weighted(source: string, target: string, weight: number): GraphEdge {
@@ -87,6 +88,20 @@ function unit(): void {
 		reconstructAbstract({ Deep: [0], learning: [1], learns: [3], representations: [2] }),
 		"Deep learning representations learns",
 	);
+	const topicPaper = toPaper({
+		id: "https://openalex.org/W1",
+		display_name: "Topic work",
+		topics: [
+			{ id: "https://openalex.org/T1", display_name: "Language", score: 0.9 },
+			{ id: "https://openalex.org/T2", display_name: "Cognition", score: 0.4 },
+		],
+	}, "seed");
+	assert.deepEqual(topicPaper?.topicTags?.map((topic) => topic.id), ["https://openalex.org/T1", "https://openalex.org/T2"]);
+	assert.equal(topicPaper?.concepts[0], "Language");
+	assert.equal(topicSimilarity(topicPaper?.topicTags, topicPaper?.topicTags), 1);
+	assert.ok((topicSimilarity(topicPaper?.topicTags, [{ id: "https://openalex.org/T1", name: "Language", score: 1 }]) ?? 0) > 0);
+	assert.equal(topicSimilarity(undefined, topicPaper?.topicTags), null);
+	assert.notEqual(topicSimilarityColor(1), topicSimilarityColor(0));
 
 	assert.equal(allowedExternalUrl("https://doi.org/10.1038/nature14539")?.startsWith("https://doi.org/"), true);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
@@ -116,6 +131,7 @@ function unit(): void {
 			(edge.source === "S" && edge.target === "P") || (edge.source === "P" && edge.target === "S"),
 	);
 	assert.ok(sp, "expected an S–P edge");
+	assert.ok((sp.structuralSimilarity ?? 0) > 0.7);
 	assert.equal(sp.sharedRefs, 3);
 	assert.equal(sp.coCitedBy, 2);
 	assert.equal(sp.direct, "none");
@@ -146,13 +162,13 @@ function unit(): void {
 
 	const weakEdge = weighted("S", "Q", 0.04);
 	assert.equal(strengthTier(weakEdge), "weak");
-	const midCite = { ...weighted("A", "B", 0.2), coCitedBy: 2, coCitation: 0.4 };
+	const midCite = { ...weighted("A", "B", 0.2), structuralSimilarity: 0.4, coCitedBy: 2, coCitation: 0.4 };
 	assert.equal(relationKind(midCite), "cocitation");
 	assert.equal(strengthTier(midCite), "mid");
-	const strongCouple = { ...weighted("A", "B", 0.5), sharedRefs: 8, coupling: 0.4 };
+	const strongCouple = { ...weighted("A", "B", 0.5), structuralSimilarity: 0.6, sharedRefs: 8, coupling: 0.4 };
 	assert.equal(strengthTier(strongCouple), "strong");
-	const mutual = { ...weighted("S", "P", 0.2), direct: "mutual" as const };
-	assert.equal(strengthTier(mutual), "strong");
+	const mutual = { ...weighted("S", "P", 0.2), structuralSimilarity: 0, direct: "mutual" as const };
+	assert.equal(strengthTier(mutual), "weak", "citation direction should not inflate similarity thickness");
 	const sample = paper("S", "seed", 10);
 	const older = { ...paper("A", "reference", 3), year: 1980, language: "en", workType: "article", concepts: ["Deep learning"] };
 	const peer = paper("B", "citation", 4);
@@ -334,6 +350,9 @@ function unit(): void {
 		assert.equal(laidOut.spec.layout, "force2d");
 		assert.equal(laidOut.spec.color, "year");
 	}
+	const topicColor = parseEmbed("doi: 10.1038/nature14539\ncolor: topic\n");
+	assert.equal(topicColor.ok, true);
+	if (topicColor.ok) assert.equal(topicColor.spec.color, "topic");
 	assert.equal(parseEmbed("doi: 10.1038/nature14539\nlayout: sidebar\n").ok, false);
 	const kumuEmbed = parseEmbed("doi: 10.1038/nature14539\nlayout: kumu\n");
 	assert.equal(kumuEmbed.ok, true, "笔记内嵌可显式切换到 Kumu 风格社区布局");

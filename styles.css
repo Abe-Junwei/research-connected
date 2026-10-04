@@ -295,6 +295,10 @@
 	background: linear-gradient(90deg, #5a66cc, #35b098, #cca43f);
 }
 
+.cpo-ramp.cpo-topic-ramp {
+	background: linear-gradient(90deg, #becddb, #199d85);
+}
+
 .cpo-zoom {
 	position: absolute;
 	z-index: 4;
