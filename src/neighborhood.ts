@@ -240,7 +240,8 @@ export async function loadNeighborhood(
 					}
 				}
 			}
-		} catch {
+		} catch (error) {
+			console.warn("[research-connected] Semantic Scholar 交叉比对未完成：", error instanceof Error ? error.message : error);
 			warnings.push("crosscheck");
 		}
 	}

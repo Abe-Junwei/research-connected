@@ -50,6 +50,37 @@ export class CrossrefClient {
 
 export class CitationSourceError extends Error {}
 
+const S2_QUOTA_TEXT = "Semantic Scholar 额度已用完或请求过快。可在设置中填写 API 密钥，或稍后再试。";
+const S2_QUOTA_MESSAGE = /too many requests|rate.?limit|quota|throttl/i;
+
+/** Compact description of an unexpected Semantic Scholar payload, for diagnostics. */
+function describeS2Shape(json: unknown): string {
+	if (json === null) return "null";
+	if (Array.isArray(json)) return `数组(${json.length} 条)`;
+	if (typeof json === "object") {
+		const keys = Object.keys(json as Record<string, unknown>).slice(0, 6).join(", ");
+		const message = (json as { message?: unknown }).message;
+		return `{${keys}}${typeof message === "string" ? `，message="${message.slice(0, 160)}"` : ""}`;
+	}
+	return typeof json;
+}
+
+/**
+ * S2 edge nodes occasionally answer 200 with an error body instead of data.
+ * Log the actual shape so swallowed reconcile failures stay diagnosable, and
+ * map recognizable quota messages back to the quota wording.
+ */
+function s2FormatError(context: string, json: unknown): CitationSourceError {
+	console.warn(`[research-connected] Semantic Scholar ${context}返回了非预期结构：${describeS2Shape(json)}`, json);
+	const message = json && typeof json === "object" ? (json as { message?: unknown }).message : undefined;
+	if (typeof message === "string" && S2_QUOTA_MESSAGE.test(message)) return new CitationSourceError(S2_QUOTA_TEXT);
+	return new CitationSourceError(`Semantic Scholar ${context}返回格式错误。`);
+}
+
+function pause(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class OpenCitationsClient {
 	constructor(private readonly getJson: GetJson, private readonly token: string) {}
 
@@ -111,15 +142,27 @@ export class SemanticScholarClient {
 		const out = new Map<string, S2Counts>();
 		for (let i = 0; i < dois.length; i += 500) {
 			const chunk = dois.slice(i, i + 500);
-			const json = await this.postJson(url.toString(), {
-				headers: {
-					Accept: "application/json",
-					"Content-Type": "application/json",
-					...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
-				},
-				body: JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) }),
-			});
-			if (!Array.isArray(json)) throw new CitationSourceError("Semantic Scholar 批量接口返回格式错误。");
+			let json: unknown = null;
+			let ok = false;
+			let lastError: unknown = new CitationSourceError("Semantic Scholar 批量接口返回格式错误。");
+			for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+				if (attempt > 0) await pause(1200);
+				try {
+					json = await this.postJson(url.toString(), {
+						headers: {
+							Accept: "application/json",
+							"Content-Type": "application/json",
+							...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+						},
+						body: JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) }),
+					});
+					if (Array.isArray(json)) ok = true;
+					else lastError = s2FormatError("批量接口", json);
+				} catch (error) {
+					lastError = error;
+				}
+			}
+			if (!ok) throw lastError;
 			for (const item of json as Array<{
 				citationCount?: number | null;
 				referenceCount?: number | null;
@@ -144,8 +187,7 @@ export class SemanticScholarClient {
 		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}/references`);
 		url.searchParams.set("fields", "externalIds");
 		url.searchParams.set("limit", "1000");
-		const result = await this.get<{ data?: Array<{ citedPaper?: { externalIds?: Record<string, string | null> | null } | null }> }>(url.toString());
-		if (!Array.isArray(result.data)) throw new CitationSourceError("Semantic Scholar 返回格式错误。");
+		const result = await this.getList<{ citedPaper?: { externalIds?: Record<string, string | null> | null } | null }>(url.toString(), "参考文献接口");
 		const dois: string[] = [];
 		for (const row of result.data) {
 			const ref = row?.citedPaper?.externalIds?.DOI?.toLowerCase();
@@ -162,8 +204,7 @@ export class SemanticScholarClient {
 			url.searchParams.set("fields", "contexts,intents,isInfluential,title,year,externalIds");
 			url.searchParams.set("limit", "1000");
 			url.searchParams.set("offset", String(offset));
-			const result = await this.get<{ data?: SemanticCitation[]; next?: number }>(url.toString());
-			if (!Array.isArray(result.data)) throw new CitationSourceError("Semantic Scholar 返回格式错误。");
+			const result = await this.getList<SemanticCitation>(url.toString(), "引用语义接口");
 			data.push(...result.data);
 			if (typeof result.next !== "number") return { data, partial: false };
 			if (result.next <= offset) throw new CitationSourceError("Semantic Scholar 分页无进展。");
@@ -176,20 +217,45 @@ export class SemanticScholarClient {
 	async abstract(doi: string): Promise<string | null> {
 		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}`);
 		url.searchParams.set("fields", "abstract");
-		const result = await this.get<{ abstract?: string | null }>(url.toString());
+		const result = (await this.get(url.toString())) as { abstract?: string | null };
 		const text = typeof result.abstract === "string" ? result.abstract.trim() : "";
 		return text || null;
 	}
 
-	private async get<T>(url: string): Promise<T> {
-		const json = await cachedGet(this.getJson, url, {
-			headers: {
-				Accept: "application/json",
-				...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
-			},
-		});
-		if (!json || typeof json !== "object") throw new CitationSourceError("引用数据源返回了无法识别的内容。");
-		return json as T;
+	/**
+	 * GET a paged list endpoint with one retry: S2 edge nodes occasionally
+	 * answer 200 with an error body, which a fresh request usually fixes.
+	 */
+	private async getList<T>(url: string, context: string): Promise<{ data: T[]; next?: number }> {
+		let lastError: unknown = new CitationSourceError(`Semantic Scholar ${context}返回格式错误。`);
+		for (let attempt = 0; attempt < 2; attempt++) {
+			if (attempt > 0) await pause(1200);
+			let result: unknown;
+			try {
+				result = await this.get(url);
+			} catch (error) {
+				lastError = error;
+				continue;
+			}
+			if (result && typeof result === "object" && Array.isArray((result as { data?: unknown }).data)) {
+				return result as { data: T[]; next?: number };
+			}
+			lastError = s2FormatError(context, result);
+		}
+		throw lastError;
+	}
+
+	private async get(url: string): Promise<unknown> {
+		const json = await cachedGet(this.getJson, url, { headers: this.headers() });
+		if (!json || typeof json !== "object") throw s2FormatError("接口", json);
+		return json;
+	}
+
+	private headers(): Record<string, string> {
+		return {
+			Accept: "application/json",
+			...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+		};
 	}
 }
 
