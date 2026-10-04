@@ -4,6 +4,7 @@ import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
+import type { LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -208,6 +209,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let scrubYear: number | null = null;
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
+	let selectedEdge: GraphEdge | null = null;
+	/** 轨道按钮持有的布局；建图后回灌给画布，保持按钮与实际渲染一致。 */
+	let layoutMode: LayoutMode = "force2d";
 	let semanticPairs: Array<{ citingId: string; citedId: string }> = [];
 	let timelineMetaGraph: SimilarityGraph | null = null;
 	let timelineMetaRequested = false;
@@ -347,10 +351,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const paper = graph?.nodes.find((item) => item.id === node.id);
 			if (paper) {
 				addLink(selection, "在详情中查看", () => {
-					tab = "graph";
+					activateGraphTab();
 					showDetail(paper);
-					detail.hidden = false;
-					listPanel.hidden = true;
 				});
 			}
 		} });
@@ -404,7 +406,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		drawFlows(svg, visible, edges, analysisMode, map.getCommunities(), papers => {
 			selection.replaceChildren();
 			for (const paper of papers) addLink(selection, paper.title, () => {
-				showDetail(paper); detail.hidden = false;
+				activateGraphTab(); showDetail(paper);
 			});
 		});
 	};
@@ -458,7 +460,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const button = el(listPanel, "button", "cpo-agg-item") as HTMLButtonElement;
 			button.type = "button";
 			button.textContent = `${paper?.year ?? "—"} · ${paper?.title ?? item.paperId} · 模型自评 ${item.confidence}`;
-			button.addEventListener("click", () => { if (paper) { showDetail(paper); detail.hidden = false; } });
+			button.addEventListener("click", () => { if (paper) { activateGraphTab(); showDetail(paper); } });
 			el(listPanel, "p", "cpo-side-tip", item.claim);
 			if (item.evidence.length) el(listPanel, "p", "cpo-evidence", item.evidence.join("；"));
 		}
@@ -510,7 +512,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
-		onLayout: (mode) => map.setLayout(mode),
+		onLayout: (mode) => {
+			layoutMode = mode;
+			map.setLayout(mode);
+		},
 		onScrub: (year) => {
 			scrubYear = year;
 			map.setScrubYear(year);
@@ -525,6 +530,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			void exportPane(kind);
 		},
 	});
+
+	/** 切回「图谱」页签并同步按钮高亮，供各列表里的详情链接统一调用。 */
+	const activateGraphTab = (): void => {
+		tab = "graph";
+		chrome?.setTab("graph");
+		paintLists();
+	};
 
 	const exportPane = async (kind: ExportKind): Promise<void> => {
 		if (!graph) return;
@@ -562,6 +574,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 
 	const showDetail = (paper: PaperNode | null): void => {
 		selectedPaper = paper;
+		selectedEdge = null;
 		semanticPairs = [];
 		semanticAction.hidden = true;
 		semanticAction.disabled = true;
@@ -569,6 +582,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (!paper || !graph) {
 			map.setSelected(null);
 			sheet.setSummary("点选节点查看论文", "");
+			openAlexAction.hidden = true;
+			doiAction.hidden = true;
 			el(detail, "p", "cpo-side-tip", "点选节点查看题名、年份、作者和证据。");
 			return;
 		}
@@ -687,7 +702,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				if (row) requestGraph.citationEvidence?.set(evidenceFromSemanticCitation(pair.citingId, pair.citedId, row));
 				else { button.textContent = result.partial ? "已查 3000 条参考文献，未匹配（结果不完整）" : "未找到匹配的引用语义"; button.disabled = false; return; }
 			}
-			showDetail(selectedPaper);
+			// 边视图就重绘边证据，节点详情就重绘节点——不要互相覆盖。
+			if (selectedEdge) showEdgeDetail(selectedEdge);
+			else showDetail(selectedPaper);
 			if (partial) el(detail, "p", "cpo-side-tip", "Semantic Scholar 只返回了前 3000 条参考文献，引用语义可能不完整。");
 		} catch (error) {
 			if (disposed || graph !== requestGraph || token !== generation) return;
@@ -714,10 +731,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	map.onSelect = (paper) => showDetail(paper);
-	map.onEdgeSelect = edge => {
+	const showEdgeDetail = (edge: GraphEdge): void => {
 		if (!graph) return;
 		const a = graph.nodes.find(p => p.id === edge.source), b = graph.nodes.find(p => p.id === edge.target);
 		if (!a || !b) return;
+		openAlexAction.hidden = true;
+		doiAction.hidden = true;
 		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
 		el(detail, "p", "cpo-evidence", evidenceText(edge, a, b, edgeSources(edge)));
@@ -735,6 +754,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			syncSemanticAction(pairs);
 			if (!loaded) semanticAction.title = "读取当前引用关系的 Semantic Scholar 引用语义";
 		}
+	};
+	map.onEdgeSelect = (edge) => {
+		selectedEdge = edge;
+		selectedPaper = null;
+		showEdgeDetail(edge);
 	};
 	showDetail(null);
 
@@ -759,8 +783,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
+		// setGraph 不再重置布局；把轨道按钮当前选中的布局回灌给画布。
+		map.setLayout(layoutMode);
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years));
+		else chrome?.clearYears();
 		scrubYear = null;
 		paintLists();
 		const strategyNames = [
@@ -933,6 +960,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		narrativeError = "";
 		if (!llmReady() && tab === "research") {
 			tab = "graph";
+			chrome?.setTab("graph");
 			listPanel.replaceChildren();
 			listPanel.hidden = true;
 		}

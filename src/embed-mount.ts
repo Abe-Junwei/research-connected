@@ -535,7 +535,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (remembered) graphView.setCamera(remembered.camera);
 			facetControls.fill(graph.nodes);
 			currentGraph = graph;
-			chrome?.setYears(...yearSpan(graph.nodes));
+			const span = yearSpan(graph.nodes);
+			if (span) chrome?.setYears(...span);
+			else chrome?.clearYears();
 			paintLists();
 		} catch (error) {
 			message.hidden = false;
@@ -959,9 +961,9 @@ function fillAggregate(
 	host.append(list);
 }
 
-function yearSpan(nodes: readonly PaperNode[]): [number, number] {
+function yearSpan(nodes: readonly PaperNode[]): [number, number] | null {
 	const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
-	if (years.length === 0) return [1990, 1990];
+	if (years.length === 0) return null;
 	return [Math.min(...years), Math.max(...years)];
 }
 

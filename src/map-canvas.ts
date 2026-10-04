@@ -123,7 +123,7 @@ export class SimilarityMap {
 		this.edges = edges;
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
 		this.communityLabels = communityTopicLabels(nodes, this.communities);
-		this.layoutMode = "temporal";
+		// 不重置 layoutMode：布局由应用层（chrome 按钮）持有，建图后回灌。
 		this.scrubYear = null;
 		this.colorMode = "topic";
 		this.rebuild(nodes, true);

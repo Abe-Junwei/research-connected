@@ -48,6 +48,10 @@ export interface GraphChromeOptions {
 export interface GraphChrome {
 	setResearchVisible(visible: boolean): void;
 	setYears(min: number, max: number): void;
+	/** 新图没有任何年份时收起滑块行，避免旧范围把节点全部过滤掉。 */
+	clearYears(): void;
+	/** 同步页签按钮高亮（不触发 onTab，由调用方自己渲染）。 */
+	setTab(tab: GraphTab): void;
 	setExportText(text: string): void;
 	destroy(): void;
 }
@@ -209,12 +213,21 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		},
 		setYears(min: number, max: number): void {
 			stop();
+			scrubRow.hidden = false;
 			minYear = min;
 			maxYear = Math.max(min, max);
 			range.min = String(minYear);
 			range.max = String(maxYear);
 			range.value = String(maxYear);
 			readout.textContent = "全部年份";
+		},
+		clearYears(): void {
+			stop();
+			scrubRow.hidden = true;
+			readout.textContent = "全部年份";
+		},
+		setTab(next: GraphTab): void {
+			for (const [key, item] of tabButtons) setPressed(item, key === next);
 		},
 		setExportText(text: string): void {
 			output.hidden = false;
