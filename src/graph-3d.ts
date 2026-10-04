@@ -1,19 +1,15 @@
 import {
-	AmbientLight,
 	CircleGeometry,
 	Color,
 	ConeGeometry,
 	CylinderGeometry,
-	DirectionalLight,
 	InstancedMesh,
 	Mesh,
 	MeshBasicMaterial,
-	MeshStandardMaterial,
 	Object3D,
 	PerspectiveCamera,
 	Raycaster,
 	Scene,
-	SphereGeometry,
 	MOUSE,
 	SRGBColorSpace,
 	TOUCH,
@@ -75,8 +71,10 @@ interface SphereEntry {
 	seed: boolean;
 	dim: boolean;
 	radius: number;
-	standardMaterial: MeshStandardMaterial;
-	flatMaterial: MeshBasicMaterial;
+	color: number;
+	material: MeshBasicMaterial;
+	outline: MeshBasicMaterial;
+	selectionRing: Mesh | null;
 }
 
 interface DrawnEdge {
@@ -109,13 +107,14 @@ export function mountGraph3D(
 	let filter = options.filter;
 	let layoutMode = options.layout;
 	let colorMode = options.colorMode;
-	const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+	const renderer = new WebGLRenderer({ antialias: true, alpha: true });
 	if (!renderer.getContext()) {
 		renderer.dispose();
 		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setClearColor(0xffffff, 1);
+	// 背景交给 CSS 径向渐变，对齐图谱面板；画布自身透明。
+	renderer.setClearColor(0x000000, 0);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
 	viewport.append(canvas);
@@ -130,10 +129,6 @@ export function mountGraph3D(
 	viewport.classList.toggle("cpo-kumu-view", layoutMode === "kumu");
 
 	const scene = new Scene();
-	scene.add(new AmbientLight(0xffffff, 0.7));
-	const key = new DirectionalLight(0xffffff, 1.15);
-	key.position.set(120, 180, 80);
-	scene.add(key);
 
 	const papers = new Map(graph.nodes.map((node) => [node.id, node]));
 	const communities = detectCommunities(
@@ -155,41 +150,62 @@ export function mountGraph3D(
 	};
 	let placed = placeLayout(layoutMode, graph.nodes, graph.edges, graph.seedScore);
 	const byId = new Map(placed.map((node) => [node.id, node]));
-	const sphere = new SphereGeometry(1, 22, 16);
-	const circle = new CircleGeometry(1, 32);
+	// 对齐图谱面板：所有布局都用平涂圆盘（每帧朝向相机），不再用光照球体。
+	const circle = new CircleGeometry(1, 40);
+	const outlineGeo = new CircleGeometry(1.08, 40);
+	const seedGlowGeo = new CircleGeometry(2.05, 40);
+	const seedRingGeoA = new TorusGeometry(1.42, 0.055, 8, 48);
+	const seedRingGeoB = new TorusGeometry(1.78, 0.04, 8, 48);
+	const selectionRingGeo = new TorusGeometry(1.32, 0.075, 8, 48);
 	const entries: SphereEntry[] = [];
-	const geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [sphere, circle];
+	const geometries: Array<CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [
+		circle,
+		outlineGeo,
+		seedGlowGeo,
+		seedRingGeoA,
+		seedRingGeoB,
+		selectionRingGeo,
+	];
 	const materials: Material[] = [];
+	const noRaycast = (): void => undefined;
+	const seedGlowMat = new MeshBasicMaterial({ color: 0x3c4046, transparent: true, opacity: 0.1, depthWrite: false });
+	const seedRingMatA = new MeshBasicMaterial({ color: 0x333943 });
+	const seedRingMatB = new MeshBasicMaterial({ color: 0x333943, transparent: true, opacity: 0.45 });
+	const selectionRingMat = new MeshBasicMaterial({ color: graphNodeFocused });
+	materials.push(seedGlowMat, seedRingMatA, seedRingMatB, selectionRingMat);
 
 	for (const node of graph.nodes) {
 		const at = byId.get(node.id);
 		if (!at) continue;
-		const material = new MeshStandardMaterial({
-			color: colorToHex(nodeColor(node)),
-			roughness: 0.42,
-			metalness: 0.08,
-			emissive: node.isSeed ? 0xfff1cc : 0x000000,
-			emissiveIntensity: node.isSeed ? 0.4 : 0,
-			transparent: true,
-			opacity: 1,
-		});
-		const flatMaterial = new MeshBasicMaterial({ color: colorToHex(nodeColor(node)) });
-		materials.push(material, flatMaterial);
-		const mesh = new Mesh(layoutMode === "kumu" ? circle : sphere, layoutMode === "kumu" ? flatMaterial : material);
+		const baseColor = colorToHex(nodeColor(node));
+		const material = new MeshBasicMaterial({ color: baseColor, transparent: true, opacity: 1 });
+		const outline = new MeshBasicMaterial({ color: shadeHex(baseColor, 0.85), transparent: true, opacity: 1 });
+		materials.push(material, outline);
+		const mesh = new Mesh(circle, material);
 		mesh.position.set(at.x, at.y, at.z);
 		mesh.scale.setScalar(at.radius);
 		mesh.userData.paperId = node.id;
 		mesh.userData.seed = node.isSeed;
+		// 同色系加深一圈，对齐面板节点的 1px 深色描边。
+		const rim = new Mesh(outlineGeo, outline);
+		rim.position.z = -0.01;
+		rim.raycast = noRaycast;
+		mesh.add(rim);
 		if (node.isSeed) {
-			const ringMaterial = new MeshBasicMaterial({ color: 0x333943 });
-			materials.push(ringMaterial);
-			const torus = new TorusGeometry(1.42, 0.05, 8, 40);
-			geometries.push(torus);
-			const ringA = new Mesh(torus, ringMaterial);
-			const ringB = new Mesh(torus, ringMaterial);
-			ringB.rotation.x = Math.PI / 2;
-			mesh.add(ringA, ringB);
+			// 种子：柔光晕 + 双环，对齐面板样式。
+			const glow = new Mesh(seedGlowGeo, seedGlowMat);
+			glow.position.z = -0.02;
+			glow.raycast = noRaycast;
+			const ringA = new Mesh(seedRingGeoA, seedRingMatA);
+			ringA.raycast = noRaycast;
+			const ringB = new Mesh(seedRingGeoB, seedRingMatB);
+			ringB.raycast = noRaycast;
+			mesh.add(glow, ringA, ringB);
 		}
+		const selectionRing = new Mesh(selectionRingGeo, selectionRingMat);
+		selectionRing.visible = false;
+		selectionRing.raycast = noRaycast;
+		mesh.add(selectionRing);
 		scene.add(mesh);
 		const text = nodeLabel(node, options.labels);
 		let label: HTMLElement | null = null;
@@ -208,8 +224,10 @@ export function mountGraph3D(
 			seed: node.isSeed,
 			dim: false,
 			radius: at.radius,
-			standardMaterial: material,
-			flatMaterial,
+			color: baseColor,
+			material,
+			outline,
+			selectionRing,
 		});
 	}
 
@@ -262,25 +280,20 @@ export function mountGraph3D(
 	let downY = 0;
 	let moved = false;
 
+	// 对齐图谱面板 drawNode：悬停微微放大，graph 着色模式下悬停/选中改填充色，
+	// 选中套一圈聚焦色圆环，焦点之外的节点淡化到 0.25。
 	const paint = (): void => {
 		for (const entry of entries) {
-			const material = entry.mesh.material;
-			if (!(material instanceof MeshStandardMaterial)) continue;
-			if (entry.id === selectedId) {
-				material.emissive.set(graphNodeFocused);
-				material.emissiveIntensity = 0.62;
-			} else if (entry.id === hoverId) {
-				material.emissive.set(0x9aa0a6);
-				material.emissiveIntensity = 0.35;
-			} else if (entry.seed) {
-				material.emissive.set(0xfff1cc);
-				material.emissiveIntensity = 0.4;
-			} else {
-				material.emissive.set(0x000000);
-				material.emissiveIntensity = 0;
+			const active = entry.id === selectedId || entry.id === hoverId;
+			entry.material.color.set(active && colorMode === "graph" ? graphNodeFocused : entry.color);
+			entry.material.opacity = entry.dim ? 0.25 : 1;
+			entry.material.depthWrite = !entry.dim;
+			entry.outline.opacity = entry.dim ? 0.25 : 1;
+			entry.outline.depthWrite = !entry.dim;
+			entry.mesh.scale.setScalar(entry.radius * (entry.id === hoverId ? 1.18 : 1));
+			if (entry.selectionRing) {
+				entry.selectionRing.visible = entry.id === selectedId && !entry.seed && !entry.dim;
 			}
-			material.opacity = entry.dim ? 0.16 : 1;
-			material.depthWrite = !entry.dim;
 		}
 		schedule();
 	};
@@ -458,6 +471,8 @@ export function mountGraph3D(
 		raf = 0;
 		if (!alive || !running) return;
 		const settling = controls.update();
+		// 圆盘与面板圆点一样始终正对相机，旋转视角时不变形。
+		for (const entry of entries) entry.mesh.quaternion.copy(camera.quaternion);
 		renderer.render(scene, camera);
 		placeLabels();
 		if (settling) schedule();
@@ -604,33 +619,29 @@ export function mountGraph3D(
 		for (const entry of entries) {
 			const paper = papers.get(entry.id);
 			if (!paper) continue;
-			const color = colorToHex(nodeColor(paper));
-			entry.standardMaterial.color.set(color);
-			entry.flatMaterial.color.set(color);
+			entry.color = colorToHex(nodeColor(paper));
+			entry.outline.color.set(shadeHex(entry.color, 0.85));
 		}
-		schedule();
+		paint();
 	};
 
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
 		const kumuStyle = mode === "kumu";
-		renderer.setClearColor(0xffffff, 1);
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
 		for (const entry of entries) {
 			const at = next.get(entry.id);
 			if (!at) continue;
-			entry.mesh.geometry = kumuStyle ? circle : sphere;
-			entry.mesh.material = kumuStyle ? entry.flatMaterial : entry.standardMaterial;
+			entry.radius = at.radius;
 			entry.mesh.position.set(at.x, at.y, at.z);
-			entry.mesh.scale.setScalar(at.radius);
 		}
 		drawn.setKumuStyle();
 		drawn.relayout(next);
 		applyPointerMode();
 		frameCamera();
-		schedule();
+		paint();
 	};
 
 	const zoomBy = (factor: number): void => {
@@ -698,7 +709,7 @@ function drawEdges(
 	graph: SimilarityGraph,
 	byId: ReadonlyMap<string, { x: number; y: number; z: number; radius: number }>,
 	scene: Scene,
-	geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
+	geometries: Array<CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
 	materials: Material[],
 ): {
 	edges: DrawnEdge[];
@@ -732,9 +743,9 @@ function drawEdges(
 	const shaft = new CylinderGeometry(1, 1, 1, 6, 1);
 	const head = new ConeGeometry(1, 1, 8);
 	geometries.push(shaft, head);
-	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8 });
+	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 1 });
 	const hitMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.7 });
+	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 1 });
 	materials.push(visibleMaterial, hitMaterial, arrowMaterial);
 	const visibleMesh = new InstancedMesh(shaft, visibleMaterial, edges.length);
 	const hitMesh = new InstancedMesh(shaft, hitMaterial, edges.length);
@@ -742,8 +753,9 @@ function drawEdges(
 	const dummy = new Object3D();
 	const direction = new Vector3();
 	const up = new Vector3(0, 1, 0);
-	const edgeGray = new Color(0xaab0bb);
-	const edgeFaint = new Color(0xe0e3e9);
+	// 颜色按面板 --graph-line 在白底上的合成值预调：默认 rgba(90,96,106,0.28)，淡化 0.1。
+	const edgeGray = new Color(0xd1d3d5);
+	const edgeFaint = new Color(0xedeef0);
 
 	const hide = (): void => {
 		dummy.position.set(0, -100000, 0);
@@ -766,14 +778,15 @@ function drawEdges(
 		direction.set(towardX, towardY, towardZ);
 		const span = direction.length() || 1;
 		direction.multiplyScalar(1 / span);
-		const height = 16;
+		// 对齐面板的小三角箭头：贴着节点边缘，尺寸收敛不抢视觉。
+		const height = 9;
 		dummy.quaternion.setFromUnitVectors(up, direction);
 		dummy.position.set(
 			x - direction.x * (radius + height / 2),
 			y - direction.y * (radius + height / 2),
 			z - direction.z * (radius + height / 2),
 		);
-		dummy.scale.set(4.4, height, 4.4);
+		dummy.scale.set(2.6, height, 2.6);
 		dummy.updateMatrix();
 		arrowMesh.setMatrixAt(slot, dummy.matrix);
 	};
@@ -862,4 +875,12 @@ function colorToHex(rgb: string): number {
 	const g = Number(match[2] ?? 0);
 	const b = Number(match[3] ?? 0);
 	return (r << 16) + (g << 8) + b;
+}
+
+/** 同色系加深一点，对齐面板节点的深色描边（shadeColor 的 hex 版）。 */
+function shadeHex(hex: number, factor: number): number {
+	const r = Math.round(((hex >> 16) & 255) * factor);
+	const g = Math.round(((hex >> 8) & 255) * factor);
+	const b = Math.round((hex & 255) * factor);
+	return (Math.min(r, 255) << 16) + (Math.min(g, 255) << 8) + Math.min(b, 255);
 }

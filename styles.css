@@ -756,6 +756,11 @@
 	position: relative;
 	flex: 1;
 	min-height: 0;
+	background: radial-gradient(circle at 50% 50%, var(--cpo-canvas-bg-start, #ffffff) 0%, var(--cpo-canvas-bg-end, #f7f6f3) 78%);
+}
+
+.cpo-embed-stage.cpo-kumu-view {
+	background: #ffffff;
 }
 
 .cpo-embed-canvas {
