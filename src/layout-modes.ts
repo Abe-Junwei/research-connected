@@ -4,26 +4,26 @@ import { detectCommunities } from "./communities";
 import type { GraphEdge, PaperNode } from "./types";
 import { citationRadius } from "./visual";
 
-/** Public map choices are years and communities; legacy embed values normalize to one of these. */
+/** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
 /** Node color always represents seed-relative topic similarity. */
 export type ColorMode = "year" | "community" | "graph" | "topic";
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
-	temporal: "年份",
-	radial: "年份",
-	force2d: "年份",
-	force3d: "年份",
-	kumu: "社区",
+	temporal: "时间",
+	radial: "放射",
+	force2d: "平面",
+	force3d: "三维",
+	kumu: "圈层",
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横向按年份线性排列，间隔与年份差成正比；纵向为对数被引量。未知年份单独放在左侧。颜色表示与种子主题相似度。",
-	radial: "兼容旧嵌入配置；按年份横向排列。",
-	force2d: "兼容旧嵌入配置；按年份横向排列。",
-	force3d: "兼容旧嵌入配置；按年份横向排列。",
-	kumu: "按引用网络结构聚成社区；区域标签汇总成员论文的 OpenAlex 主题词，区域不代表真实学派。颜色仍表示与种子主题相似度。",
+	temporal: "横向按年份线性排列，间隔与年份差成正比；纵向为对数被引量。未知年份单独放在左侧。",
+	radial: "种子在中心，越近表示和种子越相似；角度只是均匀排开，不代表引用方向。",
+	force2d: "平面力导向，种子固定在中心。",
+	force3d: "三维力导向。拖拽旋转，滚轮缩放。",
+	kumu: "按引用网络结构聚成社区；区域标签汇总成员论文的 OpenAlex 主题词，区域不代表真实学派。",
 };
 
 export interface PlacedNode {

@@ -357,8 +357,8 @@ function unit(): void {
 	const laidOut = parseEmbed("doi: 10.1038/nature14539\nlayout: force2d\ncolor: year\n");
 	assert.equal(laidOut.ok, true);
 	if (laidOut.ok) {
-		assert.equal(laidOut.spec.layout, "temporal", "legacy layouts map to the year view");
-		assert.equal(laidOut.spec.color, "topic", "legacy color settings no longer override topic coloring");
+		assert.equal(laidOut.spec.layout, "force2d", "force layouts stay distinct");
+		assert.equal(laidOut.spec.color, "year", "color: year selects year coloring");
 	}
 	const topicColor = parseEmbed("doi: 10.1038/nature14539\ncolor: topic\n");
 	assert.equal(topicColor.ok, true);
