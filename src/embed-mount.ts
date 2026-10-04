@@ -4,12 +4,11 @@ import { semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromO
 import { mergeOpenCitation, edgeCitationPairs } from "./citation-evidence";
 import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
-import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { buildFilters, buildLegend } from "./filter-controls";
 import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
-import type { ColorMode, LayoutMode } from "./layout-modes";
+import type { LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { nonResearchLabel, reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
@@ -19,6 +18,7 @@ import type { ConnectedPapersSettings } from "./settings-model";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { formatCount, snippet } from "./visual";
+import { mountSidebarResize } from "./sidebar-resize";
 
 export interface EmbedDeps {
 	source: string;
@@ -26,7 +26,6 @@ export interface EmbedDeps {
 	getJson: GetJson;
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
-	createNote?: (filename: string, markdown: string) => Promise<void>;
 	/** Open the full graph pane on this seed, when the host supports it. */
 	openGraph?: (target: { kind: "doi" | "openalex"; value: string }) => void;
 }
@@ -44,7 +43,6 @@ interface EmbedViewState {
 	camera: GraphCameraState;
 	filter: GraphFilter;
 	layout: LayoutMode;
-	color: ColorMode;
 }
 const viewStates = new Map<string, EmbedViewState>();
 
@@ -98,6 +96,25 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const zoomOut = zoomButton("−", "缩小");
 	const zoomFit = zoomButton("适配", "适应窗口");
 	zoom.append(zoomIn, zoomOut, zoomFit);
+	const graphActions = document.createElement("div");
+	graphActions.className = "cpo-graph-actions";
+	const sourceActions = document.createElement("div");
+	sourceActions.className = "cpo-source-actions";
+	const openAlexAction = document.createElement("button");
+	openAlexAction.className = "cpo-action-link";
+	openAlexAction.textContent = "OpenAlex ↗";
+	const doiAction = document.createElement("button");
+	doiAction.className = "cpo-action-link";
+	doiAction.textContent = "DOI ↗";
+	const openGraphAction = document.createElement("button");
+	openGraphAction.className = "cpo-action-link cpo-action-link-right";
+	openGraphAction.textContent = "在图谱中打开";
+	for (const button of [openAlexAction, doiAction, openGraphAction]) {
+		button.type = "button";
+		button.hidden = true;
+	}
+	sourceActions.append(openAlexAction, doiAction);
+	graphActions.append(sourceActions, zoom, openGraphAction);
 	const drawer = document.createElement("div");
 	drawer.className = "cpo-drawer";
 	drawer.hidden = true;
@@ -113,22 +130,34 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	filters.className = "cpo-embed-filters";
 	const tools = document.createElement("div");
 	drawer.append(drawerTitle, tip, legend, filters, tools);
-	stage.append(message, tooltip, zoom, drawer);
+	stage.append(message, tooltip, graphActions, drawer);
 	body.append(rail, stage);
-
-	const actionsBar = document.createElement("div");
-	actionsBar.className = "cpo-actions-bar";
-	shell.append(actionsBar);
-
+	const sidebarResize = document.createElement("div");
+	sidebarResize.className = "cpo-sidebar-resizer";
+	const sidebar = document.createElement("aside");
+	sidebar.className = "cpo-evidence-sidebar";
+	body.append(sidebarResize, sidebar);
+	const evidenceHeader = document.createElement("header");
+	evidenceHeader.className = "cpo-evidence-header";
+	const evidenceTitle = document.createElement("h2");
+	evidenceTitle.textContent = "论文与关系证据";
+	const evidenceHint = document.createElement("p");
+	evidenceHint.textContent = "点选节点查看来源与关系；拖动左侧边缘调整宽度。";
+	evidenceHeader.append(evidenceTitle, evidenceHint);
+	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
-	shell.append(sheetHost);
+	sidebar.append(sheetHost);
 	const sheet = mountBottomSheet(sheetHost);
+	sheet.setExpanded(true);
 	const detail = document.createElement("div");
 	detail.className = "cpo-embed-detail";
 	const listPanel = document.createElement("div");
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
 	sheet.body.append(detail, listPanel);
+	const actionsBar = document.createElement("div");
+	actionsBar.className = "cpo-actions-bar";
+	sidebar.append(actionsBar);
 	filterButton.addEventListener("click", () => {
 		const open = drawer.hidden;
 		drawer.hidden = !open;
@@ -142,6 +171,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		message.textContent = parsed.error;
 		reload.hidden = true;
 		rail.hidden = true;
+		sidebar.hidden = true;
+		sidebarResize.hidden = true;
 		sheetHost.hidden = true;
 		zoom.hidden = true;
 		return () => {
@@ -166,11 +197,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	});
 	let tab: GraphTab = "graph";
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
-	let colorMode: ColorMode = saved?.color ?? spec.color;
 	let analysisMode: "sankey" | "chord" = "sankey";
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
+	let contextRecoveries = 0;
+	let graphView: Graph3DHandle | null = null;
 
 	const paintLists = (): void => {
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis");
@@ -244,18 +276,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	chrome = mountGraphChrome(tools, {
 		layouts: ["kumu", "temporal", "radial", "force2d", "force3d"],
 		layout: layoutMode,
-		color: colorMode,
-		noteButton: Boolean(deps.createNote),
 		analysisButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
 			graphView?.setLayout(mode);
-		},
-		onColor: (mode) => {
-			colorMode = mode;
-			graphView?.setColorMode(mode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
@@ -268,41 +294,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (next !== "graph") sheet.setExpanded(true);
 			paintLists();
 		},
-		onExport: (kind) => {
-			void exportView(kind);
-		},
 	});
-
-	const exportView = async (kind: ExportKind): Promise<void> => {
-		if (!currentGraph) return;
-		if (kind === "note") {
-			const paper = selected ?? currentGraph.nodes.find((node) => node.isSeed) ?? null;
-			if (!paper) return;
-			const markdown = noteSkeleton(paper);
-			if (deps.createNote) {
-				try {
-					await deps.createNote(noteFilename(paper), markdown);
-					chrome?.setExportText(`已写入笔记：${noteFilename(paper)}`);
-				} catch (error) {
-					chrome?.setExportText(error instanceof Error ? error.message : "笔记没有写成。");
-				}
-				return;
-			}
-			chrome?.setExportText(markdown);
-			await copyText(markdown);
-			return;
-		}
-		const nodes = orderedForExport(visibleNodes(currentGraph.nodes, viewFilter));
-		const text = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
-		chrome?.setExportText(text);
-		await copyText(text);
-	};
 
 	const anchor = placementAnchor(root);
 	const clearPlacement = applyPlacement(root, anchor, spec);
 	const stopResize = mountResizeHandle(body, anchor, () => graphView?.resize());
+	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, {
+		defaultWidth: 280,
+		minWidth: 220,
+		maxWidth: 380,
+		onResize: () => graphView?.resize(),
+	});
 	const narrowObserver = new ResizeObserver(() => {
-		shell.classList.toggle("is-narrow", shell.clientWidth < 520);
+		shell.classList.toggle("is-narrow", shell.clientWidth < 760);
 	});
 	narrowObserver.observe(shell);
 	zoomIn.addEventListener("click", () => graphView?.zoomBy(1.2));
@@ -319,7 +323,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		{ capture: true, passive: true },
 	);
 	let generation = 0;
-	let graphView: Graph3DHandle | null = null;
 	let alive = true;
 	/** Abstract fallback: ids already asked, ids Semantic Scholar filled, ids both sources lack. */
 	const abstractRequested = new Set<string>();
@@ -336,12 +339,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const placeDetailPlaceholder = (): void => {
 		selected = null;
+		openAlexAction.hidden = true;
+		doiAction.hidden = true;
+		openGraphAction.hidden = !deps.openGraph;
 		detail.replaceChildren();
 		const empty = document.createElement("p");
 		empty.className = "cpo-embed-detail-empty";
 		empty.textContent = "点选节点查看题名、年份、作者和证据。";
 		detail.append(empty);
-		if (deps.openGraph) addLink(detail, "在图谱面板中打开此图", () => deps.openGraph?.(spec.target));
 		sheet.setSummary("点选节点查看论文", "");
 	};
 	placeDetailPlaceholder();
@@ -352,6 +357,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			return;
 		}
 		selected = paper;
+		const openAlex = allowedExternalUrl(paper.openAlexUrl);
+		openAlexAction.hidden = !openAlex;
+		openAlexAction.onclick = openAlex ? () => deps.openExternal(openAlex) : null;
+		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
+		doiAction.hidden = !doi;
+		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
+		openGraphAction.hidden = !deps.openGraph;
+		openGraphAction.onclick = deps.openGraph ? () => deps.openGraph?.(spec.target) : null;
 		detail.replaceChildren();
 		// The sheet strip already carries the title; the body starts at the meta line.
 		const meta = document.createElement("p");
@@ -440,18 +453,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}
 		abstract.textContent = embedAbstractText(paper);
 		detail.append(abstract);
-		const openAlex = allowedExternalUrl(paper.openAlexUrl);
-		if (openAlex) addLink(detail, "在 OpenAlex 中打开", () => deps.openExternal(openAlex));
-		if (paper.doiUrl) {
-			const doi = allowedExternalUrl(paper.doiUrl);
-			if (doi) addLink(detail, "打开 DOI", () => deps.openExternal(doi));
-		}
-		if (deps.openGraph) addLink(detail, "在图谱面板中打开此图", () => deps.openGraph?.(spec.target));
 	};
 
 	const snapshotView = (): void => {
 		if (!graphView) return;
-		rememberViewState(stateKey, { camera: graphView.getCamera(), filter: viewFilter, layout: layoutMode, color: colorMode });
+		rememberViewState(stateKey, { camera: graphView.getCamera(), filter: viewFilter, layout: layoutMode });
 	};
 
 	const renderGraph = (graph: SimilarityGraph, depthNote: string): void => {
@@ -465,7 +471,22 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				tooltip,
 				graph,
 				(paper, link) => showDetail(paper, graph, link),
-				{ labels: spec.labels, filter: viewFilter, layout: layoutMode, colorMode },
+				{
+					labels: spec.labels,
+					filter: viewFilter,
+					layout: layoutMode,
+					colorMode: spec.color,
+					onContextLost: () => {
+						if (!alive) return;
+						contextRecoveries += 1;
+						if (contextRecoveries > 2) {
+							message.hidden = false;
+							message.textContent = "图形上下文反复丢失，点右上角「重新加载」恢复图谱。";
+							return;
+						}
+						void load(false);
+					},
+				},
 			);
 			const remembered = viewStates.get(stateKey);
 			if (remembered) graphView.setCamera(remembered.camera);
@@ -568,6 +589,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	reload.addEventListener("click", () => {
 		const settings = { ...deps.getSettings() };
+		contextRecoveries = 0;
 		cache.delete(cacheKey(spec.target, spec.maxNodes ?? settings.maxNodes, spec.depth, settings));
 		void load(true);
 	});
@@ -581,6 +603,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		chrome?.destroy();
 		sheet.destroy();
 		stopResize();
+		stopSidebarResize();
 		narrowObserver.disconnect();
 		clearPlacement();
 		root.replaceChildren();
@@ -896,14 +919,6 @@ function yearSpan(nodes: readonly PaperNode[]): [number, number] {
 	const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 	if (years.length === 0) return [1990, 1990];
 	return [Math.min(...years), Math.max(...years)];
-}
-
-async function copyText(text: string): Promise<void> {
-	try {
-		await navigator.clipboard.writeText(text);
-	} catch {
-		// The export panel still shows the text when the clipboard is blocked.
-	}
 }
 
 function addLink(parent: HTMLElement, label: string, onClick: () => void): void {

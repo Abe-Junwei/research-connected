@@ -3,7 +3,6 @@ import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import type { ConnectedPapersSettings } from "./settings-model";
-import { createVaultNote } from "./vault-note";
 
 interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
@@ -46,7 +45,6 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
-			createNote: (filename, markdown) => createVaultNote(plugin.app, filename, markdown),
 			openGraph: plugin.openGraph ? (target) => plugin.openGraph?.(target) : undefined,
 		});
 	}

@@ -218,6 +218,11 @@
 	touch-action: none;
 }
 
+.cpo-stage canvas:focus-visible {
+	outline: 2px solid rgba(166, 124, 46, 0.45);
+	outline-offset: -2px;
+}
+
 .cpo-empty {
 	position: absolute;
 	inset: 0;
@@ -304,26 +309,84 @@
 	gap: 4px;
 }
 
-/* The embed keeps a resize grip at the graph's bottom-right corner. */
-.cpo-embed .cpo-zoom {
-	right: 32px;
+.cpo-graph-actions {
+	position: absolute;
+	z-index: 4;
+	left: 12px;
+	right: 12px;
+	bottom: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	pointer-events: auto;
+	opacity: 0;
+	visibility: hidden;
+	transform: scale(0.94) translateY(2px);
+	transform-origin: bottom center;
+	transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease;
 }
 
+.cpo-stage:hover .cpo-graph-actions,
+.cpo-embed-stage:hover .cpo-graph-actions,
+.cpo-graph-actions:hover,
+.cpo-graph-actions:focus-within {
+	opacity: 1;
+	visibility: visible;
+	transform: scale(1);
+}
+
+.cpo-source-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.cpo-graph-actions .cpo-zoom {
+	position: static;
+	right: auto;
+	bottom: auto;
+}
+
+.cpo-action-link:disabled,
+.cpo-action-link[hidden] {
+	display: none;
+}
+
+.cpo-action-link:focus-visible {
+	outline: 2px solid rgba(166, 124, 46, 0.42);
+	outline-offset: 1px;
+}
+
+.cpo-graph-action-spacer {
+	flex: 1;
+}
+
+.cpo-action-link-right {
+	margin-left: auto;
+}
+
+/* The embed keeps a resize grip at the graph's bottom-right corner. */
+.cpo-embed .cpo-zoom {
+	position: static;
+}
+
+.cpo-action-link,
 .cpo-zoom button,
 .cpo-root button.cpo-icon {
-	height: 32px;
-	min-width: 32px;
-	padding: 0 8px;
+	height: 28px;
+	min-width: 28px;
+	padding: 0 6px;
 	border: 1px solid rgba(60, 64, 70, 0.12);
 	border-radius: 8px;
 	background: rgba(255, 255, 255, 0.94);
 	color: #3a3f45;
 	font: inherit;
-	font-size: 13px;
+	font-size: 12px;
 	cursor: pointer;
 	box-shadow: 0 1px 4px rgba(60, 64, 70, 0.12);
 }
 
+.cpo-action-link:hover,
 .cpo-zoom button:hover,
 .cpo-root button.cpo-icon:hover {
 	background: #f6f5f2;
@@ -392,7 +455,7 @@
 	margin: 0 0 8px;
 }
 
-/* Tabs and export actions sit in an always-visible bar under the graph. */
+/* Tabs sit in an always-visible bar under the graph. */
 .cpo-actions-bar {
 	flex: none;
 	padding: 6px 12px 2px;
@@ -406,12 +469,6 @@
 
 .cpo-actions-bar .cpo-tool-row:last-child {
 	margin-bottom: 0;
-}
-
-.cpo-actions-bar .cpo-export-text {
-	width: 100%;
-	max-height: 120px;
-	margin: 4px 0 2px;
 }
 
 .cpo-sheet {
@@ -506,10 +563,6 @@
 	overflow: visible;
 	background: transparent;
 	padding: 0;
-}
-
-.cpo-sheet .cpo-export-text {
-	max-height: 72px;
 }
 
 /* The expanded embed sheet stacks below the graph, so it can afford room
@@ -607,6 +660,13 @@
 
 .cpo-root button.cpo-link:hover {
 	background: rgba(60, 64, 70, 0.09);
+}
+
+.cpo-root button.cpo-link:active,
+.cpo-root button.cpo-link:focus-visible {
+	background: rgba(166, 124, 46, 0.14);
+	outline: 2px solid rgba(166, 124, 46, 0.38);
+	outline-offset: 1px;
 }
 
 .cpo-root button.cpo-close {
@@ -756,6 +816,11 @@
 	position: relative;
 	flex: 1;
 	min-height: 0;
+	background: radial-gradient(circle at 50% 50%, var(--cpo-canvas-bg-start, #ffffff) 0%, var(--cpo-canvas-bg-end, #f7f6f3) 78%);
+}
+
+.cpo-embed-stage.cpo-kumu-view {
+	background: #ffffff;
 }
 
 .cpo-embed-canvas {
@@ -854,6 +919,13 @@
 
 .cpo-embed button.cpo-embed-link:hover {
 	background: rgba(60, 64, 70, 0.1);
+}
+
+.cpo-embed button.cpo-embed-link:active,
+.cpo-embed button.cpo-embed-link:focus-visible {
+	background: rgba(166, 124, 46, 0.14);
+	outline: 2px solid rgba(166, 124, 46, 0.34);
+	outline-offset: 1px;
 }
 
 .cpo-rail[hidden],
@@ -1148,17 +1220,6 @@
 	accent-color: #d4a24a;
 }
 
-.cpo-export-text {
-	max-height: 140px;
-	margin: 0;
-	overflow: auto;
-	white-space: pre-wrap;
-	color: #4b5563;
-	font-family: ui-monospace, monospace;
-	font-size: 11px;
-	line-height: 1.4;
-}
-
 .cpo-embed-meta .cpo-agg,
 .cpo-meta .cpo-agg {
 	position: static;
@@ -1252,3 +1313,204 @@
 .cpo-root .cpo-sheet-analysis .cpo-sheet-body { max-height: 44vh; }
 .cpo-root .cpo-sheet-analysis .cpo-agg { max-height: none; overflow: visible; }
 .cpo-root button[hidden] { display: none !important; }
+
+/* Shared resizable evidence sidebar. The graph stays dominant; navigation
+   belongs to the evidence rail instead of spanning the canvas. */
+.cpo-evidence-sidebar {
+	--cpo-sidebar-width: 320px;
+	flex: 0 0 var(--cpo-sidebar-width);
+	width: var(--cpo-sidebar-width);
+	min-width: 260px;
+	max-width: min(480px, 46vw);
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: #f6f5f2;
+	border-left: 1px solid rgba(60, 64, 70, 0.1);
+}
+
+.cpo-embed .cpo-evidence-sidebar {
+	--cpo-sidebar-width: 280px;
+	min-width: 220px;
+	max-width: min(380px, 46vw);
+}
+
+.cpo-evidence-header {
+	flex: none;
+	padding: 10px 12px 9px;
+	background: #f6f5f2;
+	border-bottom: 1px solid rgba(60, 64, 70, 0.1);
+}
+
+.cpo-evidence-header h2,
+.cpo-evidence-header p {
+	margin: 0;
+}
+
+.cpo-evidence-header h2 {
+	color: #8a3b47;
+	font-size: 13px;
+	font-weight: 650;
+}
+
+.cpo-evidence-header p {
+	margin-top: 3px;
+	color: #6b7280;
+	font-size: 10px;
+	line-height: 1.35;
+}
+
+.cpo-sidebar-resizer {
+	position: relative;
+	z-index: 5;
+	flex: 0 0 6px;
+	width: 6px;
+	min-height: 0;
+	cursor: col-resize;
+	touch-action: none;
+	background: transparent;
+}
+
+.cpo-sidebar-resizer::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 2px;
+	width: 1px;
+	background: rgba(60, 64, 70, 0.12);
+	transition: width 120ms ease, background 120ms ease;
+}
+
+.cpo-sidebar-resizer:hover::after,
+.cpo-sidebar-resizer:focus-visible::after,
+.cpo-sidebar-resizer.is-dragging::after {
+	left: 1px;
+	width: 3px;
+	background: rgba(166, 124, 46, 0.55);
+}
+
+.cpo-sidebar-resizer:focus-visible {
+	outline: none;
+}
+
+.cpo-evidence-sidebar > .cpo-sheet {
+	flex: 1 1 auto;
+	max-height: none;
+	min-height: 0;
+	background: #ffffff;
+	border-top: none;
+}
+
+.cpo-evidence-sidebar > .cpo-sheet:not(.is-collapsed),
+.cpo-evidence-sidebar > .cpo-sheet-analysis:not(.is-collapsed),
+.cpo-root .cpo-evidence-sidebar > .cpo-sheet-analysis:not(.is-collapsed),
+.cpo-embed .cpo-evidence-sidebar > .cpo-sheet-analysis:not(.is-collapsed) {
+	max-height: none;
+}
+
+.cpo-evidence-sidebar .cpo-sheet-body {
+	padding: 10px 12px 14px;
+	overflow: auto;
+}
+
+.cpo-evidence-sidebar .cpo-sheet-toggle {
+	height: 38px;
+	padding: 0 12px;
+	background: #ffffff;
+	border-bottom: 1px solid rgba(60, 64, 70, 0.08);
+}
+
+.cpo-evidence-sidebar .cpo-sheet-title {
+	font-size: 12px;
+}
+
+.cpo-evidence-sidebar .cpo-sheet-meta {
+	display: none;
+}
+
+.cpo-evidence-sidebar > .cpo-actions-bar {
+	flex: none;
+	padding: 0;
+	background: #f6f5f2;
+	border-top: 1px solid rgba(60, 64, 70, 0.1);
+}
+
+.cpo-evidence-sidebar .cpo-tab-row {
+	flex-wrap: nowrap;
+	align-items: stretch;
+	gap: 2px;
+	margin: 0;
+	padding: 5px 6px;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: thin;
+}
+
+.cpo-evidence-sidebar .cpo-tab-row button.cpo-tool {
+	flex: 0 0 auto;
+	min-height: 30px;
+	padding: 5px 9px;
+	border-radius: 6px;
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.cpo-evidence-sidebar .cpo-tab-row button.cpo-tool.is-on {
+	background: rgba(166, 124, 46, 0.12);
+	color: #6f5019;
+	font-weight: 600;
+}
+
+.cpo-evidence-sidebar .cpo-agg,
+.cpo-evidence-sidebar .cpo-detail,
+.cpo-evidence-sidebar .cpo-embed-detail {
+	max-width: 100%;
+}
+
+.cpo-evidence-sidebar .cpo-analysis-svg {
+	min-height: 220px;
+}
+
+@media (max-width: 779px) {
+	.cpo-root.is-narrow .cpo-body,
+	.cpo-embed.is-narrow .cpo-embed-body {
+		flex-direction: column;
+	}
+
+	.cpo-root.is-narrow .cpo-stage,
+	.cpo-embed.is-narrow .cpo-embed-stage {
+		min-height: 220px;
+	}
+
+	.cpo-root.is-narrow .cpo-sidebar-resizer,
+	.cpo-embed.is-narrow .cpo-sidebar-resizer {
+		display: none;
+	}
+
+	.cpo-root.is-narrow .cpo-evidence-sidebar,
+	.cpo-embed.is-narrow .cpo-evidence-sidebar {
+		flex: 0 0 min(42%, 330px);
+		width: 100% !important;
+		min-width: 0;
+		max-width: none;
+		border-left: none;
+		border-top: 1px solid rgba(60, 64, 70, 0.1);
+	}
+
+	.cpo-root.is-narrow .cpo-evidence-header,
+	.cpo-embed.is-narrow .cpo-evidence-header {
+		padding: 7px 10px;
+	}
+
+	.cpo-root.is-narrow .cpo-evidence-header p,
+	.cpo-embed.is-narrow .cpo-evidence-header p {
+		display: none;
+	}
+
+	.cpo-root.is-narrow .cpo-evidence-sidebar .cpo-sheet-toggle,
+	.cpo-embed.is-narrow .cpo-evidence-sidebar .cpo-sheet-toggle {
+		height: 32px;
+	}
+}

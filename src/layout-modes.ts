@@ -7,8 +7,8 @@ import { citationRadius } from "./visual";
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
-/** `graph` is the default: monochrome like Obsidian's Graph view. `community`/`year` stay optional. */
-export type ColorMode = "year" | "community" | "graph";
+/** Node coloring: mono accent, detected community, or publication year. */
+export type ColorMode = "graph" | "community" | "year";
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: "时间",
@@ -59,6 +59,8 @@ export function placeLayout(
 
 function placeKumuCommunities(placed: PlacedNode[], papers: readonly PaperNode[], edges: readonly GraphEdge[]): PlacedNode[] {
 	const labels = detectCommunities(papers.map((paper) => paper.id), edges);
+	const seedId = papers.find((paper) => paper.isSeed)?.id ?? null;
+	const seedCommunity = seedId ? labels.get(seedId) ?? 0 : 0;
 	const groups = new Map<number, PlacedNode[]>();
 	for (const node of placed) {
 		const id = labels.get(node.id) ?? 0;
@@ -66,19 +68,36 @@ function placeKumuCommunities(placed: PlacedNode[], papers: readonly PaperNode[]
 		group.push(node);
 		groups.set(id, group);
 	}
-	const ranked = [...groups.entries()]
-		.sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
-	const maxRadius = Math.max(...ranked.map(([, members]) => Math.max(46, Math.sqrt(members.length) * 18)));
-	const ring = ranked.length <= 1 ? 0 : (maxRadius + 55) * Math.sqrt(ranked.length);
+	const ranked = [...groups.entries()].sort((a, b) => {
+		if (a[0] === seedCommunity) return -1;
+		if (b[0] === seedCommunity) return 1;
+		return b[1].length - a[1].length || a[0] - b[0];
+	});
+	const radiusOf = (members: readonly PlacedNode[]): number => Math.max(38, Math.sqrt(members.length) * 15);
+	const centerRadius = radiusOf(ranked[0]?.[1] ?? []);
+	const peripheral = ranked.slice(1);
+	const maxPeripheralRadius = Math.max(0, ...peripheral.map(([, members]) => radiusOf(members)));
+	const count = peripheral.length;
+	const collisionRing = count <= 1
+		? 0
+		: (maxPeripheralRadius * 2 + 22) / (2 * Math.sin(Math.PI / count));
+	const ring = count === 0 ? 0 : Math.max(centerRadius + maxPeripheralRadius + 24, collisionRing);
 	const golden = Math.PI * (3 - Math.sqrt(5));
 	ranked.forEach(([, members], groupIndex) => {
 		members.sort((a, b) => a.id.localeCompare(b.id));
-		const angle = -Math.PI / 2 + groupIndex * golden;
-		const groupDistance = ranked.length <= 1 ? 0 : ring;
+		const angle = -Math.PI / 2 + (groupIndex - 1) * (Math.PI * 2 / Math.max(1, count));
+		const groupDistance = groupIndex === 0 ? 0 : ring;
 		const centerX = Math.cos(angle) * groupDistance;
 		const centerY = Math.sin(angle) * groupDistance;
-		const radius = Math.max(46, Math.sqrt(members.length) * 18);
+		const radius = radiusOf(members);
 		members.forEach((node, index) => {
+			if (node.id === seedId) {
+				node.x = centerX;
+				node.y = centerY;
+				node.z = 0;
+				node.radius = Math.min(node.radius, 8);
+				return;
+			}
 			const distance = members.length <= 1 ? 0 : Math.sqrt((index + 0.5) / members.length) * radius;
 			const theta = index * golden;
 			node.x = centerX + Math.cos(theta) * distance;

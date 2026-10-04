@@ -1,19 +1,16 @@
 import {
-	AmbientLight,
 	CircleGeometry,
 	Color,
 	ConeGeometry,
 	CylinderGeometry,
-	DirectionalLight,
 	InstancedMesh,
 	Mesh,
 	MeshBasicMaterial,
-	MeshStandardMaterial,
 	Object3D,
 	PerspectiveCamera,
+	Plane,
 	Raycaster,
 	Scene,
-	SphereGeometry,
 	MOUSE,
 	SRGBColorSpace,
 	TOUCH,
@@ -64,6 +61,8 @@ export interface Graph3DOptions {
 	filter: GraphFilter;
 	layout: LayoutMode;
 	colorMode: ColorMode;
+	/** WebGL 上下文丢失时由宿主重建图谱，避免嵌入画布黑屏。 */
+	onContextLost?: () => void;
 }
 
 interface SphereEntry {
@@ -75,8 +74,10 @@ interface SphereEntry {
 	seed: boolean;
 	dim: boolean;
 	radius: number;
-	standardMaterial: MeshStandardMaterial;
-	flatMaterial: MeshBasicMaterial;
+	color: number;
+	material: MeshBasicMaterial;
+	outline: MeshBasicMaterial;
+	selectionRing: Mesh | null;
 }
 
 interface DrawnEdge {
@@ -109,13 +110,14 @@ export function mountGraph3D(
 	let filter = options.filter;
 	let layoutMode = options.layout;
 	let colorMode = options.colorMode;
-	const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+	const renderer = new WebGLRenderer({ antialias: true, alpha: true });
 	if (!renderer.getContext()) {
 		renderer.dispose();
 		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setClearColor(0xffffff, 1);
+	// 背景交给 CSS 径向渐变，对齐图谱面板；画布自身透明。
+	renderer.setClearColor(0x000000, 0);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
 	viewport.append(canvas);
@@ -130,10 +132,6 @@ export function mountGraph3D(
 	viewport.classList.toggle("cpo-kumu-view", layoutMode === "kumu");
 
 	const scene = new Scene();
-	scene.add(new AmbientLight(0xffffff, 0.7));
-	const key = new DirectionalLight(0xffffff, 1.15);
-	key.position.set(120, 180, 80);
-	scene.add(key);
 
 	const papers = new Map(graph.nodes.map((node) => [node.id, node]));
 	const communities = detectCommunities(
@@ -155,41 +153,62 @@ export function mountGraph3D(
 	};
 	let placed = placeLayout(layoutMode, graph.nodes, graph.edges, graph.seedScore);
 	const byId = new Map(placed.map((node) => [node.id, node]));
-	const sphere = new SphereGeometry(1, 22, 16);
-	const circle = new CircleGeometry(1, 32);
+	// 对齐图谱面板：所有布局都用平涂圆盘（每帧朝向相机），不再用光照球体。
+	const circle = new CircleGeometry(1, 40);
+	const outlineGeo = new CircleGeometry(1.08, 40);
+	const seedGlowGeo = new CircleGeometry(2.05, 40);
+	const seedRingGeoA = new TorusGeometry(1.42, 0.055, 8, 48);
+	const seedRingGeoB = new TorusGeometry(1.78, 0.04, 8, 48);
+	const selectionRingGeo = new TorusGeometry(1.32, 0.075, 8, 48);
 	const entries: SphereEntry[] = [];
-	const geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [sphere, circle];
+	const geometries: Array<CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry> = [
+		circle,
+		outlineGeo,
+		seedGlowGeo,
+		seedRingGeoA,
+		seedRingGeoB,
+		selectionRingGeo,
+	];
 	const materials: Material[] = [];
+	const noRaycast = (): void => undefined;
+	const seedGlowMat = new MeshBasicMaterial({ color: 0x3c4046, transparent: true, opacity: 0.1, depthWrite: false });
+	const seedRingMatA = new MeshBasicMaterial({ color: 0x333943 });
+	const seedRingMatB = new MeshBasicMaterial({ color: 0x333943, transparent: true, opacity: 0.45 });
+	const selectionRingMat = new MeshBasicMaterial({ color: graphNodeFocused });
+	materials.push(seedGlowMat, seedRingMatA, seedRingMatB, selectionRingMat);
 
 	for (const node of graph.nodes) {
 		const at = byId.get(node.id);
 		if (!at) continue;
-		const material = new MeshStandardMaterial({
-			color: colorToHex(nodeColor(node)),
-			roughness: 0.42,
-			metalness: 0.08,
-			emissive: node.isSeed ? 0xfff1cc : 0x000000,
-			emissiveIntensity: node.isSeed ? 0.4 : 0,
-			transparent: true,
-			opacity: 1,
-		});
-		const flatMaterial = new MeshBasicMaterial({ color: colorToHex(nodeColor(node)) });
-		materials.push(material, flatMaterial);
-		const mesh = new Mesh(layoutMode === "kumu" ? circle : sphere, layoutMode === "kumu" ? flatMaterial : material);
+		const baseColor = colorToHex(nodeColor(node));
+		const material = new MeshBasicMaterial({ color: baseColor, transparent: true, opacity: 1 });
+		const outline = new MeshBasicMaterial({ color: shadeHex(baseColor, 0.85), transparent: true, opacity: 1 });
+		materials.push(material, outline);
+		const mesh = new Mesh(circle, material);
 		mesh.position.set(at.x, at.y, at.z);
 		mesh.scale.setScalar(at.radius);
 		mesh.userData.paperId = node.id;
 		mesh.userData.seed = node.isSeed;
+		// 同色系加深一圈，对齐面板节点的 1px 深色描边。
+		const rim = new Mesh(outlineGeo, outline);
+		rim.position.z = -0.01;
+		rim.raycast = noRaycast;
+		mesh.add(rim);
 		if (node.isSeed) {
-			const ringMaterial = new MeshBasicMaterial({ color: 0x333943 });
-			materials.push(ringMaterial);
-			const torus = new TorusGeometry(1.42, 0.05, 8, 40);
-			geometries.push(torus);
-			const ringA = new Mesh(torus, ringMaterial);
-			const ringB = new Mesh(torus, ringMaterial);
-			ringB.rotation.x = Math.PI / 2;
-			mesh.add(ringA, ringB);
+			// 种子：柔光晕 + 双环，对齐面板样式。
+			const glow = new Mesh(seedGlowGeo, seedGlowMat);
+			glow.position.z = -0.02;
+			glow.raycast = noRaycast;
+			const ringA = new Mesh(seedRingGeoA, seedRingMatA);
+			ringA.raycast = noRaycast;
+			const ringB = new Mesh(seedRingGeoB, seedRingMatB);
+			ringB.raycast = noRaycast;
+			mesh.add(glow, ringA, ringB);
 		}
+		const selectionRing = new Mesh(selectionRingGeo, selectionRingMat);
+		selectionRing.visible = false;
+		selectionRing.raycast = noRaycast;
+		mesh.add(selectionRing);
 		scene.add(mesh);
 		const text = nodeLabel(node, options.labels);
 		let label: HTMLElement | null = null;
@@ -208,8 +227,10 @@ export function mountGraph3D(
 			seed: node.isSeed,
 			dim: false,
 			radius: at.radius,
-			standardMaterial: material,
-			flatMaterial,
+			color: baseColor,
+			material,
+			outline,
+			selectionRing,
 		});
 	}
 
@@ -235,6 +256,7 @@ export function mountGraph3D(
 	};
 	applyPointerMode();
 
+	let frameDistance = 1;
 	const frameCamera = (): void => {
 		let maxReach = 80;
 		for (const entry of entries) {
@@ -247,12 +269,16 @@ export function mountGraph3D(
 		else camera.position.set(0, maxReach * 0.08, maxReach * 1.65);
 		controls.target.set(0, 0, 0);
 		controls.update();
+		frameDistance = camera.position.distanceTo(controls.target);
 	};
 	frameCamera();
 
 	const raycaster = new Raycaster();
 	const pointer = new Vector2();
 	const projected = new Vector3();
+	const dragPlane = new Plane(new Vector3(0, 0, 1), 0);
+	const dragPoint = new Vector3();
+	const dragOffset = new Vector3();
 	let alive = true;
 	let raf = 0;
 	let running = false;
@@ -261,28 +287,150 @@ export function mountGraph3D(
 	let downX = 0;
 	let downY = 0;
 	let moved = false;
+	let dragNodeId: string | null = null;
+	let simAlpha = 0;
+	let simFrame: number | null = null;
+	let zoomGoal: number | null = null;
 
+	// 对齐图谱面板 drawNode：悬停微微放大，graph 着色模式下悬停/选中改填充色，
+	// 选中套一圈聚焦色圆环，焦点之外的节点淡化到 0.25。
 	const paint = (): void => {
 		for (const entry of entries) {
-			const material = entry.mesh.material;
-			if (!(material instanceof MeshStandardMaterial)) continue;
-			if (entry.id === selectedId) {
-				material.emissive.set(graphNodeFocused);
-				material.emissiveIntensity = 0.62;
-			} else if (entry.id === hoverId) {
-				material.emissive.set(0x9aa0a6);
-				material.emissiveIntensity = 0.35;
-			} else if (entry.seed) {
-				material.emissive.set(0xfff1cc);
-				material.emissiveIntensity = 0.4;
-			} else {
-				material.emissive.set(0x000000);
-				material.emissiveIntensity = 0;
+			const active = entry.id === selectedId || entry.id === hoverId;
+			entry.material.color.set(active && colorMode === "graph" ? graphNodeFocused : entry.color);
+			entry.material.opacity = entry.dim ? 0.25 : 1;
+			entry.material.depthWrite = !entry.dim;
+			entry.outline.opacity = entry.dim ? 0.25 : 1;
+			entry.outline.depthWrite = !entry.dim;
+			entry.mesh.scale.setScalar(entry.radius * (entry.id === hoverId ? 1.18 : 1));
+			if (entry.selectionRing) {
+				entry.selectionRing.visible = entry.id === selectedId && !entry.seed && !entry.dim;
 			}
-			material.opacity = entry.dim ? 0.16 : 1;
-			material.depthWrite = !entry.dim;
 		}
 		schedule();
+	};
+
+	const currentPlacements = (): Map<string, { x: number; y: number; z: number; radius: number }> =>
+		new Map(
+			entries.map((entry) => [
+				entry.id,
+				{
+					x: entry.mesh.position.x,
+					y: entry.mesh.position.y,
+					z: entry.mesh.position.z,
+					radius: entry.radius,
+				},
+			]),
+		);
+
+	/** 物理 simmer 只对力导向布局启用；时间/放射布局的位置本身有意义。 */
+	const physicsOn = (): boolean => layoutMode === "force2d" || layoutMode === "kumu";
+
+	/**
+	 * 对齐图谱面板的 Obsidian 式动态：拖动节点时邻居弹性跟随，松手后缓慢
+	 * 收敛；alpha 冷却到阈值以下循环就停，静止的图不耗帧。
+	 */
+	const reheat = (alpha: number): void => {
+		if (!physicsOn() || entries.length > 350) return;
+		simAlpha = Math.max(simAlpha, alpha);
+		if (simFrame !== null) return;
+		const step = (): void => {
+			simFrame = null;
+			if (!alive || simAlpha < 0.02) {
+				simAlpha = 0;
+				return;
+			}
+			simTick(simAlpha);
+			// 按住节点保持热度，松手后快速冷却。
+			simAlpha *= dragNodeId ? 0.99 : 0.96;
+			schedule();
+			if (alive && simAlpha >= 0.02) simFrame = window.requestAnimationFrame(step);
+			else simAlpha = 0;
+		};
+		simFrame = window.requestAnimationFrame(step);
+	};
+
+	const simTick = (alpha: number): void => {
+		const nodes = entries.filter((entry) => entry.mesh.visible);
+		if (nodes.length < 2) return;
+		const index = new Map(nodes.map((entry, i) => [entry.id, i] as const));
+		const vx = new Array<number>(nodes.length).fill(0);
+		const vy = new Array<number>(nodes.length).fill(0);
+		const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? "";
+		const mobile = (id: string): boolean => id !== dragNodeId && id !== seedId;
+
+		// 斥力，与初始布局同一塑形。
+		for (let i = 0; i < nodes.length; i++) {
+			const a = nodes[i]!;
+			for (let j = i + 1; j < nodes.length; j++) {
+				const b = nodes[j]!;
+				let dx = b.mesh.position.x - a.mesh.position.x;
+				let dy = b.mesh.position.y - a.mesh.position.y;
+				let dist2 = dx * dx + dy * dy;
+				if (dist2 < 0.01) {
+					dx = 0.15;
+					dy = 0.1;
+					dist2 = dx * dx + dy * dy;
+				}
+				const dist = Math.sqrt(dist2);
+				const force = (alpha * 160 * (a.radius + b.radius)) / dist2;
+				const fx = (dx / dist) * force;
+				const fy = (dy / dist) * force;
+				if (mobile(a.id)) {
+					vx[i]! -= fx;
+					vy[i]! -= fy;
+				}
+				if (mobile(b.id)) {
+					vx[j]! += fx;
+					vy[j]! += fy;
+				}
+			}
+		}
+		// 沿可见边的弹簧。
+		for (const edge of graph.edges) {
+			if (!edgeVisible(edge, papers, filter)) continue;
+			const ai = index.get(edge.source);
+			const bi = index.get(edge.target);
+			if (ai === undefined || bi === undefined) continue;
+			const a = nodes[ai]!.mesh.position;
+			const b = nodes[bi]!.mesh.position;
+			const dist = Math.hypot(b.x - a.x, b.y - a.y) || 0.01;
+			const weight = Math.min(1, Math.max(0, edge.weight));
+			const rest = 88 + (1 - weight) * 200;
+			const spring = 0.025 + weight * 0.07;
+			const disp = (dist - rest) * spring * alpha;
+			const dx = ((b.x - a.x) / dist) * disp;
+			const dy = ((b.y - a.y) / dist) * disp;
+			if (mobile(edge.source)) {
+				vx[ai]! += dx;
+				vy[ai]! += dy;
+			}
+			if (mobile(edge.target)) {
+				vx[bi]! -= dx;
+				vy[bi]! -= dy;
+			}
+		}
+		// 轻量向心 + 阻尼 + 步长上限，reheat 不会炸开。
+		let changed = false;
+		for (let i = 0; i < nodes.length; i++) {
+			const entry = nodes[i]!;
+			if (!mobile(entry.id)) continue;
+			const at = entry.mesh.position;
+			let mx = (vx[i]! - at.x * 0.01 * alpha) * 0.62;
+			let my = (vy[i]! - at.y * 0.01 * alpha) * 0.62;
+			const speed = Math.hypot(mx, my);
+			const cap = 18 * alpha;
+			if (speed > cap && speed > 0) {
+				mx = (mx / speed) * cap;
+				my = (my / speed) * cap;
+			}
+			const nx = Math.min(1400, Math.max(-1400, at.x + mx));
+			const ny = Math.min(1400, Math.max(-1400, at.y + my));
+			if (nx !== at.x || ny !== at.y) changed = true;
+			at.x = nx;
+			at.y = ny;
+		}
+		if (changed) drawn.relayout(currentPlacements());
 	};
 
 	const resize = (): void => {
@@ -367,6 +515,9 @@ export function mountGraph3D(
 		);
 		const kept: Array<{ x: number; y: number }> = [];
 		let shown = 0;
+		// 对齐面板：普通标签随放大淡入（缩放 1.1–1.6 区间），种子/选中/悬停恒显。
+		const zoom = frameDistance / Math.max(1, camera.position.distanceTo(controls.target));
+		const labelAlpha = Math.min(1, Math.max(0, (zoom - 1.1) / 0.5));
 		for (const entry of ranked) {
 			const el = entry.label;
 			if (!el) continue;
@@ -392,7 +543,12 @@ export function mountGraph3D(
 				el.hidden = true;
 				continue;
 			}
+			if (!force && labelAlpha <= 0.02) {
+				el.hidden = true;
+				continue;
+			}
 			el.hidden = false;
+			el.style.opacity = force ? "1" : labelAlpha.toFixed(2);
 			el.style.left = `${x}px`;
 			el.style.top = `${y}px`;
 			kept.push({ x, y });
@@ -458,9 +614,23 @@ export function mountGraph3D(
 		raf = 0;
 		if (!alive || !running) return;
 		const settling = controls.update();
+		// 缩放按钮的缓动：向目标距离 lerp，贴近后停（对齐面板的 eased zoom）。
+		if (zoomGoal !== null) {
+			const offset = camera.position.clone().sub(controls.target);
+			const distance = offset.length() || 1;
+			let nextDistance = distance + (zoomGoal - distance) * 0.22;
+			if (Math.abs(zoomGoal - nextDistance) < distance * 0.01) {
+				nextDistance = zoomGoal;
+				zoomGoal = null;
+			}
+			offset.multiplyScalar(nextDistance / distance);
+			camera.position.copy(controls.target).add(offset);
+		}
+		// 圆盘与面板圆点一样始终正对相机，旋转视角时不变形。
+		for (const entry of entries) entry.mesh.quaternion.copy(camera.quaternion);
 		renderer.render(scene, camera);
 		placeLabels();
-		if (settling) schedule();
+		if (settling || zoomGoal !== null) schedule();
 	};
 	const start = (): void => {
 		if (running || !alive) return;
@@ -472,6 +642,12 @@ export function mountGraph3D(
 		if (raf) window.cancelAnimationFrame(raf);
 		raf = 0;
 	};
+	canvas.addEventListener("webglcontextlost", (event) => {
+		event.preventDefault();
+		if (!alive) return;
+		stop();
+		options.onContextLost?.();
+	});
 	controls.addEventListener("change", schedule);
 
 	const syncView = (): void => {
@@ -511,8 +687,46 @@ export function mountGraph3D(
 		downX = event.clientX;
 		downY = event.clientY;
 		moved = false;
+		// 平面布局里左键按住节点直接拖动（对齐面板/Obsidian）；空白处仍是平移。
+		// 触屏单指留给笔记滚动，不触发节点拖动。
+		if (event.button === 0 && event.pointerType !== "touch" && layoutMode !== "force3d" && setPointer(event)) {
+			const hit = pick(event);
+			if (hit.node && hit.node.mesh.visible) {
+				dragNodeId = hit.node.id;
+				controls.enabled = false;
+				try {
+					canvas.setPointerCapture(event.pointerId);
+				} catch {
+					/* 指针捕获失败也不影响拖动 */
+				}
+				dragPlane.setFromNormalAndCoplanarPoint(new Vector3(0, 0, 1), hit.node.mesh.position);
+				if (raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+					dragOffset.copy(hit.node.mesh.position).sub(dragPoint);
+				} else {
+					dragOffset.set(0, 0, 0);
+				}
+			}
+		}
 	};
 	const onPointerMove = (event: PointerEvent): void => {
+		if (dragNodeId) {
+			const entry = entries.find((item) => item.id === dragNodeId) ?? null;
+			if (entry && setPointer(event) && raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+				if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) moved = true;
+				if (moved) {
+					const at = entry.mesh.position;
+					at.x = dragPoint.x + dragOffset.x;
+					at.y = dragPoint.y + dragOffset.y;
+					// 邻居弹性跟随；非力导向布局只动节点本身，边也要跟着走。
+					reheat(0.5);
+					drawn.relayout(currentPlacements());
+					schedule();
+				}
+			}
+			tooltip.hidden = true;
+			canvas.style.cursor = "grabbing";
+			return;
+		}
 		if (event.buttons && Math.hypot(event.clientX - downX, event.clientY - downY) > 4) {
 			moved = true;
 			tooltip.hidden = true;
@@ -542,6 +756,28 @@ export function mountGraph3D(
 		tooltip.hidden = true;
 	};
 	const onPointerUp = (event: PointerEvent): void => {
+		if (dragNodeId) {
+			const released = dragNodeId;
+			const wasDrag = moved;
+			dragNodeId = null;
+			controls.enabled = true;
+			try {
+				canvas.releasePointerCapture(event.pointerId);
+			} catch {
+				/* 与按下时的捕获对应 */
+			}
+			canvas.style.cursor = "grab";
+			// 拖动结束：simmer 让图谱弹性收敛。
+			if (wasDrag) {
+				reheat(0.35);
+				return;
+			}
+			const paper = papers.get(released) ?? null;
+			selectedId = paper?.id ?? null;
+			onSelect(paper, null);
+			syncView();
+			return;
+		}
 		if (moved) {
 			canvas.style.cursor = "grab";
 			return;
@@ -562,6 +798,7 @@ export function mountGraph3D(
 		syncView();
 	};
 	const onPointerLeave = (): void => {
+		if (dragNodeId) return;
 		hoverId = null;
 		tooltip.hidden = true;
 		canvas.style.cursor = "grab";
@@ -604,33 +841,37 @@ export function mountGraph3D(
 		for (const entry of entries) {
 			const paper = papers.get(entry.id);
 			if (!paper) continue;
-			const color = colorToHex(nodeColor(paper));
-			entry.standardMaterial.color.set(color);
-			entry.flatMaterial.color.set(color);
+			entry.color = colorToHex(nodeColor(paper));
+			entry.outline.color.set(shadeHex(entry.color, 0.85));
 		}
-		schedule();
+		paint();
 	};
 
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
 		const kumuStyle = mode === "kumu";
-		renderer.setClearColor(0xffffff, 1);
+		simAlpha = 0;
+		if (simFrame !== null) {
+			window.cancelAnimationFrame(simFrame);
+			simFrame = null;
+		}
+		dragNodeId = null;
+		controls.enabled = true;
+		zoomGoal = null;
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
 		for (const entry of entries) {
 			const at = next.get(entry.id);
 			if (!at) continue;
-			entry.mesh.geometry = kumuStyle ? circle : sphere;
-			entry.mesh.material = kumuStyle ? entry.flatMaterial : entry.standardMaterial;
+			entry.radius = at.radius;
 			entry.mesh.position.set(at.x, at.y, at.z);
-			entry.mesh.scale.setScalar(at.radius);
 		}
 		drawn.setKumuStyle();
 		drawn.relayout(next);
 		applyPointerMode();
 		frameCamera();
-		schedule();
+		paint();
 	};
 
 	const zoomBy = (factor: number): void => {
@@ -638,10 +879,9 @@ export function mountGraph3D(
 		const offset = camera.position.clone().sub(controls.target);
 		const distance = offset.length();
 		if (distance < 1e-3) return;
-		const next = Math.min(controls.maxDistance, Math.max(controls.minDistance, distance / factor));
-		offset.multiplyScalar(next / distance);
-		camera.position.copy(controls.target).add(offset);
-		controls.update();
+		// 不直接跳变，设目标距离交给 tick 逐帧 lerp（对齐面板的缓动缩放）。
+		zoomGoal = Math.min(controls.maxDistance, Math.max(controls.minDistance, distance / factor));
+		schedule();
 	};
 
 	return {
@@ -674,6 +914,9 @@ export function mountGraph3D(
 			if (!alive) return;
 			alive = false;
 			stop();
+			if (simFrame !== null) window.cancelAnimationFrame(simFrame);
+			simFrame = null;
+			dragNodeId = null;
 			resizeObserver.disconnect();
 			visibility.disconnect();
 			canvas.removeEventListener("pointerdown", onPointerDown);
@@ -698,7 +941,7 @@ function drawEdges(
 	graph: SimilarityGraph,
 	byId: ReadonlyMap<string, { x: number; y: number; z: number; radius: number }>,
 	scene: Scene,
-	geometries: Array<SphereGeometry | CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
+	geometries: Array<CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
 	materials: Material[],
 ): {
 	edges: DrawnEdge[];
@@ -732,9 +975,9 @@ function drawEdges(
 	const shaft = new CylinderGeometry(1, 1, 1, 6, 1);
 	const head = new ConeGeometry(1, 1, 8);
 	geometries.push(shaft, head);
-	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.8 });
+	const visibleMaterial = new MeshBasicMaterial({ transparent: true, opacity: 1 });
 	const hitMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 0.7 });
+	const arrowMaterial = new MeshBasicMaterial({ transparent: true, opacity: 1 });
 	materials.push(visibleMaterial, hitMaterial, arrowMaterial);
 	const visibleMesh = new InstancedMesh(shaft, visibleMaterial, edges.length);
 	const hitMesh = new InstancedMesh(shaft, hitMaterial, edges.length);
@@ -742,8 +985,9 @@ function drawEdges(
 	const dummy = new Object3D();
 	const direction = new Vector3();
 	const up = new Vector3(0, 1, 0);
-	const edgeGray = new Color(0xaab0bb);
-	const edgeFaint = new Color(0xe0e3e9);
+	// 颜色按面板 --graph-line 在白底上的合成值预调：默认 rgba(90,96,106,0.28)，淡化 0.1。
+	const edgeGray = new Color(0xd1d3d5);
+	const edgeFaint = new Color(0xedeef0);
 
 	const hide = (): void => {
 		dummy.position.set(0, -100000, 0);
@@ -766,14 +1010,15 @@ function drawEdges(
 		direction.set(towardX, towardY, towardZ);
 		const span = direction.length() || 1;
 		direction.multiplyScalar(1 / span);
-		const height = 16;
+		// 对齐面板的小三角箭头：贴着节点边缘，尺寸收敛不抢视觉。
+		const height = 9;
 		dummy.quaternion.setFromUnitVectors(up, direction);
 		dummy.position.set(
 			x - direction.x * (radius + height / 2),
 			y - direction.y * (radius + height / 2),
 			z - direction.z * (radius + height / 2),
 		);
-		dummy.scale.set(4.4, height, 4.4);
+		dummy.scale.set(2.6, height, 2.6);
 		dummy.updateMatrix();
 		arrowMesh.setMatrixAt(slot, dummy.matrix);
 	};
@@ -862,4 +1107,12 @@ function colorToHex(rgb: string): number {
 	const g = Number(match[2] ?? 0);
 	const b = Number(match[3] ?? 0);
 	return (r << 16) + (g << 8) + b;
+}
+
+/** 同色系加深一点，对齐面板节点的深色描边（shadeColor 的 hex 版）。 */
+function shadeHex(hex: number, factor: number): number {
+	const r = Math.round(((hex >> 16) & 255) * factor);
+	const g = Math.round(((hex >> 8) & 255) * factor);
+	const b = Math.round((hex & 255) * factor);
+	return (Math.min(r, 255) << 16) + (Math.min(g, 255) << 8) + Math.min(b, 255);
 }

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "graph-pane-embed-alignment": {
+      "targetKind": "existing-ui",
+      "projectId": "03973bb8-06c2-4b1f-977e-b974178b7938",
+      "baselineDraftId": "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef",
+      "activeDraftId": "877c1fa9-066b-42b6-93a8-2da339c72078",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "92451368-e13c-4606-be49-d37809301d52",
+        "c281eeef-bd98-4a0c-8df3-4a718a674f99"
+      ],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        ".superdesign/init/components.md",
+        ".superdesign/init/layouts.md",
+        "src/app.ts:68:180",
+        "src/embed-mount.ts:52:180",
+        "src/graph-chrome.ts",
+        "src/filter-controls.ts",
+        "src/layout-modes.ts",
+        "src/sidebar-resize.ts",
+        "styles.css:1:680"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
+        ".superdesign/init/components.md": "c26ddd228c0a323f4046fe17daf063f68cbffb778aca8cca9d35a6a78cc9d506",
+        ".superdesign/init/layouts.md": "d03ad3a0b2c6198d7cb8289af06c615f32515b0f27372218624b80826350f9c8",
+        "src/app.ts": "286fac5cfa237559ab0b6acae1dc4b9ee34d339b11bb7775dd2a3d7168486fc5",
+        "src/embed-mount.ts": "933603383df42c44b1bb4ccd3ebac99217fbe1bbcfca5fa5d5fbd5f1f750e2af",
+        "src/graph-chrome.ts": "558317eaefef4764ef1e3e6c434b1059d5ce4141bcd8f99985c8ea5c12de8b89",
+        "src/filter-controls.ts": "c81cf4b2d7b2214a9647cda53d44eab74025277ce806c6978e7e1c8567c14531",
+        "src/layout-modes.ts": "49c9346a7a488e9b6e8c6c14d0cb27244b04b881b09afcdf36a370fdcb3b2884",
+        "src/sidebar-resize.ts": "9c077215078692c4edb6e1397bab47fd89423e1519687e8d73e091c5736f1a19",
+        "styles.css": "3bec7303d2a633c72d7537a03c3797b815dae1e47d49fee09aceb55f94dc8a26"
+      },
+      "drafts": {
+        "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef": {
+          "title": "Current pane and embed baseline",
+          "visualDirection": "faithful current UI reproduction",
+          "currentVersion": 3
+        },
+        "877c1fa9-066b-42b6-93a8-2da339c72078": {
+          "title": "Research Connected Aligned Production UI",
+          "visualDirection": "shared editorial instrument shell",
+          "parentDraftId": "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-10-04T08:09:07Z"
+    }
+  }
+}

@@ -4,7 +4,6 @@ import { verifyUi } from "./verify-ui";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { parseEmbed } from "../src/embed-syntax";
-import { noteSkeleton, toBibTeX } from "../src/export-graph";
 import {
 	edgeVisible,
 	emptyFilter,
@@ -237,10 +236,6 @@ function unit(): void {
 	const derivatives = derivativeWorks(rankedGraph, visible);
 	assert.equal(derivatives.find((item) => item.paper.id === "C")?.count, 3);
 	assert.equal(derivatives.some((item) => item.paper.id === "B"), true);
-	assert.match(toBibTeX([seedPaper]), /Seed paper/);
-	assert.match(toBibTeX([seedPaper]), /10\.1038\/nature14539/);
-	assert.match(noteSkeleton(seedPaper), /openalex/);
-	assert.equal(noteSkeleton(seedPaper).includes("摘要"), false);
 
 	const picked = selectNeighbors(
 		{ ...DEFAULT_SETTINGS, maxNodes: 20, includeRelated: false },

@@ -22,7 +22,9 @@ type Drag =
 
 /**
  * Canvas similarity map: pan, zoom, drag, hover title, click to select.
- * Layout is computed up front; dragging moves one node and does not reheat the sim.
+ * Layout is computed up front; dragging a node reheats a light physics
+ * simmer so neighbors follow and the map settles on release (force layouts
+ * only). Wheel zoom eases toward its target; pan and pinch stay immediate.
  */
 export class SimilarityMap {
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
@@ -65,6 +67,24 @@ export class SimilarityMap {
 	private communities = new Map<string, number>();
 	private minYear = 0;
 	private maxYear = 0;
+	/** Interactive simmer: reheats on node drag so neighbors follow, cools off after release. */
+	private simAlpha = 0;
+	private simFrame: number | null = null;
+	/** Wheel zoom eases toward this target (pan and pinch stay immediate). */
+	private zoomAnim: { k: number; tx: number; ty: number } | null = null;
+	private zoomFrame: number | null = null;
+
+	/** Headless verify stubs have no rAF; a timeout keeps the loops converging. */
+	private raf(callback: () => void): number {
+		return typeof requestAnimationFrame === "function"
+			? requestAnimationFrame(callback)
+			: (setTimeout(callback, 16) as unknown as number);
+	}
+
+	private caf(id: number): void {
+		if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(id);
+		else clearTimeout(id);
+	}
 
 	constructor(
 		private readonly canvas: HTMLCanvasElement,
@@ -93,6 +113,7 @@ export class SimilarityMap {
 	}
 
 	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>): void {
+		this.simAlpha = 0;
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
 		this.maxYear = years.length ? Math.max(...years) : 0;
@@ -127,6 +148,7 @@ export class SimilarityMap {
 
 	setLayout(mode: LayoutMode): void {
 		this.layoutMode = mode === "force3d" ? "force2d" : mode;
+		this.simAlpha = 0;
 		this.stage.classList?.toggle("cpo-kumu-view", this.layoutMode === "kumu");
 		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
 		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
@@ -143,6 +165,11 @@ export class SimilarityMap {
 	setScrubYear(year: number | null): void {
 		this.scrubYear = year;
 		for (const node of this.nodes) node.shown = this.isShown(node);
+		if (this.selectedId && !this.nodes.some((node) => node.id === this.selectedId && node.shown)) {
+			this.selectedId = null;
+			this.onSelect?.(null);
+		}
+		this.refreshFocus();
 		this.draw();
 	}
 
@@ -210,6 +237,7 @@ export class SimilarityMap {
 	fit(fromUser = false): void {
 		if (fromUser) this.adjusted = false;
 		if (this.nodes.length === 0) return;
+		this.zoomAnim = null;
 		let minX = Infinity;
 		let minY = Infinity;
 		let maxX = -Infinity;
@@ -233,8 +261,120 @@ export class SimilarityMap {
 		this.draw();
 	}
 
+	/** Physics simmer only for force layouts; temporal/radial positions carry meaning. */
+	private physicsOn(): boolean {
+		return this.layoutMode === "force2d" || this.layoutMode === "kumu";
+	}
+
+	/**
+	 * Reheat the interactive simulation (Obsidian-graph style): neighbors
+	 * follow a dragged node elastically and the map settles after release.
+	 * The loop stops when the alpha cools below the threshold, so an idle
+	 * map costs nothing.
+	 */
+	private reheat(alpha: number): void {
+		if (!this.physicsOn() || this.nodes.length > 350) return;
+		this.simAlpha = Math.max(this.simAlpha, alpha);
+		if (this.simFrame !== null) return;
+		const step = (): void => {
+			if (!this.alive || this.simAlpha < 0.02) {
+				this.simFrame = null;
+				this.simAlpha = 0;
+				return;
+			}
+			this.tick(this.simAlpha);
+			// A held node keeps the sim warm; after release it cools quickly.
+			this.simAlpha *= this.dragging?.kind === "node" ? 0.99 : 0.96;
+			this.draw();
+			this.simFrame = this.raf(step);
+		};
+		this.simFrame = this.raf(step);
+	}
+
+	private tick(alpha: number): void {
+		const nodes = this.nodes.filter((node) => node.shown);
+		if (nodes.length < 2) return;
+		const index = new Map(nodes.map((node, i) => [node.id, i] as const));
+		const vx = new Array<number>(nodes.length).fill(0);
+		const vy = new Array<number>(nodes.length).fill(0);
+		const pinnedId = this.dragging?.kind === "node" ? this.dragging.id : null;
+		const seedId = this.nodes.find((node) => node.isSeed)?.id ?? "";
+		const mobile = (id: string): boolean => id !== pinnedId && id !== seedId;
+
+		// Repulsion, same shaping as the upfront layout.
+		for (let i = 0; i < nodes.length; i++) {
+			const a = nodes[i]!;
+			for (let j = i + 1; j < nodes.length; j++) {
+				const b = nodes[j]!;
+				let dx = b.x - a.x;
+				let dy = b.y - a.y;
+				let dist2 = dx * dx + dy * dy;
+				if (dist2 < 0.01) {
+					dx = 0.15;
+					dy = 0.1;
+					dist2 = dx * dx + dy * dy;
+				}
+				const dist = Math.sqrt(dist2);
+				const force = (alpha * 160 * (a.radius + b.radius)) / dist2;
+				const fx = (dx / dist) * force;
+				const fy = (dy / dist) * force;
+				if (mobile(a.id)) {
+					vx[i]! -= fx;
+					vy[i]! -= fy;
+				}
+				if (mobile(b.id)) {
+					vx[j]! += fx;
+					vy[j]! += fy;
+				}
+			}
+		}
+		// Springs over the visible edges.
+		for (const edge of this.edges) {
+			if (!this.kindVisible[relationKind(edge)]) continue;
+			const ai = index.get(edge.source);
+			const bi = index.get(edge.target);
+			if (ai === undefined || bi === undefined) continue;
+			const a = nodes[ai]!;
+			const b = nodes[bi]!;
+			const dist = Math.hypot(b.x - a.x, b.y - a.y) || 0.01;
+			const weight = clamp(edge.weight, 0, 1);
+			const rest = 88 + (1 - weight) * 200;
+			const spring = 0.025 + weight * 0.07;
+			const disp = (dist - rest) * spring * alpha;
+			const dx = ((b.x - a.x) / dist) * disp;
+			const dy = ((b.y - a.y) / dist) * disp;
+			if (mobile(a.id)) {
+				vx[ai]! += dx;
+				vy[ai]! += dy;
+			}
+			if (mobile(b.id)) {
+				vx[bi]! -= dx;
+				vy[bi]! -= dy;
+			}
+		}
+		// Gentle centering, damping, and a step cap so reheats never explode.
+		for (let i = 0; i < nodes.length; i++) {
+			const node = nodes[i]!;
+			if (!mobile(node.id)) continue;
+			let mx = (vx[i]! - node.x * 0.01 * alpha) * 0.62;
+			let my = (vy[i]! - node.y * 0.01 * alpha) * 0.62;
+			const speed = Math.hypot(mx, my);
+			const cap = 18 * alpha;
+			if (speed > cap && speed > 0) {
+				mx = (mx / speed) * cap;
+				my = (my / speed) * cap;
+			}
+			node.x = clamp(node.x + mx, -1400, 1400);
+			node.y = clamp(node.y + my, -1400, 1400);
+		}
+	}
+
 	destroy(): void {
 		this.alive = false;
+		if (this.simFrame !== null) this.caf(this.simFrame);
+		if (this.zoomFrame !== null) this.caf(this.zoomFrame);
+		this.simFrame = null;
+		this.zoomFrame = null;
 		this.pointers.clear();
 		this.pinch = null;
 		this.canvas.removeEventListener("pointerdown", this.onPointerDown);
@@ -251,10 +391,35 @@ export class SimilarityMap {
 		this.adjusted = true;
 		const next = clamp(this.k * factor, 0.25, 4);
 		const world = this.screenToWorld(sx, sy);
-		this.k = next;
-		this.tx = sx - world.x * this.k;
-		this.ty = sy - world.y * this.k;
-		this.draw();
+		// Ease toward the target like the Obsidian graph; rapid wheel ticks just
+		// move the target, and one rAF loop converges on it.
+		this.zoomAnim = { k: next, tx: sx - world.x * next, ty: sy - world.y * next };
+		if (this.zoomFrame !== null) return;
+		const step = (): void => {
+			const target = this.zoomAnim;
+			if (!this.alive || !target) {
+				this.zoomFrame = null;
+				return;
+			}
+			const dk = target.k - this.k;
+			const dtx = target.tx - this.tx;
+			const dty = target.ty - this.ty;
+			if (Math.abs(dk) < 0.002 && Math.abs(dtx) < 0.5 && Math.abs(dty) < 0.5) {
+				this.k = target.k;
+				this.tx = target.tx;
+				this.ty = target.ty;
+				this.zoomAnim = null;
+				this.zoomFrame = null;
+				this.draw();
+				return;
+			}
+			this.k += dk * 0.3;
+			this.tx += dtx * 0.3;
+			this.ty += dty * 0.3;
+			this.draw();
+			this.zoomFrame = this.raf(step);
+		};
+		this.zoomFrame = this.raf(step);
 	}
 
 	private onWheel(event: WheelEvent): void {
@@ -267,6 +432,9 @@ export class SimilarityMap {
 
 	private onPointerDown(event: PointerEvent): void {
 		if (!this.alive) return;
+		this.canvas.focus({ preventScroll: true });
+		// Direct manipulation cancels any eased zoom still in flight.
+		this.zoomAnim = null;
 		this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 		try {
 			this.canvas.setPointerCapture(event.pointerId);
@@ -365,6 +533,8 @@ export class SimilarityMap {
 				const world = this.screenToWorld(local.x, local.y);
 				node.x = world.x + dragging.dx;
 				node.y = world.y + dragging.dy;
+				// Neighbors follow elastically while the node is held.
+				this.reheat(0.5);
 			}
 			this.canvas.style.cursor = "grabbing";
 		}
@@ -395,6 +565,8 @@ export class SimilarityMap {
 		this.dragging = null;
 		if (!dragging || wasDrag) {
 			this.canvas.style.cursor = "grab";
+			// Release after a drag: simmer so the map settles elastically.
+			if (wasDrag && dragging?.kind === "node") this.reheat(0.35);
 			return;
 		}
 		if (dragging.kind === "node") {
@@ -433,6 +605,46 @@ export class SimilarityMap {
 		if (!this.alive) return;
 		const panStep = 48;
 		const key = event.key;
+		if (key === "Escape") {
+			event.preventDefault();
+			this.selectedId = null;
+			this.hoverId = null;
+			this.refreshFocus();
+			this.onSelect?.(null);
+			this.draw();
+			return;
+		}
+		if ((key === "Enter" || key === " ") && this.selectedId) {
+			event.preventDefault();
+			this.onSelect?.(this.nodes.find((node) => node.id === this.selectedId) ?? null);
+			return;
+		}
+		if (event.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key)) {
+			event.preventDefault();
+			const current = this.nodes.find((node) => node.id === this.selectedId) ?? this.nodes.find((node) => node.isSeed);
+			if (current) {
+				const dx = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
+				const dy = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
+				const next = this.nodes
+					.filter((node) => node.shown && node.id !== current.id)
+					.map((node) => {
+						const vx = node.x - current.x;
+						const vy = node.y - current.y;
+						const distance = Math.hypot(vx, vy);
+						const forward = (vx * dx + vy * dy) / Math.max(1, distance);
+						return { node, score: forward > 0 ? distance / forward : Number.POSITIVE_INFINITY };
+					})
+					.filter((item) => Number.isFinite(item.score))
+					.sort((a, b) => a.score - b.score)[0]?.node;
+				if (next) {
+					this.selectedId = next.id;
+					this.refreshFocus();
+					this.onSelect?.(next);
+					this.draw();
+				}
+			}
+			return;
+		}
 		if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
 			event.preventDefault();
 			this.tx += key === "ArrowLeft" ? panStep : key === "ArrowRight" ? -panStep : 0;
@@ -723,7 +935,7 @@ export class SimilarityMap {
 		// Kumu 标签在节点正下方居中，其余布局在右侧。
 		ctx.textAlign = kumu ? "center" : "left";
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-		const place = (node: DrawNode, maxWidth: number): void => {
+		const place = (node: DrawNode, maxWidth: number, alpha = 1): void => {
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
 			const x = kumu ? cx : cx + node.radius + 6;
@@ -737,21 +949,23 @@ export class SimilarityMap {
 			if (!must && overlaps(box, boxes)) return;
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
-			if (dimmed) ctx.globalAlpha = 0.35;
+			ctx.globalAlpha = dimmed ? 0.35 * alpha : alpha;
 			ctx.lineWidth = 2;
 			ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
 			ctx.strokeText(text, x, y);
 			ctx.fillStyle = this.graphText;
 			ctx.fillText(text, x, y);
-			if (dimmed) ctx.globalAlpha = 1;
+			ctx.globalAlpha = 1;
 		};
 
 		for (const node of this.nodes) {
 			if (node.shown && prominent.has(node.id)) place(node, 168);
 		}
-		if (this.k >= 1.35) {
+		// Full labels fade in across a zoom band instead of a hard cutoff.
+		const labelAlpha = clamp((this.k - 1.1) / 0.5, 0, 1);
+		if (labelAlpha > 0) {
 			for (const node of this.nodes) {
-				if (node.shown && !prominent.has(node.id)) place(node, 140);
+				if (node.shown && !prominent.has(node.id)) place(node, 140, labelAlpha);
 			}
 		}
 	}
