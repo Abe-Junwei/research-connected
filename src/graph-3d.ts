@@ -8,6 +8,7 @@ import {
 	MeshBasicMaterial,
 	Object3D,
 	PerspectiveCamera,
+	Plane,
 	Raycaster,
 	Scene,
 	MOUSE,
@@ -253,6 +254,7 @@ export function mountGraph3D(
 	};
 	applyPointerMode();
 
+	let frameDistance = 1;
 	const frameCamera = (): void => {
 		let maxReach = 80;
 		for (const entry of entries) {
@@ -265,12 +267,16 @@ export function mountGraph3D(
 		else camera.position.set(0, maxReach * 0.08, maxReach * 1.65);
 		controls.target.set(0, 0, 0);
 		controls.update();
+		frameDistance = camera.position.distanceTo(controls.target);
 	};
 	frameCamera();
 
 	const raycaster = new Raycaster();
 	const pointer = new Vector2();
 	const projected = new Vector3();
+	const dragPlane = new Plane(new Vector3(0, 0, 1), 0);
+	const dragPoint = new Vector3();
+	const dragOffset = new Vector3();
 	let alive = true;
 	let raf = 0;
 	let running = false;
@@ -279,6 +285,10 @@ export function mountGraph3D(
 	let downX = 0;
 	let downY = 0;
 	let moved = false;
+	let dragNodeId: string | null = null;
+	let simAlpha = 0;
+	let simFrame: number | null = null;
+	let zoomGoal: number | null = null;
 
 	// 对齐图谱面板 drawNode：悬停微微放大，graph 着色模式下悬停/选中改填充色，
 	// 选中套一圈聚焦色圆环，焦点之外的节点淡化到 0.25。
@@ -296,6 +306,129 @@ export function mountGraph3D(
 			}
 		}
 		schedule();
+	};
+
+	const currentPlacements = (): Map<string, { x: number; y: number; z: number; radius: number }> =>
+		new Map(
+			entries.map((entry) => [
+				entry.id,
+				{
+					x: entry.mesh.position.x,
+					y: entry.mesh.position.y,
+					z: entry.mesh.position.z,
+					radius: entry.radius,
+				},
+			]),
+		);
+
+	/** 物理 simmer 只对力导向布局启用；时间/放射布局的位置本身有意义。 */
+	const physicsOn = (): boolean => layoutMode === "force2d" || layoutMode === "kumu";
+
+	/**
+	 * 对齐图谱面板的 Obsidian 式动态：拖动节点时邻居弹性跟随，松手后缓慢
+	 * 收敛；alpha 冷却到阈值以下循环就停，静止的图不耗帧。
+	 */
+	const reheat = (alpha: number): void => {
+		if (!physicsOn() || entries.length > 350) return;
+		simAlpha = Math.max(simAlpha, alpha);
+		if (simFrame !== null) return;
+		const step = (): void => {
+			simFrame = null;
+			if (!alive || simAlpha < 0.02) {
+				simAlpha = 0;
+				return;
+			}
+			simTick(simAlpha);
+			// 按住节点保持热度，松手后快速冷却。
+			simAlpha *= dragNodeId ? 0.99 : 0.96;
+			schedule();
+			if (alive && simAlpha >= 0.02) simFrame = window.requestAnimationFrame(step);
+			else simAlpha = 0;
+		};
+		simFrame = window.requestAnimationFrame(step);
+	};
+
+	const simTick = (alpha: number): void => {
+		const nodes = entries.filter((entry) => entry.mesh.visible);
+		if (nodes.length < 2) return;
+		const index = new Map(nodes.map((entry, i) => [entry.id, i] as const));
+		const vx = new Array<number>(nodes.length).fill(0);
+		const vy = new Array<number>(nodes.length).fill(0);
+		const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? "";
+		const mobile = (id: string): boolean => id !== dragNodeId && id !== seedId;
+
+		// 斥力，与初始布局同一塑形。
+		for (let i = 0; i < nodes.length; i++) {
+			const a = nodes[i]!;
+			for (let j = i + 1; j < nodes.length; j++) {
+				const b = nodes[j]!;
+				let dx = b.mesh.position.x - a.mesh.position.x;
+				let dy = b.mesh.position.y - a.mesh.position.y;
+				let dist2 = dx * dx + dy * dy;
+				if (dist2 < 0.01) {
+					dx = 0.15;
+					dy = 0.1;
+					dist2 = dx * dx + dy * dy;
+				}
+				const dist = Math.sqrt(dist2);
+				const force = (alpha * 160 * (a.radius + b.radius)) / dist2;
+				const fx = (dx / dist) * force;
+				const fy = (dy / dist) * force;
+				if (mobile(a.id)) {
+					vx[i]! -= fx;
+					vy[i]! -= fy;
+				}
+				if (mobile(b.id)) {
+					vx[j]! += fx;
+					vy[j]! += fy;
+				}
+			}
+		}
+		// 沿可见边的弹簧。
+		for (const edge of graph.edges) {
+			if (!edgeVisible(edge, papers, filter)) continue;
+			const ai = index.get(edge.source);
+			const bi = index.get(edge.target);
+			if (ai === undefined || bi === undefined) continue;
+			const a = nodes[ai]!.mesh.position;
+			const b = nodes[bi]!.mesh.position;
+			const dist = Math.hypot(b.x - a.x, b.y - a.y) || 0.01;
+			const weight = Math.min(1, Math.max(0, edge.weight));
+			const rest = 88 + (1 - weight) * 200;
+			const spring = 0.025 + weight * 0.07;
+			const disp = (dist - rest) * spring * alpha;
+			const dx = ((b.x - a.x) / dist) * disp;
+			const dy = ((b.y - a.y) / dist) * disp;
+			if (mobile(edge.source)) {
+				vx[ai]! += dx;
+				vy[ai]! += dy;
+			}
+			if (mobile(edge.target)) {
+				vx[bi]! -= dx;
+				vy[bi]! -= dy;
+			}
+		}
+		// 轻量向心 + 阻尼 + 步长上限，reheat 不会炸开。
+		let changed = false;
+		for (let i = 0; i < nodes.length; i++) {
+			const entry = nodes[i]!;
+			if (!mobile(entry.id)) continue;
+			const at = entry.mesh.position;
+			let mx = (vx[i]! - at.x * 0.01 * alpha) * 0.62;
+			let my = (vy[i]! - at.y * 0.01 * alpha) * 0.62;
+			const speed = Math.hypot(mx, my);
+			const cap = 18 * alpha;
+			if (speed > cap && speed > 0) {
+				mx = (mx / speed) * cap;
+				my = (my / speed) * cap;
+			}
+			const nx = Math.min(1400, Math.max(-1400, at.x + mx));
+			const ny = Math.min(1400, Math.max(-1400, at.y + my));
+			if (nx !== at.x || ny !== at.y) changed = true;
+			at.x = nx;
+			at.y = ny;
+		}
+		if (changed) drawn.relayout(currentPlacements());
 	};
 
 	const resize = (): void => {
@@ -380,6 +513,9 @@ export function mountGraph3D(
 		);
 		const kept: Array<{ x: number; y: number }> = [];
 		let shown = 0;
+		// 对齐面板：普通标签随放大淡入（缩放 1.1–1.6 区间），种子/选中/悬停恒显。
+		const zoom = frameDistance / Math.max(1, camera.position.distanceTo(controls.target));
+		const labelAlpha = Math.min(1, Math.max(0, (zoom - 1.1) / 0.5));
 		for (const entry of ranked) {
 			const el = entry.label;
 			if (!el) continue;
@@ -405,7 +541,12 @@ export function mountGraph3D(
 				el.hidden = true;
 				continue;
 			}
+			if (!force && labelAlpha <= 0.02) {
+				el.hidden = true;
+				continue;
+			}
 			el.hidden = false;
+			el.style.opacity = force ? "1" : labelAlpha.toFixed(2);
 			el.style.left = `${x}px`;
 			el.style.top = `${y}px`;
 			kept.push({ x, y });
@@ -471,11 +612,23 @@ export function mountGraph3D(
 		raf = 0;
 		if (!alive || !running) return;
 		const settling = controls.update();
+		// 缩放按钮的缓动：向目标距离 lerp，贴近后停（对齐面板的 eased zoom）。
+		if (zoomGoal !== null) {
+			const offset = camera.position.clone().sub(controls.target);
+			const distance = offset.length() || 1;
+			let nextDistance = distance + (zoomGoal - distance) * 0.22;
+			if (Math.abs(zoomGoal - nextDistance) < distance * 0.01) {
+				nextDistance = zoomGoal;
+				zoomGoal = null;
+			}
+			offset.multiplyScalar(nextDistance / distance);
+			camera.position.copy(controls.target).add(offset);
+		}
 		// 圆盘与面板圆点一样始终正对相机，旋转视角时不变形。
 		for (const entry of entries) entry.mesh.quaternion.copy(camera.quaternion);
 		renderer.render(scene, camera);
 		placeLabels();
-		if (settling) schedule();
+		if (settling || zoomGoal !== null) schedule();
 	};
 	const start = (): void => {
 		if (running || !alive) return;
@@ -526,8 +679,46 @@ export function mountGraph3D(
 		downX = event.clientX;
 		downY = event.clientY;
 		moved = false;
+		// 平面布局里左键按住节点直接拖动（对齐面板/Obsidian）；空白处仍是平移。
+		// 触屏单指留给笔记滚动，不触发节点拖动。
+		if (event.button === 0 && event.pointerType !== "touch" && layoutMode !== "force3d" && setPointer(event)) {
+			const hit = pick(event);
+			if (hit.node && hit.node.mesh.visible) {
+				dragNodeId = hit.node.id;
+				controls.enabled = false;
+				try {
+					canvas.setPointerCapture(event.pointerId);
+				} catch {
+					/* 指针捕获失败也不影响拖动 */
+				}
+				dragPlane.setFromNormalAndCoplanarPoint(new Vector3(0, 0, 1), hit.node.mesh.position);
+				if (raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+					dragOffset.copy(hit.node.mesh.position).sub(dragPoint);
+				} else {
+					dragOffset.set(0, 0, 0);
+				}
+			}
+		}
 	};
 	const onPointerMove = (event: PointerEvent): void => {
+		if (dragNodeId) {
+			const entry = entries.find((item) => item.id === dragNodeId) ?? null;
+			if (entry && setPointer(event) && raycaster.ray.intersectPlane(dragPlane, dragPoint)) {
+				if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) moved = true;
+				if (moved) {
+					const at = entry.mesh.position;
+					at.x = dragPoint.x + dragOffset.x;
+					at.y = dragPoint.y + dragOffset.y;
+					// 邻居弹性跟随；非力导向布局只动节点本身，边也要跟着走。
+					reheat(0.5);
+					drawn.relayout(currentPlacements());
+					schedule();
+				}
+			}
+			tooltip.hidden = true;
+			canvas.style.cursor = "grabbing";
+			return;
+		}
 		if (event.buttons && Math.hypot(event.clientX - downX, event.clientY - downY) > 4) {
 			moved = true;
 			tooltip.hidden = true;
@@ -557,6 +748,28 @@ export function mountGraph3D(
 		tooltip.hidden = true;
 	};
 	const onPointerUp = (event: PointerEvent): void => {
+		if (dragNodeId) {
+			const released = dragNodeId;
+			const wasDrag = moved;
+			dragNodeId = null;
+			controls.enabled = true;
+			try {
+				canvas.releasePointerCapture(event.pointerId);
+			} catch {
+				/* 与按下时的捕获对应 */
+			}
+			canvas.style.cursor = "grab";
+			// 拖动结束：simmer 让图谱弹性收敛。
+			if (wasDrag) {
+				reheat(0.35);
+				return;
+			}
+			const paper = papers.get(released) ?? null;
+			selectedId = paper?.id ?? null;
+			onSelect(paper, null);
+			syncView();
+			return;
+		}
 		if (moved) {
 			canvas.style.cursor = "grab";
 			return;
@@ -577,6 +790,7 @@ export function mountGraph3D(
 		syncView();
 	};
 	const onPointerLeave = (): void => {
+		if (dragNodeId) return;
 		hoverId = null;
 		tooltip.hidden = true;
 		canvas.style.cursor = "grab";
@@ -628,6 +842,14 @@ export function mountGraph3D(
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
 		const kumuStyle = mode === "kumu";
+		simAlpha = 0;
+		if (simFrame !== null) {
+			window.cancelAnimationFrame(simFrame);
+			simFrame = null;
+		}
+		dragNodeId = null;
+		controls.enabled = true;
+		zoomGoal = null;
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
@@ -649,10 +871,9 @@ export function mountGraph3D(
 		const offset = camera.position.clone().sub(controls.target);
 		const distance = offset.length();
 		if (distance < 1e-3) return;
-		const next = Math.min(controls.maxDistance, Math.max(controls.minDistance, distance / factor));
-		offset.multiplyScalar(next / distance);
-		camera.position.copy(controls.target).add(offset);
-		controls.update();
+		// 不直接跳变，设目标距离交给 tick 逐帧 lerp（对齐面板的缓动缩放）。
+		zoomGoal = Math.min(controls.maxDistance, Math.max(controls.minDistance, distance / factor));
+		schedule();
 	};
 
 	return {
@@ -685,6 +906,9 @@ export function mountGraph3D(
 			if (!alive) return;
 			alive = false;
 			stop();
+			if (simFrame !== null) window.cancelAnimationFrame(simFrame);
+			simFrame = null;
+			dragNodeId = null;
 			resizeObserver.disconnect();
 			visibility.disconnect();
 			canvas.removeEventListener("pointerdown", onPointerDown);
