@@ -9,17 +9,27 @@
 	padding: 0;
 }
 
-/* Follow the active Obsidian theme; keep only graph-specific semantic accents local. */
+/* 淡色外观：在插件根作用域局部重定义 Obsidian 主题变量，
+   深色/褐色主题下插件也保持固定的浅色画布与控件配色。 */
 .cpo-root,
 .cpo-embed {
+	--text-normal: #3a3f45;
+	--text-muted: #6b7280;
+	--text-faint: #9aa0a6;
+	--background-primary: #ffffff;
+	--background-secondary: #f6f5f2;
+	--background-modifier-border: #e5e2da;
+	--background-modifier-hover: rgba(60, 64, 70, 0.08);
+	--background-modifier-active-hover: rgba(60, 64, 70, 0.12);
+	--background-modifier-box-shadow: rgba(60, 64, 70, 0.14);
 	--cpo-canvas-bg-start: #ffffff;
-	--cpo-canvas-bg-end: #ffffff;
-	--cpo-accent: var(--interactive-accent, #b38b4d);
-	--cpo-accent-hover: var(--interactive-accent-hover, var(--interactive-accent, #a47a3e));
-	--graph-node: var(--interactive-accent, #8a7fd8);
-	--graph-node-focused: var(--interactive-accent-hover, #4a90d9);
-	--graph-line: var(--text-faint, rgba(90, 96, 106, 0.35));
-	--graph-text: var(--text-normal);
+	--cpo-canvas-bg-end: #f7f6f3;
+	--cpo-accent: #b38b4d;
+	--cpo-accent-hover: #a47a3e;
+	--graph-node: #8a7fd8;
+	--graph-node-focused: #4a90d9;
+	--graph-line: rgba(90, 96, 106, 0.28);
+	--graph-text: #4b5563;
 }
 
 .cpo-root {
@@ -471,7 +481,7 @@
 
 .cpo-action-link:disabled,
 .cpo-action-link[hidden] {
-	display: none;
+	display: none !important;
 }
 
 .cpo-action-link:focus-visible {
@@ -492,7 +502,8 @@
 	position: static;
 }
 
-.cpo-action-link,
+.cpo-root button.cpo-action-link,
+.cpo-embed button.cpo-action-link,
 .cpo-zoom button,
 .cpo-root button.cpo-icon {
 	height: 28px;
@@ -508,7 +519,8 @@
 	box-shadow: 0 1px 4px rgba(60, 64, 70, 0.12);
 }
 
-.cpo-action-link:hover,
+.cpo-root button.cpo-action-link:hover,
+.cpo-embed button.cpo-action-link:hover,
 .cpo-zoom button:hover,
 .cpo-root button.cpo-icon:hover {
 	background: var(--background-modifier-hover);
@@ -1599,6 +1611,7 @@
 .cpo-root.is-narrow .cpo-seed-meta {
 	max-width: calc(100% - 22px);
 	margin-left: 19px;
+}
 
 /* Shared resizable evidence sidebar. The graph stays dominant; navigation
    belongs to the evidence rail instead of spanning the canvas. */
