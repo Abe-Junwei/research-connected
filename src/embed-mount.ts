@@ -112,6 +112,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const filters = document.createElement("div");
 	filters.className = "cpo-embed-filters";
 	const tools = document.createElement("div");
+	tools.classList.add("cpo-drawer-tools");
 	drawer.append(drawerTitle, tip, legend, filters, tools);
 	stage.append(message, tooltip, zoom, drawer);
 	body.append(rail, stage);
@@ -165,8 +166,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintLists();
 	});
 	let tab: GraphTab = "graph";
-	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
-	let colorMode: ColorMode = saved?.color ?? spec.color;
+	let layoutMode: LayoutMode = (saved?.layout ?? spec.layout) === "kumu" ? "kumu" : "temporal";
+	let colorMode: ColorMode = "topic";
 	let analysisMode: "sankey" | "chord" = "sankey";
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
@@ -243,9 +244,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(tools, {
-		layouts: ["kumu", "temporal", "radial", "force2d", "force3d"],
+		layouts: ["temporal", "kumu"],
 		layout: layoutMode,
-		color: colorMode,
 		noteButton: Boolean(deps.createNote),
 		analysisButton: true,
 		actionsHost: actionsBar,
@@ -253,10 +253,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		onLayout: (mode) => {
 			layoutMode = mode;
 			graphView?.setLayout(mode);
-		},
-		onColor: (mode) => {
-			colorMode = mode;
-			graphView?.setColorMode(mode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };

@@ -1,5 +1,5 @@
 import { communityColor, communityRgba, detectCommunities } from "./communities";
-import { buildCommunityRegions } from "./community-regions";
+import { buildCommunityRegions, communityTopicLabels } from "./community-regions";
 import { focusNodes } from "./graph-filter";
 import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
@@ -61,11 +61,12 @@ export class SimilarityMap {
 	private graphNodeFocused = "#4a90d9";
 	private graphLine = "rgba(90, 96, 106, 0.28)";
 	private graphText = "#4b5563";
-	private layoutMode: LayoutMode = "force2d";
-	private colorMode: ColorMode = "graph";
+	private layoutMode: LayoutMode = "temporal";
+	private colorMode: ColorMode = "topic";
 	private scrubYear: number | null = null;
 	private seedScore = new Map<string, number>();
 	private communities = new Map<string, number>();
+	private communityLabels = new Map<number, string>();
 	private minYear = 0;
 	private maxYear = 0;
 	/** Interactive simmer: reheats on node drag so neighbors follow, cools off after release. */
@@ -121,9 +122,10 @@ export class SimilarityMap {
 		this.seedScore = seedScore;
 		this.edges = edges;
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
-		this.layoutMode = "force2d";
+		this.communityLabels = communityTopicLabels(nodes, this.communities);
+		this.layoutMode = "temporal";
 		this.scrubYear = null;
-		this.colorMode = "graph";
+		this.colorMode = "topic";
 		this.rebuild(nodes, true);
 	}
 
@@ -134,6 +136,7 @@ export class SimilarityMap {
 	updateGraphData(edges: GraphEdge[]): void {
 		this.edges = edges;
 		this.communities = detectCommunities(this.nodes.map((node) => node.id), edges);
+		this.communityLabels = communityTopicLabels(this.nodes, this.communities);
 		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		this.recolor();
 		this.refreshFocus();
@@ -696,6 +699,7 @@ export class SimilarityMap {
 		background.addColorStop(1, this.bgEnd);
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
+		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
 		if (this.layoutMode === "kumu") this.drawCommunityRegions(ctx, false);
 
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
@@ -740,6 +744,40 @@ export class SimilarityMap {
 		this.drawLabels(ctx);
 	}
 
+	private drawYearAxis(ctx: CanvasRenderingContext2D): void {
+		if (!this.nodes.some((node) => node.year !== null)) return;
+		const width = 460;
+		const yearSpan = this.maxYear - this.minYear;
+		const span = Math.max(1, yearSpan);
+		const bottom = this.cssHeight - 26;
+		const top = 24;
+		const ticks = [...new Set([this.minYear, Math.round((this.minYear + this.maxYear) / 2), this.maxYear])];
+		ctx.save();
+		ctx.font = `11px ${this.fontFamily}`;
+		ctx.textBaseline = "bottom";
+		for (const year of ticks) {
+			const worldX = yearSpan === 0 ? 0 : ((year - this.minYear) / span - 0.5) * width;
+			const x = worldX * this.k + this.tx;
+			if (x < -20 || x > this.cssWidth + 20) continue;
+			ctx.beginPath();
+			ctx.moveTo(x, top);
+			ctx.lineTo(x, bottom);
+			ctx.strokeStyle = "rgba(105, 116, 128, 0.10)";
+			ctx.lineWidth = 1;
+			ctx.stroke();
+			ctx.fillStyle = "rgba(95, 105, 116, 0.72)";
+			ctx.textAlign = x < 42 ? "left" : x > this.cssWidth - 42 ? "right" : "center";
+			ctx.fillText(String(year), x, this.cssHeight - 7);
+		}
+		const unknownX = (-width / 2 - 48) * this.k + this.tx;
+		if (this.nodes.some((node) => node.year === null) && unknownX > 0 && unknownX < this.cssWidth) {
+			ctx.fillStyle = "rgba(95, 105, 116, 0.72)";
+			ctx.textAlign = "center";
+			ctx.fillText("年份未知", unknownX, this.cssHeight - 7);
+		}
+		ctx.restore();
+	}
+
 	private drawCommunityRegions(ctx: CanvasRenderingContext2D, labelsOnly: boolean): void {
 		const regions = buildCommunityRegions(
 			this.nodes.map((node) => ({
@@ -750,6 +788,9 @@ export class SimilarityMap {
 				shown: node.shown,
 			})),
 			Math.max(18, Math.min(32, 24 * this.k)),
+			3,
+			10,
+			this.communityLabels,
 		);
 		ctx.save();
 		ctx.textAlign = "left";
@@ -774,7 +815,7 @@ export class SimilarityMap {
 				ctx.stroke();
 			}
 
-			const label = `相似性社区 ${region.community + 1}`;
+			const label = region.label;
 			ctx.font = `10px ${this.fontFamily}`;
 			const labelWidth = ctx.measureText(label).width;
 			const x = Math.max(6, Math.min(this.cssWidth - labelWidth - 6, region.left + 6));

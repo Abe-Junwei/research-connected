@@ -70,7 +70,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	root.replaceChildren();
 
 	const bar = el(root, "header", "cpo-bar");
-	const form = el(bar, "form", "cpo-form");
+	const topLine = el(bar, "div", "cpo-topline");
+	const brand = el(topLine, "div", "cpo-brand");
+	el(brand, "span", "cpo-brand-mark", "R");
+	el(brand, "strong", undefined, "Research Connected");
+	const form = el(topLine, "form", "cpo-form");
 	const input = el(form, "input", "cpo-input") as HTMLInputElement;
 	input.type = "text";
 	input.placeholder = "DOI、OpenAlex ID 或论文标题";
@@ -79,12 +83,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	input.setAttribute("aria-label", "种子论文");
 	const submit = el(form, "button", "cpo-primary", "构建图谱") as HTMLButtonElement;
 	submit.type = "submit";
-	const example = el(bar, "button", "cpo-ghost", "示例 DOI") as HTMLButtonElement;
+	const example = el(topLine, "button", "cpo-ghost", "示例") as HTMLButtonElement;
 	example.type = "button";
 	example.title = EXAMPLE_DOI;
 
 	const status = el(bar, "p", "cpo-status", "从一篇种子论文开始。");
 	status.setAttribute("role", "status");
+	const seedSummary = el(root, "div", "cpo-seed-summary");
+	seedSummary.hidden = true;
+	el(seedSummary, "span", "cpo-seed-mark", "");
+	const seedTitle = el(seedSummary, "strong", "cpo-seed-title");
+	const seedMeta = el(seedSummary, "span", "cpo-seed-meta");
 	const results = el(bar, "div", "cpo-results");
 	results.hidden = true;
 
@@ -123,13 +132,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const legend = el(drawer, "div", "cpo-legend");
 	legend.hidden = true;
 	const rampWrap = el(legend, "span", "cpo-ramp-wrap");
-	rampWrap.hidden = true;
-	const rampStart = el(rampWrap, "span", undefined, "较早");
+	rampWrap.hidden = false;
+	const rampStart = el(rampWrap, "span", undefined, "较低");
 	const ramp = el(rampWrap, "span", "cpo-ramp");
-	const rampEnd = el(rampWrap, "span", undefined, "较新");
+	ramp.classList.add("cpo-topic-ramp");
+	const rampEnd = el(rampWrap, "span", undefined, "较高");
+	el(legend, "span", undefined, "与种子的主题相似度");
 	el(legend, "span", undefined, "圆点略大表示被引更多");
 	el(legend, "span", undefined, "双环是种子");
 	const toolsHost = el(drawer, "div");
+	toolsHost.classList.add("cpo-drawer-tools");
 	filterButton.addEventListener("click", () => {
 		const open = drawer.hidden;
 		drawer.hidden = !open;
@@ -146,12 +158,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	zoomOut.setAttribute("aria-label", "缩小");
 	fit.setAttribute("aria-label", "适应窗口");
 
-	const actionsBar = el(root, "div", "cpo-actions-bar");
-	const sheetHost = el(root, "section");
+	const sheetHost = el(body, "aside", "cpo-evidence-panel");
 	const sheet = mountBottomSheet(sheetHost);
+	const evidenceHeading = el(sheetHost, "div", "cpo-evidence-heading");
+	el(evidenceHeading, "strong", undefined, "论文与关系证据");
+	el(evidenceHeading, "span", undefined, "选择节点查看来源与关系");
+	sheetHost.prepend(evidenceHeading);
 	const detail = el(sheet.body, "div", "cpo-detail");
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
+	const actionsBar = el(root, "div", "cpo-actions-bar");
 	const map = new SimilarityMap(canvas, tooltip, stage);
 	let mapFilter: GraphFilter = { ...emptyFilter(), kinds: { direct: true, cocitation: true, coupling: true, weak: false } };
 	map.setKinds(mapFilter.kinds);
@@ -467,9 +483,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(toolsHost, {
-		layouts: ["kumu", "force2d", "temporal", "radial"],
-		layout: "force2d",
-		color: "graph",
+		layouts: ["temporal", "kumu"],
+		layout: "temporal",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		analysisButton: true,
@@ -477,13 +492,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => map.setLayout(mode),
-		onColor: (mode) => {
-			map.setColorMode(mode);
-			rampWrap.hidden = mode !== "year" && mode !== "topic";
-			rampStart.textContent = mode === "topic" ? "较低" : "较早";
-			rampEnd.textContent = mode === "topic" ? "较高" : "较新";
-			ramp.classList.toggle("cpo-topic-ramp", mode === "topic");
-		},
 		onScrub: (year) => {
 			scrubYear = year;
 			map.setScrubYear(year);
@@ -724,6 +732,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		legend.hidden = false;
 		hideResults();
 		const seed = next.nodes.find((node) => node.isSeed) ?? null;
+		if (seed) {
+			seedSummary.hidden = false;
+			seedTitle.textContent = seed.title || seed.id;
+			seedMeta.textContent = [seed.authors, seed.year ?? "年份不详", "种子论文"].filter(Boolean).join(" · ");
+		}
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);

@@ -3,6 +3,7 @@ import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
+import { buildCommunityRegions, communityTopicLabels } from "../src/community-regions";
 import { parseEmbed } from "../src/embed-syntax";
 import { noteSkeleton, toBibTeX } from "../src/export-graph";
 import {
@@ -103,6 +104,19 @@ function unit(): void {
 	assert.ok((topicSimilarity(topicPaper?.topicTags, [{ id: "https://openalex.org/T1", name: "Language", score: 1 }]) ?? 0) > 0);
 	assert.equal(topicSimilarity(undefined, topicPaper?.topicTags), null);
 	assert.notEqual(topicSimilarityColor(1), topicSimilarityColor(0));
+	const topicGroups = communityTopicLabels([
+		{ id: "a", topicTags: [{ name: "Language", score: 0.8 }, { name: "Syntax", score: 0.5 }] },
+		{ id: "b", topicTags: [{ name: "Language", score: 0.7 }] },
+		{ id: "c", topicTags: [{ name: "Syntax", score: 0.9 }] },
+	], new Map([["a", 0], ["b", 0], ["c", 1]]));
+	assert.equal(topicGroups.get(0), "Language · Syntax");
+	assert.equal(topicGroups.get(1), "Syntax");
+	const communityRegions = buildCommunityRegions([
+		{ id: "a", community: 0, x: 0, y: 0, shown: true },
+		{ id: "b", community: 0, x: 20, y: 0, shown: true },
+		{ id: "c", community: 0, x: 10, y: 20, shown: true },
+	], 10, 3, 10, topicGroups);
+	assert.equal(communityRegions[0]?.label, "Language · Syntax");
 
 	assert.equal(allowedExternalUrl("https://doi.org/10.1038/nature14539")?.startsWith("https://doi.org/"), true);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
@@ -343,13 +357,13 @@ function unit(): void {
 		assert.equal(ranged.spec.concept, "Deep learning");
 		assert.equal(ranged.spec.minCoCite, 2);
 		assert.equal(ranged.spec.layout, "temporal");
-		assert.equal(ranged.spec.color, "graph");
+		assert.equal(ranged.spec.color, "topic");
 	}
 	const laidOut = parseEmbed("doi: 10.1038/nature14539\nlayout: force2d\ncolor: year\n");
 	assert.equal(laidOut.ok, true);
 	if (laidOut.ok) {
-		assert.equal(laidOut.spec.layout, "force2d");
-		assert.equal(laidOut.spec.color, "year");
+		assert.equal(laidOut.spec.layout, "temporal", "legacy layouts map to the year view");
+		assert.equal(laidOut.spec.color, "topic", "legacy color settings no longer override topic coloring");
 	}
 	const topicColor = parseEmbed("doi: 10.1038/nature14539\ncolor: topic\n");
 	assert.equal(topicColor.ok, true);
@@ -358,6 +372,13 @@ function unit(): void {
 	const kumuEmbed = parseEmbed("doi: 10.1038/nature14539\nlayout: kumu\n");
 	assert.equal(kumuEmbed.ok, true, "笔记内嵌可显式切换到 Kumu 风格社区布局");
 	if (kumuEmbed.ok) assert.equal(kumuEmbed.spec.layout, "kumu");
+	const yearNodes = [
+		{ ...paper("Y1", "seed", 1), year: 2000 },
+		{ ...paper("Y2", "reference", 1), year: 2010 },
+		{ ...paper("Y3", "citation", 1), year: 2020 },
+	];
+	const yearPlaced = placeLayout("temporal", yearNodes, [], new Map());
+	assert.equal(yearPlaced[1]!.x - yearPlaced[0]!.x, yearPlaced[2]!.x - yearPlaced[1]!.x, "horizontal year distance is linear and not jittered");
 	const bare = parseEmbed("  W2919115771  ");
 	assert.equal(bare.ok, true);
 	if (bare.ok) assert.deepEqual(bare.spec.target, { kind: "openalex", value: "W2919115771" });

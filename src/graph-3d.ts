@@ -22,7 +22,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { communityColor, detectCommunities } from "./communities";
-import { buildCommunityRegions } from "./community-regions";
+import { buildCommunityRegions, communityTopicLabels } from "./community-regions";
 import {
 	edgeVisible,
 	evidenceText,
@@ -148,6 +148,7 @@ export function mountGraph3D(
 		graph.nodes.map((node) => node.id),
 		graph.edges,
 	);
+	const communityLabels = communityTopicLabels(graph.nodes, communities);
 	const years = graph.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 	const minYear = years.length ? Math.min(...years) : 0;
 	const maxYear = years.length ? Math.max(...years) : 0;
@@ -587,7 +588,7 @@ export function mountGraph3D(
 				shown: projected.z <= 1 && projected.x >= -1.2 && projected.x <= 1.2 && projected.y >= -1.2 && projected.y <= 1.2,
 			};
 		});
-		for (const region of buildCommunityRegions(projectedPoints, 22)) {
+		for (const region of buildCommunityRegions(projectedPoints, 22, 3, 10, communityLabels)) {
 			if (region.points.length < 3) continue;
 			const hue = communityColor(region.community).replace("rgb(", "").replace(")", "");
 			const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -609,7 +610,7 @@ export function mountGraph3D(
 			label.setAttribute("y", String(Math.max(18, region.top + 16)));
 			label.setAttribute("fill", "#9aa0a6");
 			label.setAttribute("font-size", "10");
-			label.textContent = `相似性社区 ${region.community + 1}`;
+			label.textContent = region.label;
 			communitySvg.append(label);
 		}
 	};

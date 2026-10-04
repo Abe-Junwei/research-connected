@@ -4,26 +4,26 @@ import { detectCommunities } from "./communities";
 import type { GraphEdge, PaperNode } from "./types";
 import { citationRadius } from "./visual";
 
-/** `temporal` is the note-embed default: year on X, log citations on Y. */
+/** Public map choices are years and communities; legacy embed values normalize to one of these. */
 export type LayoutMode = "force3d" | "force2d" | "temporal" | "radial" | "kumu";
 
-/** `graph` is the default: monochrome like Obsidian's Graph view. `community`/`year` stay optional. */
+/** Node color always represents seed-relative topic similarity. */
 export type ColorMode = "year" | "community" | "graph" | "topic";
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
-	temporal: "时间",
-	radial: "放射",
-	force2d: "平面",
-	force3d: "三维",
-	kumu: "圈层",
+	temporal: "年份",
+	radial: "年份",
+	force2d: "年份",
+	force3d: "年份",
+	kumu: "社区",
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横轴是年份，纵轴是对数被引。这只是排布方式，不是引用脉络。笔记里推荐这个布局。",
-	radial: "种子在中心，越近表示和种子越相似；角度只是均匀排开，不代表引用方向。",
-	force2d: "平面力导向，种子固定在中心。",
-	force3d: "三维力导向。拖拽旋转，滚轮缩放。",
-	kumu: "Kumu 风格社区图：浅色画布、柔和节点与社区圈层；圈层表示算法相似分组，不是主题边界。",
+	temporal: "横向按年份线性排列，间隔与年份差成正比；纵向为对数被引量。未知年份单独放在左侧。颜色表示与种子主题相似度。",
+	radial: "兼容旧嵌入配置；按年份横向排列。",
+	force2d: "兼容旧嵌入配置；按年份横向排列。",
+	force3d: "兼容旧嵌入配置；按年份横向排列。",
+	kumu: "按引用网络结构聚成社区；区域标签汇总成员论文的 OpenAlex 主题词，区域不代表真实学派。颜色仍表示与种子主题相似度。",
 };
 
 export interface PlacedNode {
@@ -122,7 +122,8 @@ function placeTemporal(placed: PlacedNode[], nodes: readonly PaperNode[]): Place
 	const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 	const minYear = years.length ? Math.min(...years) : 2000;
 	const maxYear = years.length ? Math.max(...years) : minYear;
-	const span = Math.max(1, maxYear - minYear);
+	const yearSpan = maxYear - minYear;
+	const span = Math.max(1, yearSpan);
 	const width = 460;
 	const height = 300;
 	const maxLog = Math.log10(nodes.reduce((max, node) => Math.max(max, node.citedByCount), 1) + 1) || 1;
@@ -134,10 +135,12 @@ function placeTemporal(placed: PlacedNode[], nodes: readonly PaperNode[]): Place
 		const bucket = year === null ? "none" : String(year);
 		const slot = buckets.get(bucket) ?? 0;
 		buckets.set(bucket, slot + 1);
-		const x = year === null ? -width / 2 - 36 : ((year - minYear) / span - 0.5) * width;
+		// Keep chronological distances exact: unknown years occupy a separate gutter,
+		// while known publication years map linearly onto the horizontal axis.
+		const x = year === null ? -width / 2 - 48 : yearSpan === 0 ? 0 : ((year - minYear) / span - 0.5) * width;
 		const y = (Math.log10(cited + 1) / maxLog - 0.5) * height;
-		const jitter = (slot % 5) * 16 - 32;
-		return { ...node, x: x + jitter, y, z: (slot % 3) * 10 };
+		const verticalJitter = year === null ? (slot % 7) * 11 - 33 : (slot % 5) * 8 - 16;
+		return { ...node, x, y: y + verticalJitter, z: 0 };
 	});
 }
 

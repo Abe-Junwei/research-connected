@@ -26,7 +26,6 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * minCoCite: 2
  * minShared: 3
  * layout: temporal
- * color: graph
  * ```
  *
  * `position`: `inline` (default, in the column), `float-left`, `float-right`
@@ -44,8 +43,8 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * `yearFrom` / `yearTo`: keep papers in that inclusive year range. The seed always stays.
  * `language`, `type`, `concept`: optional preset filters. They apply only when OpenAlex sent that field.
  * `minCoCite` / `minShared`: hide co-citation edges below that co-cite count, and coupling edges below that shared-reference count. Default 1.
- * `layout`: `temporal` (default; year on X, log citations on Y), `radial`, `force2d`, or `force3d`.
- * `color`: `graph` (default, monochrome like Obsidian's Graph view), `community`, or `year`. Edge colors stay the relation type either way.
+ * `layout`: `temporal` (default; year on X) or `kumu` / `community` (compact communities). Legacy radial/force values map to temporal.
+ * Node color always shows topic similarity to the seed. Legacy `color` values are accepted but ignored.
  * `doi`, `openalex` / `id`, or `seed`. A bare DOI or `W…` id also works.
  */
 export type EmbedPosition = "inline" | "float-left" | "float-right" | "full";
@@ -116,7 +115,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 	let minCoCite = 1;
 	let minShared = 1;
 	let layout: LayoutMode = "temporal";
-	let color: ColorMode = "graph";
+	let color: ColorMode = "topic";
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -210,7 +209,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "layout") {
 			const parsed = readLayout(value);
-			if (!parsed) return { ok: false, error: "layout 只能是 kumu、temporal、radial、force2d 或 force3d。" };
+			if (!parsed) return { ok: false, error: "layout 只能是 temporal（年份）或 kumu/community（社区）。" };
 			layout = parsed;
 			continue;
 		}
@@ -290,19 +289,13 @@ function readAlign(value: string): EmbedAlign | null {
 function readLayout(value: string): LayoutMode | null {
 	const key = value.trim().toLowerCase().replace(/[\s_]+/g, "");
 	if (key === "kumu" || key === "community") return "kumu";
-	if (key === "temporal" || key === "time" || key === "year") return "temporal";
-	if (key === "radial") return "radial";
-	if (key === "force2d" || key === "2d" || key === "flat") return "force2d";
-	if (key === "force3d" || key === "3d") return "force3d";
+	if (["temporal", "time", "year", "radial", "force2d", "2d", "flat", "force3d", "3d"].includes(key)) return "temporal";
 	return null;
 }
 
 function readColor(value: string): ColorMode | null {
 	const key = value.trim().toLowerCase();
-	if (key === "graph" || key === "mono" || key === "plain") return "graph";
-	if (key === "community" || key === "cluster") return "community";
-	if (key === "year") return "year";
-	if (key === "topic" || key === "topics") return "topic";
+	if (["graph", "mono", "plain", "community", "cluster", "year", "topic", "topics"].includes(key)) return "topic";
 	return null;
 }
 

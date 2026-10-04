@@ -1,7 +1,5 @@
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
-import { LAYOUT_HINT, LAYOUT_LABEL, type ColorMode, type LayoutMode } from "./layout-modes";
-
-export type { ColorMode };
+import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 
@@ -32,10 +30,8 @@ export function paintPaperStateBadges(host: HTMLElement, paper: PaperStateLike, 
 export interface GraphChromeOptions {
 	layouts: readonly LayoutMode[];
 	layout: LayoutMode;
-	color: ColorMode;
 	noteButton: boolean;
 	onLayout: (mode: LayoutMode) => void;
-	onColor: (mode: ColorMode) => void;
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
@@ -63,13 +59,6 @@ export interface BottomSheet {
 	destroy(): void;
 }
 
-const COLOR_LABEL: Record<ColorMode, string> = {
-	graph: "单色",
-	community: "社区",
-	year: "年份",
-	topic: "主题相似",
-};
-
 /** Layout, color, year scrubber, list tabs, and export actions. Shared by the embed and the pane. */
 export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions): GraphChrome {
 	host.classList.add("cpo-tools");
@@ -84,21 +73,19 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 
 	const layoutRow = document.createElement("div");
 	layoutRow.className = "cpo-tool-row";
-	const colorRow = document.createElement("div");
-	colorRow.className = "cpo-tool-row";
 	const scrubRow = document.createElement("div");
-	scrubRow.className = "cpo-tool-row";
+	scrubRow.className = "cpo-tool-row cpo-scrub-row";
 	const tabRow = document.createElement("div");
 	tabRow.className = "cpo-tool-row";
 	const hint = document.createElement("p");
 	hint.className = "cpo-tool-hint";
 	let layout = options.layout;
-	let color = options.color;
 	const updateHint = (): void => {
-		hint.textContent = `${LAYOUT_HINT[layout]} 线宽表示文献结构相似度；箭头表示直接引用方向。${color === "community" ? " 节点颜色表示算法识别的相似性社区，不等同于研究主题或学派。" : color === "topic" ? " 节点颜色表示与种子共享 OpenAlex 主题的相似度；缺少主题元数据时显示灰色。" : ""}`;
+		hint.textContent = `${LAYOUT_HINT[layout]} 连线粗细表示文献结构相似度，箭头表示直接引用方向。节点颜色始终表示与种子的 OpenAlex 主题相似度；灰色表示缺少主题数据。`;
 	};
 	updateHint();
 	const readout = document.createElement("span");
+	readout.className = "cpo-scrub-readout";
 	readout.className = "cpo-scrub-readout";
 	readout.textContent = "全部年份";
 	const output = document.createElement("pre");
@@ -127,18 +114,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		});
 		layoutButtons.set(mode, button);
 		layoutRow.append(button);
-	}
-
-	const colorButtons = new Map<ColorMode, HTMLButtonElement>();
-	for (const mode of ["graph", "community", "year", "topic"] as const) {
-		const button = pressButton(COLOR_LABEL[mode], mode === color, () => {
-			color = mode;
-			for (const [key, item] of colorButtons) setPressed(item, key === mode);
-			updateHint();
-			options.onColor(mode);
-		});
-		colorButtons.set(mode, button);
-		colorRow.append(button);
 	}
 
 	const range = document.createElement("input");
@@ -208,17 +183,22 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		tabRow.append(button);
 	}
 
-	tabRow.append(
-		actionButton("BibTeX", () => options.onExport("bibtex")),
-		actionButton("YAML", () => options.onExport("yaml")),
-		actionButton("表格", () => options.onExport("table")),
-	);
-	if (options.noteButton) tabRow.append(actionButton("写入笔记", () => options.onExport("note")));
-	else tabRow.append(actionButton("笔记骨架", () => options.onExport("note")));
+	const exportMenu = document.createElement("details");
+	exportMenu.className = "cpo-export-menu";
+	const exportSummary = document.createElement("summary");
+	exportSummary.textContent = "导出";
+	exportMenu.append(exportSummary);
+	const exportItems = document.createElement("div");
+	exportItems.className = "cpo-export-items";
+	for (const [label, kind] of [["BibTeX", "bibtex"], ["YAML", "yaml"], ["表格", "table"], [options.noteButton ? "写入笔记" : "笔记骨架", "note"]] as const) {
+		exportItems.append(actionButton(label, () => options.onExport(kind)));
+	}
+	exportMenu.append(exportItems);
+	tabRow.append(exportMenu);
 
 	if (layoutHost) layoutHost.append(layoutRow);
 	else host.append(layoutRow);
-	host.append(colorRow, scrubRow, hint);
+	host.append(scrubRow, hint);
 	actions.append(tabRow, output);
 
 	return {

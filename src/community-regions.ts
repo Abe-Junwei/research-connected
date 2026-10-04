@@ -9,6 +9,7 @@ export interface CommunityPoint {
 export interface CommunityRegion {
 	community: number;
 	members: number;
+	label: string;
 	points: Array<{ x: number; y: number }>;
 	left: number;
 	top: number;
@@ -20,6 +21,7 @@ export function buildCommunityRegions(
 	padding = 24,
 	minimumMembers = 3,
 	maximumRegions = 10,
+	labels: ReadonlyMap<number, string> = new Map(),
 ): CommunityRegion[] {
 	const groups = new Map<number, Array<{ x: number; y: number }>>();
 	for (const point of points) {
@@ -44,11 +46,45 @@ export function buildCommunityRegions(
 			return {
 				community,
 				members: members.length,
+				label: labels.get(community)?.trim() || `社区 ${community + 1}`,
 				points: expanded,
 				left: Math.min(...expanded.map((point) => point.x)),
 				top: Math.min(...expanded.map((point) => point.y)),
 			};
 		});
+}
+
+/** Pick the most frequent OpenAlex topic labels among each graph community. */
+export function communityTopicLabels(
+	nodes: readonly { id: string; topicTags?: readonly { name: string; score: number }[]; concepts?: readonly string[] }[],
+	communities: ReadonlyMap<string, number>,
+): Map<number, string> {
+	const counts = new Map<number, Map<string, { count: number; score: number; name: string }>>();
+	for (const node of nodes) {
+		const community = communities.get(node.id);
+		if (community === undefined) continue;
+		const topics = node.topicTags?.length ? node.topicTags.map((topic) => ({ name: topic.name, score: topic.score }))
+			: (node.concepts ?? []).map((name) => ({ name, score: 1 }));
+		const seen = new Set<string>();
+		for (const topic of topics) {
+			const name = topic.name.trim();
+			const key = name.toLocaleLowerCase();
+			if (!name || seen.has(key)) continue;
+			seen.add(key);
+			const group = counts.get(community) ?? new Map();
+			const value = group.get(key) ?? { count: 0, score: 0, name };
+			value.count++;
+			value.score += Number.isFinite(topic.score) ? topic.score : 0;
+			group.set(key, value);
+			counts.set(community, group);
+		}
+	}
+	const labels = new Map<number, string>();
+	for (const [community, topics] of counts) {
+		const ranked = [...topics.values()].sort((a, b) => b.count - a.count || b.score - a.score || a.name.localeCompare(b.name));
+		if (ranked.length) labels.set(community, ranked.slice(0, 2).map((topic) => topic.name).join(" · "));
+	}
+	return labels;
 }
 
 function convexHull(points: readonly { x: number; y: number }[]): Array<{ x: number; y: number }> {
