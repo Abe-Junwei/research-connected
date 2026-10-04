@@ -611,6 +611,8 @@ export class SimilarityMap {
 		const key = event.key;
 		if (key === "Escape") {
 			event.preventDefault();
+			// 阻止冒泡：app 层 root 上还有一个 Escape 监听，避免 showDetail(null) 跑两次。
+			event.stopPropagation();
 			this.selectedId = null;
 			this.hoverId = null;
 			this.refreshFocus();

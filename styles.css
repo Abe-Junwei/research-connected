@@ -287,55 +287,6 @@
 	background: #ffffff;
 }
 
-.cpo-evidence-panel {
-	flex: 1 1 300px;
-	width: min(340px, 34%);
-	min-width: 260px;
-	min-height: 0;
-	display: flex;
-	flex-direction: column;
-	border-left: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	max-height: none;
-}
-
-.cpo-sheet.cpo-evidence-panel {
-	flex: 1 1 300px;
-	height: 100%;
-	min-height: 0;
-	border-top: 0;
-}
-
-.cpo-sheet.cpo-evidence-panel.is-collapsed,
-.cpo-sheet.cpo-evidence-panel.cpo-sheet-analysis {
-	max-height: none;
-}
-
-.cpo-evidence-heading {
-	flex: none;
-	display: flex;
-	flex-direction: column;
-	gap: 3px;
-	padding: 14px 15px 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.cpo-evidence-heading strong { font-size: 12px; font-weight: 650; }
-.cpo-evidence-heading span { color: var(--text-muted); font-size: 10px; }
-
-.cpo-evidence-panel .cpo-sheet-toggle { display: none !important; }
-.cpo-evidence-panel .cpo-sheet-body,
-.cpo-evidence-panel.is-collapsed .cpo-sheet-body {
-	flex: 1;
-	min-height: 0;
-	display: flex;
-	padding: 12px 15px;
-}
-.cpo-evidence-panel .cpo-detail { overflow: auto; }
-.cpo-evidence-panel .cpo-detail-title { font-size: 17px; }
-.cpo-evidence-panel .cpo-kicker { margin-top: 14px; }
-.cpo-evidence-panel .cpo-agg { overflow: auto; }
-
 .cpo-stage canvas {
 	position: absolute;
 	inset: 0;
@@ -400,15 +351,6 @@
 	align-items: center;
 	color: #6b7280;
 	font-size: 11px;
-}
-
-.cpo-side .cpo-legend {
-	position: static;
-	max-width: none;
-	margin: 0 0 10px;
-	padding: 0;
-	background: transparent;
-	pointer-events: auto;
 }
 
 .cpo-ramp-wrap {
@@ -479,9 +421,13 @@
 	bottom: auto;
 }
 
-.cpo-action-link:disabled,
 .cpo-action-link[hidden] {
 	display: none !important;
+}
+
+.cpo-action-link:disabled {
+	opacity: 0.55;
+	cursor: default;
 }
 
 .cpo-action-link:focus-visible {
@@ -712,18 +658,6 @@
 	max-height: 480px;
 }
 
-.cpo-side {
-	min-width: 0;
-	min-height: 0;
-	overflow: auto;
-	padding: 12px 12px 16px;
-	background: #f6f5f2;
-}
-
-.cpo-side-left {
-	border-right: 1px solid rgba(60, 64, 70, 0.1);
-}
-
 .cpo-meta {
 	display: flex;
 	flex-direction: column;
@@ -805,26 +739,6 @@
 	outline-offset: 1px;
 }
 
-.cpo-root button.cpo-close {
-	position: absolute;
-	top: 10px;
-	right: 10px;
-	width: 28px;
-	height: 28px;
-	padding: 0;
-	border: none;
-	border-radius: 6px;
-	background: transparent;
-	color: #6b7280;
-	font-size: 18px;
-	line-height: 1;
-	cursor: pointer;
-}
-
-.cpo-root button.cpo-close:hover {
-	background: rgba(60, 64, 70, 0.06);
-}
-
 .cpo-root.is-narrow .cpo-body,
 .cpo-embed.is-narrow .cpo-embed-body {
 	flex-direction: column;
@@ -833,20 +747,6 @@
 .cpo-root.is-narrow .cpo-topline { gap: 8px; }
 .cpo-root.is-narrow .cpo-brand strong { display: none; }
 .cpo-root.is-narrow button.cpo-primary { padding-inline: 9px; }
-.cpo-root.is-narrow .cpo-evidence-panel {
-	width: auto;
-	min-width: 0;
-	flex: 0 0 min(36%, 230px);
-	border-left: 0;
-	border-top: 1px solid var(--background-modifier-border);
-}
-.cpo-root.is-narrow .cpo-evidence-heading { display: none; }
-.cpo-root.is-narrow .cpo-evidence-panel .cpo-sheet-toggle { display: flex !important; }
-.cpo-root.is-narrow .cpo-evidence-panel.is-collapsed .cpo-sheet-body { display: none; }
-.cpo-root.is-narrow .cpo-evidence-panel.is-collapsed { max-height: 36px; }
-.cpo-root.is-narrow .cpo-evidence-panel:not(.is-collapsed) { max-height: 50%; }
-.cpo-root.is-narrow .cpo-evidence-panel .cpo-sheet-body,
-.cpo-root.is-narrow .cpo-evidence-panel.is-collapsed .cpo-sheet-body { padding: 8px 12px; }
 
 .cpo-root.is-narrow .cpo-rail,
 .cpo-embed.is-narrow .cpo-rail {
@@ -1316,8 +1216,7 @@
 	line-height: 1.45;
 }
 
-.cpo-embed .cpo-tools,
-.cpo-side .cpo-tools {
+.cpo-embed .cpo-tools {
 	flex: none;
 	max-height: none;
 	overflow: visible;
@@ -1555,13 +1454,11 @@
 .cpo-embed-filters label {
 	color: var(--text-muted);
 }
-.cpo-side,
 .cpo-meta,
 .cpo-sheet,
 .cpo-embed-detail {
 	background: var(--background-primary);
 }
-.cpo-side,
 .cpo-meta,
 .cpo-sheet,
 .cpo-actions-bar,
@@ -1580,12 +1477,10 @@
 	color: var(--cpo-accent);
 }
 .cpo-root button.cpo-link:hover,
-.cpo-root button.cpo-close:hover,
 .cpo-root button.cpo-icon:hover,
 .cpo-embed button.cpo-embed-link:hover {
 	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
-.cpo-root button.cpo-close,
 .cpo-sheet-meta,
 .cpo-embed-status {
 	color: var(--text-muted);

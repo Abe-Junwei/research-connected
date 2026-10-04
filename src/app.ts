@@ -129,12 +129,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const drawer = el(stage, "div", "cpo-drawer");
 	drawer.hidden = true;
 	el(drawer, "p", "cpo-drawer-title", "筛选 / 图例");
-	el(drawer, "p", "cpo-side-tip", "拖拽空白处平移，滚轮或右下角按钮缩放。点选节点后，题名在底部，展开可看证据。");
+	el(drawer, "p", "cpo-side-tip", "拖拽空白处平移，滚轮或右下角按钮缩放。点选节点或引用关系后，题名与证据在右侧栏展开。");
 	const kindLegend = el(drawer, "div", "cpo-drawer-legend");
 	const legend = el(drawer, "div", "cpo-legend");
 	legend.hidden = true;
 	const rampWrap = el(legend, "span", "cpo-ramp-wrap");
-	rampWrap.hidden = false;
 	const rampStart = el(rampWrap, "span", undefined, "较低");
 	const ramp = el(rampWrap, "span", "cpo-ramp");
 	ramp.classList.add("cpo-topic-ramp");
@@ -151,21 +150,21 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		filterButton.classList.toggle("is-on", open);
 	});
 
-	const zoom = el(stage, "div", "cpo-zoom");
-	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
-	const zoomOut = el(zoom, "button", "cpo-icon", "−") as HTMLButtonElement;
-	const fit = el(zoom, "button", "cpo-icon cpo-fit", "适配") as HTMLButtonElement;
-	for (const button of [zoomIn, zoomOut, fit]) button.type = "button";
-	zoomIn.setAttribute("aria-label", "放大");
-	zoomOut.setAttribute("aria-label", "缩小");
-	fit.setAttribute("aria-label", "适应窗口");
+	// 悬浮按钮排：左侧来源链接，右侧缩放按钮。
 	const graphActions = el(stage, "div", "cpo-graph-actions");
 	const sourceActions = el(graphActions, "div", "cpo-source-actions");
 	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
 	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
 	const semanticAction = el(sourceActions, "button", "cpo-action-link", "Semantic Scholar") as HTMLButtonElement;
 	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
-	graphActions.append(zoom);
+	const zoom = el(graphActions, "div", "cpo-zoom");
+	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
+	const zoomOut = el(zoom, "button", "cpo-icon", "−") as HTMLButtonElement;
+	const fit = el(zoom, "button", "cpo-icon", "适配") as HTMLButtonElement;
+	for (const button of [zoomIn, zoomOut, fit]) button.type = "button";
+	zoomIn.setAttribute("aria-label", "放大");
+	zoomOut.setAttribute("aria-label", "缩小");
+	fit.setAttribute("aria-label", "适应窗口");
 	for (const button of [openAlexAction, doiAction, semanticAction]) {
 		button.type = "button";
 		button.hidden = true;
@@ -721,9 +720,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		pairs.every(pair => graph?.citationEvidence?.get(pair.citingId, pair.citedId)?.sources.includes("semantic-scholar"));
 	const syncSemanticAction = (pairs: Array<{ citingId: string; citedId: string }>): void => {
 		semanticPairs = pairs;
+		const loaded = pairs.length > 0 && semanticLoaded(pairs);
 		semanticAction.hidden = pairs.length === 0;
-		semanticAction.disabled = pairs.length === 0 || semanticLoaded(pairs);
-		semanticAction.textContent = semanticLoaded(pairs) ? "已加载引用语义" : "Semantic Scholar";
+		semanticAction.disabled = pairs.length === 0 || loaded;
+		semanticAction.textContent = loaded ? "已加载引用语义" : "Semantic Scholar";
+		semanticAction.title = loaded
+			? "当前引用关系的 Semantic Scholar 引用语义已加载"
+			: "读取当前引用关系的 Semantic Scholar 引用语义";
 	};
 	semanticAction.onclick = () => {
 		if (!semanticPairs.length) return;
@@ -749,11 +752,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			}
 		}
 		const pairs = edgeCitationPairs(edge);
-		if (pairs.length) {
-			const loaded = semanticLoaded(pairs);
-			syncSemanticAction(pairs);
-			if (!loaded) semanticAction.title = "读取当前引用关系的 Semantic Scholar 引用语义";
-		}
+		if (pairs.length) syncSemanticAction(pairs);
 	};
 	map.onEdgeSelect = (edge) => {
 		selectedEdge = edge;
@@ -1016,10 +1015,6 @@ function doiOf(value: string | null | undefined): string | null {
 	if (!value) return null;
 	const raw = value.replace(/^https?:\/\/doi\.org\//i, "").replace(/^doi:/i, "").trim().toLowerCase();
 	return raw || null;
-}
-
-function svgEl<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-	return document.createElementNS("http://www.w3.org/2000/svg", tag);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
