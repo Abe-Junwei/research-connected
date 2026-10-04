@@ -3,7 +3,7 @@ import { EXAMPLE_DOI } from "./constants";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -555,6 +555,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			paper.concepts.length > 0 ? `概念 ${paper.concepts.slice(0, 3).join("、")}` : "",
 		].filter(Boolean);
 		if (facets.length > 0) el(detail, "p", "cpo-meta", facets.join(" · "));
+		const check = graph.crossCheck?.get(paper.id);
+		paintPaperStateBadges(detail, paper, check);
 		if (paper.retracted) {
 			el(detail, "p", "cpo-side-tip", "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。");
 		}
@@ -562,13 +564,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (flagged) {
 			el(detail, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);
 		}
-		const check = graph.crossCheck?.get(paper.id);
 		if (check?.mismatched) {
 			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
 			el(detail, "p", "cpo-side-tip", `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`);
-		}
-		if (check && check.refsAdded > 0) {
-			el(detail, "p", "cpo-meta", `参考文献列表在 OpenAlex 缺失，已由 Semantic Scholar 回填，其中 ${check.refsAdded} 条指向本图节点并参与了连线。`);
 		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		if (seedNode && !paper.isSeed) {

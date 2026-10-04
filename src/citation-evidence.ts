@@ -1,4 +1,5 @@
 import type { SemanticCitation } from "./citation-sources";
+import { nonResearchLabel } from "./paper";
 import type { GraphEdge, PaperNode } from "./types";
 import type { SimilarityGraph } from "./neighborhood";
 
@@ -81,6 +82,32 @@ export function evidenceBadges(evidence: CitationEvidence | null): EvidenceBadge
 			: { label: "单源记录", tone: "plain" },
 	];
 	if (evidence.confidence === "low") badges.push({ label: "采样有限", tone: "warn" });
+	return badges;
+}
+
+export interface PaperStateLike {
+	retracted?: boolean;
+	workType?: string | null;
+}
+
+export interface CrossCheckLike {
+	mismatched: boolean;
+	refsAdded: number;
+}
+
+/**
+ * Node-level state badges: retraction, non-research record type, cross-source
+ * mismatch, and S2 backfill. Ordered by severity — warnings first, so the
+ * most consequential state leads the badge row. Structural input types keep
+ * this module free of imports from neighborhood (which already imports us).
+ */
+export function paperStateBadges(paper: PaperStateLike, check: CrossCheckLike | null | undefined): EvidenceBadge[] {
+	const badges: EvidenceBadge[] = [];
+	if (paper.retracted) badges.push({ label: "⚠ 已撤稿", tone: "warn" });
+	const flagged = nonResearchLabel({ workType: paper.workType ?? null });
+	if (flagged) badges.push({ label: flagged, tone: "warn" });
+	if (check?.mismatched) badges.push({ label: "⚠ 数据源差异", tone: "warn" });
+	if (check && check.refsAdded > 0) badges.push({ label: `S2 回填 ${check.refsAdded} 条`, tone: "plain" });
 	return badges;
 }
 

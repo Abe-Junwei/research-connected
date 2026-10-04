@@ -25,6 +25,7 @@ import { runForceLayout3D } from "../src/layout-3d";
 import { loadNeighborhood, selectNeighbors, countsMismatched, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
 import { classifyQuery, reconstructAbstract } from "../src/paper";
+import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
@@ -444,6 +445,19 @@ async function reconcileOffline(): Promise<void> {
 	assert.equal(countsMismatched(49, 1), false, "small counts are too noisy to flag");
 	assert.equal(countsMismatched(100, null), false, "no S2 record is not a mismatch");
 	assert.equal(countsMismatched(100, 60), false);
+
+	// Unified node-state badges: severity order, clean node paints nothing.
+	const badges = paperStateBadges(
+		{ retracted: true, workType: "book-review" },
+		{ mismatched: true, refsAdded: 3 },
+	);
+	assert.deepEqual(
+		badges.map((badge) => badge.label),
+		["⚠ 已撤稿", "书评", "⚠ 数据源差异", "S2 回填 3 条"],
+	);
+	assert.ok(badges.slice(0, 3).every((badge) => badge.tone === "warn"));
+	assert.equal(paperStateBadges({ retracted: false, workType: "article" }, null).length, 0);
+	assert.equal(paperStateBadges({ workType: "review" }, { mismatched: false, refsAdded: 0 }).length, 0, "综述是研究内容，不进徽章");
 
 	const seedWork = {
 		id: "https://openalex.org/W1",

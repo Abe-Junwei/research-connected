@@ -1,21 +1,32 @@
-import { evidenceBadges, type CitationEvidence } from "./citation-evidence";
+import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type ColorMode, type LayoutMode } from "./layout-modes";
 
 export type { ColorMode };
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 
-/** Source-confidence badges for a citation record; 数据缺失 when there is none. */
-export function paintEvidenceBadges(host: HTMLElement, evidence: CitationEvidence | null): void {
+/** Shared badge row; empty input paints nothing. */
+export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
+	if (badges.length === 0) return;
 	const row = document.createElement("span");
 	row.className = "cpo-badges";
-	for (const badge of evidenceBadges(evidence)) {
+	for (const badge of badges) {
 		const item = document.createElement("span");
 		item.className = `cpo-badge cpo-badge-${badge.tone}`;
 		item.textContent = badge.label;
 		row.append(item);
 	}
 	host.append(row);
+}
+
+/** Source-confidence badges for a citation record; 数据缺失 when there is none. */
+export function paintEvidenceBadges(host: HTMLElement, evidence: CitationEvidence | null): void {
+	paintBadges(host, evidenceBadges(evidence));
+}
+
+/** Node-level state badges (撤稿 / 非研究记录 / 数据源差异 / S2 回填); nothing painted when clean. */
+export function paintPaperStateBadges(host: HTMLElement, paper: PaperStateLike, check: CrossCheckLike | null | undefined): void {
+	paintBadges(host, paperStateBadges(paper, check));
 }
 
 export interface GraphChromeOptions {

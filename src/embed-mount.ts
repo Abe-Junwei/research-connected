@@ -7,7 +7,7 @@ import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } fro
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { buildFilters, buildLegend } from "./filter-controls";
 import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
@@ -360,6 +360,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		meta.textContent = `${year} · 被引 ${formatCount(paper.citedByCount)} · ${paper.authors}`;
 		detail.append(meta);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
+		const check = graph.crossCheck?.get(paper.id);
+		paintPaperStateBadges(detail, paper, check);
 		if (paper.retracted) {
 			const note = document.createElement("p");
 			note.className = "cpo-side-tip";
@@ -373,18 +375,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			note.textContent = `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书——这是 OpenAlex 的数据特点。`;
 			detail.append(note);
 		}
-		const check = graph.crossCheck?.get(paper.id);
 		if (check?.mismatched) {
 			const note = document.createElement("p");
 			note.className = "cpo-side-tip";
 			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
 			note.textContent = `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。通常是记录错配（例如书评继承了原书的引用），引用前请核实。`;
-			detail.append(note);
-		}
-		if (check && check.refsAdded > 0) {
-			const note = document.createElement("p");
-			note.className = "cpo-embed-detail-meta";
-			note.textContent = `参考文献由 Semantic Scholar 回填（OpenAlex 缺失），其中 ${check.refsAdded} 条指向本图节点。`;
 			detail.append(note);
 		}
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
