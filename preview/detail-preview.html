@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>detail preview</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+	body { margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; background: #f6f5f2; }
+	.mock { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+	.panel { width: 340px; background: #fff; border: 1px solid #e3e1dc; border-radius: 12px; overflow: hidden; }
+	.stage { position: relative; width: 340px; height: 120px; background: #f6f5f2; border: 1px solid #e3e1dc; border-radius: 12px; }
+	.stage .cpo-graph-actions { opacity: 1; visibility: visible; transform: none; }
+	h3.cap { font-size: 12px; color: #6b7280; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div class="mock">
+	<div>
+		<h3 class="cap">证据卡片（面板详情）</h3>
+		<div class="panel">
+			<div class="cpo-root" style="display:block">
+				<div class="cpo-evidence-sidebar">
+					<div class="cpo-sheet-body">
+						<div class="cpo-detail">
+							<p class="cpo-meta">2017 · 被引 121 · 施引文献</p>
+							<p class="cpo-authors">Nicholas Evans, Henrik Bergqvist, Lila San Roque</p>
+							<div class="cpo-fact-card">
+								<p class="cpo-fact-lead">Evans 2017 引用了 Bergqvist 2017</p>
+								<dl class="cpo-facts">
+									<div class="cpo-fact"><dt>强度</dt><dd>强</dd></div>
+									<div class="cpo-fact"><dt>相似度</dt><dd>0.39</dd></div>
+									<div class="cpo-fact"><dt>共享参考文献</dt><dd>3 篇</dd></div>
+									<div class="cpo-fact"><dt>共被引</dt><dd>6 次</dd></div>
+									<div class="cpo-fact"><dt>来源</dt><dd>openalex + opencitations</dd></div>
+								</dl>
+								<p class="cpo-fact-note">引用列表可能不完整</p>
+							</div>
+							<p class="cpo-evidence">证据：Method · Influential · openalex + semantic-scholar</p>
+							<blockquote class="cpo-side-tip">…using the engagement framework developed in…</blockquote>
+							<h3 class="cpo-kicker">摘要</h3>
+							<p class="cpo-abstract">This paper develops a typology of engagement systems across languages, showing how…</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div>
+		<h3 class="cap">底部按钮排（应与缩放按钮一致）</h3>
+		<div class="stage cpo-root">
+			<div class="cpo-graph-actions">
+				<div class="cpo-source-actions">
+					<button type="button" class="cpo-action-link">OpenAlex ↗</button>
+					<button type="button" class="cpo-action-link">DOI ↗</button>
+				</div>
+				<span class="cpo-graph-action-spacer"></span>
+				<div class="cpo-zoom">
+					<button type="button" class="cpo-icon" aria-label="放大">+</button>
+					<button type="button" class="cpo-icon" aria-label="缩小">−</button>
+					<button type="button" class="cpo-icon" aria-label="适应窗口">适配</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+</body>
+</html>

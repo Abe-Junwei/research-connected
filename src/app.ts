@@ -1,7 +1,7 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
-import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
+import { emptyFilter, relationFacts, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import type { LayoutMode } from "./layout-modes";
@@ -622,7 +622,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const from = link ? graph.nodes.find((node) => node.id === link.source) : undefined;
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
 			if (link && from && to) {
-				el(detail, "p", "cpo-evidence", evidenceText(link, from, to, edgeSources(link)));
+				paintRelationCard(detail, link, from, to);
 				const pairs = edgeCitationPairs(link);
 				for (const pair of pairs) {
 					const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
@@ -673,6 +673,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
 	};
 
+	/** 关系证据卡片：一句关系导语 + 标签/数值行 + 注意事项，替代以前的整段平铺文本。 */
+	const paintRelationCard = (parent: HTMLElement, edge: GraphEdge, a: PaperNode, b: PaperNode): void => {
+		const info = relationFacts(edge, a, b, edgeSources(edge));
+		const card = el(parent, "div", "cpo-fact-card");
+		el(card, "p", "cpo-fact-lead", info.lead);
+		const list = el(card, "dl", "cpo-facts");
+		for (const fact of info.facts) {
+			const row = el(list, "div", "cpo-fact");
+			el(row, "dt", undefined, fact.label);
+			el(row, "dd", undefined, fact.value);
+		}
+		for (const caveat of info.caveats) el(card, "p", "cpo-fact-note", caveat);
+	};
+
 	map.onSelect = (paper) => showDetail(paper);
 	const showEdgeDetail = (edge: GraphEdge): void => {
 		if (!graph) return;
@@ -682,7 +696,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		doiAction.hidden = true;
 		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
-		el(detail, "p", "cpo-evidence", evidenceText(edge, a, b, edgeSources(edge)));
+		paintRelationCard(detail, edge, a, b);
 		for (const pair of edgeCitationPairs(edge)) {
 			const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
 			paintEvidenceBadges(detail, evidence);

@@ -1,4 +1,5 @@
 import { explainRelation, relationKind, type RelationKind } from "./relation";
+import { authorYear } from "./labels";
 import type { GraphEdge, PaperNode } from "./types";
 
 export type StrengthTier = "weak" | "mid" | "strong";
@@ -194,4 +195,52 @@ export function evidenceText(
 		`来源：${sources}`,
 		"引用列表可能不完整",
 	].join("\n");
+}
+
+export interface RelationFact {
+	label: string;
+	value: string;
+}
+
+/**
+ * Structured counterpart of evidenceText for the sidebar card: one lead
+ * sentence, deduplicated label/value rows, then caveats. Numbers appear
+ * either in the lead or in a row, never both.
+ */
+export interface RelationFacts {
+	lead: string;
+	facts: RelationFact[];
+	caveats: string[];
+}
+
+export function relationFacts(
+	edge: GraphEdge,
+	source: Pick<PaperNode, "authors" | "year">,
+	target: Pick<PaperNode, "authors" | "year">,
+	sources = "OpenAlex 采样",
+): RelationFacts {
+	const from = authorYear(source);
+	const to = authorYear(target);
+	let lead = "采样邻域里的弱连线";
+	if (edge.direct === "mutual") lead = `${from} 与 ${to} 互相引用`;
+	else if (edge.direct === "source-cites-target") lead = `${from} 引用了 ${to}`;
+	else if (edge.direct === "target-cites-source") lead = `${to} 引用了 ${from}`;
+	else if (edge.coCitedBy > 0 || edge.sharedRefs > 0) lead = "没有直接引用记录";
+	const facts: RelationFact[] = [
+		{ label: "强度", value: TIER_LABEL[strengthTier(edge)] },
+		{
+			label: "相似度",
+			value: edge.structuralSimilarity === null
+				? "不可用（缺少可比较数据）"
+				: (edge.structuralSimilarity ?? edge.weight).toFixed(2),
+		},
+		{ label: "共享参考文献", value: `${edge.sharedRefs} 篇` },
+		{ label: "共被引", value: `${edge.coCitedBy} 次` },
+		{ label: "来源", value: sources },
+	];
+	const caveats = [
+		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
+		"引用列表可能不完整",
+	];
+	return { lead, facts, caveats };
 }

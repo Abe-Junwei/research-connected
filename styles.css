@@ -1216,6 +1216,69 @@
 	line-height: 1.45;
 }
 
+/* 详情栏节奏：统一块间距，小节标题额外留白。 */
+.cpo-detail > p,
+.cpo-detail > h3,
+.cpo-detail > dl,
+.cpo-detail > blockquote {
+	margin: 0;
+}
+.cpo-detail > * + * {
+	margin-top: 8px;
+}
+.cpo-detail > .cpo-kicker {
+	margin-top: 18px;
+}
+
+/* 关系证据卡片：导语 + 标签/数值行 + 注意事项。 */
+.cpo-fact-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-secondary);
+}
+
+.cpo-fact-lead {
+	margin: 0;
+	color: var(--text-normal);
+	font-size: 12.5px;
+	font-weight: 600;
+	line-height: 1.45;
+}
+
+.cpo-facts {
+	margin: 0;
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 3px 12px;
+}
+
+.cpo-fact {
+	display: contents;
+}
+
+.cpo-fact dt {
+	color: var(--text-muted);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.cpo-fact dd {
+	margin: 0;
+	color: var(--text-normal);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.cpo-fact-note {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 10.5px;
+}
+
 .cpo-embed .cpo-tools {
 	flex: none;
 	max-height: none;
