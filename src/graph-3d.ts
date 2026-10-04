@@ -61,6 +61,8 @@ export interface Graph3DOptions {
 	filter: GraphFilter;
 	layout: LayoutMode;
 	colorMode: ColorMode;
+	/** WebGL 上下文丢失（GPU 切换/进程重置）时回调，由外层决定重建策略。 */
+	onContextLost?: () => void;
 }
 
 interface SphereEntry {
@@ -118,6 +120,15 @@ export function mountGraph3D(
 	renderer.setClearColor(0x000000, 0);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
+	// 上下文丢失时画布会合成成黑色矩形；拦住默认行为并交给外层重建，
+	// 避免关窗/GPU 切换后图谱区域黑屏。destroy 里的 forceContextLoss 也会
+	// 触发这个事件，此时 alive 已是 false，直接忽略。
+	canvas.addEventListener("webglcontextlost", (event) => {
+		event.preventDefault();
+		if (!alive) return;
+		stop();
+		options.onContextLost?.();
+	});
 	viewport.append(canvas);
 	const communitySvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 	communitySvg.classList.add("cpo-community-overlay");

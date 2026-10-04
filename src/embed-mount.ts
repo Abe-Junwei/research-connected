@@ -171,6 +171,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
+	let contextRecoveries = 0;
 
 	const paintLists = (): void => {
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis");
@@ -465,7 +466,24 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				tooltip,
 				graph,
 				(paper, link) => showDetail(paper, graph, link),
-				{ labels: spec.labels, filter: viewFilter, layout: layoutMode, colorMode },
+				{
+					labels: spec.labels,
+					filter: viewFilter,
+					layout: layoutMode,
+					colorMode,
+					// GPU 切换/窗口重开导致上下文丢失时，用缓存数据原地重建图谱，
+					// 避免画布黑屏；连续失败两次就提示手动重载，不无限循环。
+					onContextLost: () => {
+						if (!alive) return;
+						contextRecoveries += 1;
+						if (contextRecoveries > 2) {
+							message.hidden = false;
+							message.textContent = "图形上下文反复丢失，点右上角「重新加载」恢复图谱。";
+							return;
+						}
+						void load(false);
+					},
+				},
 			);
 			const remembered = viewStates.get(stateKey);
 			if (remembered) graphView.setCamera(remembered.camera);
@@ -568,6 +586,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	reload.addEventListener("click", () => {
 		const settings = { ...deps.getSettings() };
+		contextRecoveries = 0;
 		cache.delete(cacheKey(spec.target, spec.maxNodes ?? settings.maxNodes, spec.depth, settings));
 		void load(true);
 	});
