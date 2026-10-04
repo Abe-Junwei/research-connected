@@ -52,8 +52,8 @@ export class SimilarityMap {
 	private pointers = new Map<number, { x: number; y: number }>();
 	private pinch: { startDist: number; k: number; wx: number; wy: number } | null = null;
 	private coarse: boolean | null = null;
-	private bgStart = "#171c28";
-	private bgEnd = "#0b0d12";
+	private bgStart = "#ffffff";
+	private bgEnd = "#f7f6f3";
 	private layoutMode: LayoutMode = "force2d";
 	private colorMode: ColorMode = "community";
 	private scrubYear: number | null = null;
@@ -125,8 +125,8 @@ export class SimilarityMap {
 		this.layoutMode = mode === "force3d" ? "force2d" : mode;
 		this.stage.classList?.toggle("cpo-kumu-view", this.layoutMode === "kumu");
 		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
-		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#171c28");
-		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#0b0d12");
+		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
+		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#f7f6f3");
 		this.rebuild(this.nodes, false);
 	}
 
@@ -189,8 +189,8 @@ export class SimilarityMap {
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		this.fontFamily = getComputedStyle(this.stage).fontFamily || "sans-serif";
 		const canvasStyles = getComputedStyle(this.canvas);
-		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#171c28");
-		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#0b0d12");
+		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#ffffff");
+		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#f7f6f3");
 		this.draw();
 	}
 
@@ -538,7 +538,7 @@ export class SimilarityMap {
 			let dimmed = false;
 			if (focus && !(focus.has(edge.source) && focus.has(edge.target))) {
 				dimmed = true;
-				alpha = 0.07;
+				alpha = 0.1;
 				width *= 0.6;
 			}
 			const ax = a.x * this.k + this.tx;
@@ -620,16 +620,15 @@ export class SimilarityMap {
 	}
 
 	private drawNode(ctx: CanvasRenderingContext2D, node: DrawNode): void {
-		const kumu = this.layoutMode === "kumu";
 		const x = node.x * this.k + this.tx;
 		const y = node.y * this.k + this.ty;
 		const radius = node.radius + (node.id === this.hoverId ? 1.6 : 0);
 		const dimmed = this.focus !== null && !this.focus.has(node.id);
-		if (dimmed) ctx.globalAlpha = kumu ? 0.25 : 0.18;
-		if (node.isSeed && !kumu) {
+		if (dimmed) ctx.globalAlpha = 0.25;
+		if (node.isSeed) {
 			const glow = ctx.createRadialGradient(x, y, radius, x, y, radius + 22);
-			glow.addColorStop(0, "rgba(255, 244, 214, 0.38)");
-			glow.addColorStop(1, "rgba(255, 244, 214, 0)");
+			glow.addColorStop(0, "rgba(60, 64, 70, 0.16)");
+			glow.addColorStop(1, "rgba(60, 64, 70, 0)");
 			ctx.fillStyle = glow;
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 22, 0, Math.PI * 2);
@@ -638,34 +637,30 @@ export class SimilarityMap {
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
 		ctx.fillStyle = node.color;
-		if (kumu) {
-			ctx.shadowColor = "rgba(60, 64, 70, 0.18)";
-			ctx.shadowBlur = 5;
-		}
+		ctx.shadowColor = "rgba(60, 64, 70, 0.18)";
+		ctx.shadowBlur = 5;
 		ctx.fill();
-		if (kumu) {
-			ctx.shadowColor = "rgba(0, 0, 0, 0)";
-			ctx.shadowBlur = 0;
-		}
+		ctx.shadowColor = "rgba(0, 0, 0, 0)";
+		ctx.shadowBlur = 0;
 		ctx.lineWidth = 1;
-		ctx.strokeStyle = kumu ? shadeColor(node.color, 0.85) : "rgba(8, 10, 14, 0.45)";
+		ctx.strokeStyle = shadeColor(node.color, 0.85);
 		ctx.stroke();
 		if (node.isSeed) {
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
 			ctx.lineWidth = 1.6;
-			ctx.strokeStyle = kumu ? "#333943" : "rgba(255, 248, 230, 0.95)";
+			ctx.strokeStyle = "#333943";
 			ctx.stroke();
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 7, 0, Math.PI * 2);
 			ctx.lineWidth = 1;
-			ctx.strokeStyle = kumu ? "rgba(51, 57, 67, 0.45)" : "rgba(255, 248, 230, 0.45)";
+			ctx.strokeStyle = "rgba(51, 57, 67, 0.45)";
 			ctx.stroke();
 		} else if (node.id === this.selectedId) {
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 3, 0, Math.PI * 2);
-			ctx.lineWidth = kumu ? 2 : 1.75;
-			ctx.strokeStyle = kumu ? "#4a90d9" : "rgba(255, 255, 255, 0.9)";
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = "#4a90d9";
 			ctx.stroke();
 		}
 		if (dimmed) ctx.globalAlpha = 1;
@@ -743,9 +738,9 @@ export class SimilarityMap {
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
 			if (dimmed) ctx.globalAlpha = 0.35;
 			ctx.lineWidth = kumu ? 2 : 3;
-			ctx.strokeStyle = kumu ? "rgba(255, 255, 255, 0.9)" : "rgba(11, 13, 18, 0.88)";
+			ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
 			ctx.strokeText(text, x, y);
-			ctx.fillStyle = kumu ? "#3a3f45" : node.isSeed ? "#fff8e8" : "#e7ebf4";
+			ctx.fillStyle = "#3a3f45";
 			ctx.fillText(text, x, y);
 			if (dimmed) ctx.globalAlpha = 1;
 		};

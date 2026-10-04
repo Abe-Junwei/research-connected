@@ -117,7 +117,7 @@ export function mountGraph3D(
 		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
-	renderer.setClearColor(layoutMode === "kumu" ? 0xffffff : 0x0c0e13, 1);
+	renderer.setClearColor(0xffffff, 1);
 	const canvas = renderer.domElement;
 	canvas.className = "cpo-embed-canvas";
 	viewport.append(canvas);
@@ -176,7 +176,7 @@ export function mountGraph3D(
 		mesh.userData.paperId = node.id;
 		mesh.userData.seed = node.isSeed;
 		if (node.isSeed) {
-			const ringMaterial = new MeshBasicMaterial({ color: layoutMode === "kumu" ? 0x333943 : 0xfff8e6 });
+			const ringMaterial = new MeshBasicMaterial({ color: 0x333943 });
 			materials.push(ringMaterial);
 			const torus = new TorusGeometry(1.42, 0.05, 8, 40);
 			geometries.push(torus);
@@ -262,11 +262,11 @@ export function mountGraph3D(
 			const material = entry.mesh.material;
 			if (!(material instanceof MeshStandardMaterial)) continue;
 			if (entry.id === selectedId) {
-				material.emissive.set(0xfff4d0);
+				material.emissive.set(0x4a90d9);
 				material.emissiveIntensity = 0.62;
 			} else if (entry.id === hoverId) {
-				material.emissive.set(0xffffff);
-				material.emissiveIntensity = 0.28;
+				material.emissive.set(0x9aa0a6);
+				material.emissiveIntensity = 0.35;
 			} else if (entry.seed) {
 				material.emissive.set(0xfff1cc);
 				material.emissiveIntensity = 0.4;
@@ -602,7 +602,7 @@ export function mountGraph3D(
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
 		const kumuStyle = mode === "kumu";
-		renderer.setClearColor(kumuStyle ? 0xffffff : 0x0c0e13, 1);
+		renderer.setClearColor(0xffffff, 1);
 		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		drawn.setKumuStyle(kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);

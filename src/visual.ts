@@ -1,8 +1,8 @@
 /** Shared color stops for the canvas year ramp and the HTML legend. */
 const YEAR_STOPS: ReadonlyArray<readonly [number, number, number]> = [
-	[106, 120, 240],
-	[62, 207, 178],
-	[240, 193, 74],
+	[90, 102, 204],
+	[53, 176, 152],
+	[204, 164, 63],
 ];
 
 export function clamp(value: number, min: number, max: number): number {

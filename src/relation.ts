@@ -5,10 +5,10 @@ import type { GraphEdge, PaperNode } from "./types";
 export type RelationKind = "direct" | "cocitation" | "coupling" | "weak";
 
 export const RELATION_COLOR: Record<RelationKind, number> = {
-	direct: 0xe7c27a,
-	cocitation: 0x3ecfb2,
-	coupling: 0x8a97f0,
-	weak: 0x8b93a7,
+	direct: 0xd4a24a,
+	cocitation: 0x2bb39a,
+	coupling: 0x6f7ee0,
+	weak: 0x7b8499,
 };
 
 export const RELATION_LABEL: Record<RelationKind, string> = {

@@ -10,7 +10,7 @@ import {
 } from "./citation-timeline";
 
 const ns = "http://www.w3.org/2000/svg";
-const ZONE_COLOR = { prior: "#8a97f0", seed: "#e7c27a", derivative: "#3ecfb2" } as const;
+const ZONE_COLOR = { prior: "#6f7ee0", seed: "#d4a24a", derivative: "#2bb39a" } as const;
 
 /** 每区最多画的点数（有年份部分），超出聚合为一行说明。 */
 export const ZONE_LIMIT = 40;
@@ -246,7 +246,7 @@ export function drawTimeline(
 	hoverLabel.setAttribute("font-size", "12");
 	hoverLabel.setAttribute("visibility", "hidden");
 	const hoverBackdrop = document.createElementNS(ns, "rect");
-	hoverBackdrop.setAttribute("fill", "var(--background-primary, #171c28)");
+	hoverBackdrop.setAttribute("fill", "var(--background-primary, #ffffff)");
 	hoverBackdrop.setAttribute("rx", "3");
 	hoverBackdrop.setAttribute("visibility", "hidden");
 
