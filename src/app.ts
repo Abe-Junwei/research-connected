@@ -9,7 +9,7 @@ import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
-import { mergeOpenCitation, edgeCitationPairs, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
+import { mergeOpenCitation, edgeCitationPairs, evidenceLabel } from "./citation-evidence";
 import { directCitationEdges, drawFlows } from "./analysis-view";
 import {
 	buildCitationTimeline,
@@ -155,7 +155,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const sourceActions = el(graphActions, "div", "cpo-source-actions");
 	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
 	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
-	const semanticAction = el(sourceActions, "button", "cpo-action-link", "Semantic Scholar") as HTMLButtonElement;
 	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
 	const zoom = el(graphActions, "div", "cpo-zoom");
 	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
@@ -165,12 +164,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	zoomIn.setAttribute("aria-label", "放大");
 	zoomOut.setAttribute("aria-label", "缩小");
 	fit.setAttribute("aria-label", "适应窗口");
-	for (const button of [openAlexAction, doiAction, semanticAction]) {
+	for (const button of [openAlexAction, doiAction]) {
 		button.type = "button";
 		button.hidden = true;
 	}
-	semanticAction.disabled = true;
-	semanticAction.title = "先点选一条引用关系，再读取 Semantic Scholar 引用语义";
 
 	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
 	const sidebarResize = el(body, "div", "cpo-sidebar-resizer");
@@ -211,7 +208,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let selectedEdge: GraphEdge | null = null;
 	/** 轨道按钮持有的布局；建图后回灌给画布，保持按钮与实际渲染一致。 */
 	let layoutMode: LayoutMode = "force2d";
-	let semanticPairs: Array<{ citingId: string; citedId: string }> = [];
 	let timelineMetaGraph: SimilarityGraph | null = null;
 	let timelineMetaRequested = false;
 	let timelineMetaLoading = false;
@@ -574,9 +570,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const showDetail = (paper: PaperNode | null): void => {
 		selectedPaper = paper;
 		selectedEdge = null;
-		semanticPairs = [];
-		semanticAction.hidden = true;
-		semanticAction.disabled = true;
 		detail.replaceChildren();
 		if (!paper || !graph) {
 			map.setSelected(null);
@@ -639,7 +632,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 						for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
 					}
 				}
-				if (pairs.length > 0) syncSemanticAction(pairs);
 			} else {
 				const recorded =
 					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
@@ -676,61 +668,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 	};
 
-	const loadSemanticEvidence = async (
-		pairs: Array<{ citingId: string; citedId: string }>,
-		button: HTMLButtonElement,
-	): Promise<void> => {
-		if (!graph) return;
-		const requestGraph = graph, token = generation;
-		button.disabled = true;
-		button.textContent = "正在读取引用语义…";
-		try {
-			const settings = deps.getSettings();
-			const client = new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey);
-			let partial = false;
-			for (const pair of pairs) {
-				const citing = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citingId);
-				const cited = [...graph.nodes, ...graph.catalog].find((item) => item.id === pair.citedId);
-				const citedDoi = doiOf(cited?.doiUrl);
-				const citingDoi = doiOf(citing?.doiUrl);
-				if (!citedDoi || !citingDoi) continue;
-				const result = await client.referenceEvidence(citingDoi);
-				if (disposed || graph !== requestGraph || token !== generation) return;
-				partial = partial || result.partial;
-				const row = result.data.find(item => doiOf(item.citedPaper?.externalIds?.DOI) === citedDoi);
-				if (row) requestGraph.citationEvidence?.set(evidenceFromSemanticCitation(pair.citingId, pair.citedId, row));
-				else { button.textContent = result.partial ? "已查 3000 条参考文献，未匹配（结果不完整）" : "未找到匹配的引用语义"; button.disabled = false; return; }
-			}
-			// 边视图就重绘边证据，节点详情就重绘节点——不要互相覆盖。
-			if (selectedEdge) showEdgeDetail(selectedEdge);
-			else showDetail(selectedPaper);
-			if (partial) el(detail, "p", "cpo-side-tip", "Semantic Scholar 只返回了前 3000 条参考文献，引用语义可能不完整。");
-		} catch (error) {
-			if (disposed || graph !== requestGraph || token !== generation) return;
-			button.textContent = error instanceof Error ? error.message : "Semantic Scholar 请求失败";
-			button.disabled = false;
-		}
-	};
-
 	const edgeSources = (edge: GraphEdge): string => {
 		const sources = new Set(edgeCitationPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
 		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
-	};
-	const semanticLoaded = (pairs: Array<{ citingId: string; citedId: string }>): boolean =>
-		pairs.every(pair => graph?.citationEvidence?.get(pair.citingId, pair.citedId)?.sources.includes("semantic-scholar"));
-	const syncSemanticAction = (pairs: Array<{ citingId: string; citedId: string }>): void => {
-		semanticPairs = pairs;
-		const loaded = pairs.length > 0 && semanticLoaded(pairs);
-		semanticAction.hidden = pairs.length === 0;
-		semanticAction.disabled = pairs.length === 0 || loaded;
-		semanticAction.textContent = loaded ? "已加载引用语义" : "Semantic Scholar";
-		semanticAction.title = loaded
-			? "当前引用关系的 Semantic Scholar 引用语义已加载"
-			: "读取当前引用关系的 Semantic Scholar 引用语义";
-	};
-	semanticAction.onclick = () => {
-		if (!semanticPairs.length) return;
-		void loadSemanticEvidence(semanticPairs, semanticAction);
 	};
 
 	map.onSelect = (paper) => showDetail(paper);
@@ -751,8 +691,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
 			}
 		}
-		const pairs = edgeCitationPairs(edge);
-		if (pairs.length) syncSemanticAction(pairs);
 	};
 	map.onEdgeSelect = (edge) => {
 		selectedEdge = edge;
