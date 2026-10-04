@@ -40,7 +40,7 @@ export interface GraphChromeOptions {
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
 	analysisButton?: boolean;
-	/** 引用脉络原型页签，仅主面板开启。 */
+	/** 引用脉络页签，仅主面板开启。 */
 	timelineButton?: boolean;
 	onExport: (kind: ExportKind) => void;
 	/** Tabs and export actions. When set, they leave the control host. */

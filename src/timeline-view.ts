@@ -146,7 +146,7 @@ export function layoutTimeline(timeline: CitationTimeline, width: number): Timel
 }
 
 /**
- * 引用脉络原型：默认只画圆点、年份轴和分区标签；悬停在点旁浮出标题并
+ * 引用脉络：默认只画圆点、年份轴和分区标签；悬停在点旁浮出标题并
  * 高亮与种子的连线，点击在下方 selection 区出详情。宽度跟随容器，不足
  * TIMELINE_MIN_WIDTH 时由外层横向滚动。
  */

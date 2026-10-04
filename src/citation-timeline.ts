@@ -38,7 +38,6 @@ export interface CitationTimeline {
 	empty: boolean;
 }
 
-export const TIMELINE_TAG = "实验原型";
 export const TIMELINE_SCOPE_NOTE = "只含与种子的直接引用记录（参考文献列表与引用证据），不含相似关系。";
 export const LIST_VS_TIMELINE_NOTE = "列表统计当前子图内互引频次；「引用脉络」只含与种子的直接引用记录，两者口径不同。";
 export const TIMELINE_SAMPLING_NOTE = "参考文献可能不完整；施引论文按被引数排序采样且有上限（最多 400 篇上下文），施引一侧天然偏向高被引论文。";

@@ -19,7 +19,6 @@ import {
 	TIMELINE_META_NOTE,
 	TIMELINE_SAMPLING_NOTE,
 	TIMELINE_SCOPE_NOTE,
-	TIMELINE_TAG,
 	missingReferenceIds,
 } from "./citation-timeline";
 import { drawTimeline } from "./timeline-view";
@@ -273,11 +272,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		listPanel.append(list);
 	};
 
-	/** 引用脉络原型：只用原始引用记录，不用相似图边。 */
+	/** 引用脉络：只用原始引用记录，不用相似图边。 */
 	const paintTimeline = (): void => {
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
-		el(listPanel, "h3", "cpo-kicker", `引用脉络 · ${TIMELINE_TAG}`);
+		el(listPanel, "h3", "cpo-kicker", "引用脉络");
 		el(listPanel, "p", "cpo-side-tip", TIMELINE_SCOPE_NOTE);
 		if (!graph) return;
 		if (timelineMetaGraph !== graph) {
