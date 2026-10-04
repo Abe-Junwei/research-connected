@@ -169,6 +169,11 @@ export class SimilarityMap {
 	setScrubYear(year: number | null): void {
 		this.scrubYear = year;
 		for (const node of this.nodes) node.shown = this.isShown(node);
+		if (this.selectedId && !this.nodes.some((node) => node.id === this.selectedId && node.shown)) {
+			this.selectedId = null;
+			this.onSelect?.(null);
+		}
+		this.refreshFocus();
 		this.draw();
 	}
 
@@ -431,6 +436,7 @@ export class SimilarityMap {
 
 	private onPointerDown(event: PointerEvent): void {
 		if (!this.alive) return;
+		this.canvas.focus({ preventScroll: true });
 		// Direct manipulation cancels any eased zoom still in flight.
 		this.zoomAnim = null;
 		this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -603,6 +609,46 @@ export class SimilarityMap {
 		if (!this.alive) return;
 		const panStep = 48;
 		const key = event.key;
+		if (key === "Escape") {
+			event.preventDefault();
+			this.selectedId = null;
+			this.hoverId = null;
+			this.refreshFocus();
+			this.onSelect?.(null);
+			this.draw();
+			return;
+		}
+		if ((key === "Enter" || key === " ") && this.selectedId) {
+			event.preventDefault();
+			this.onSelect?.(this.nodes.find((node) => node.id === this.selectedId) ?? null);
+			return;
+		}
+		if (event.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key)) {
+			event.preventDefault();
+			const current = this.nodes.find((node) => node.id === this.selectedId) ?? this.nodes.find((node) => node.isSeed);
+			if (current) {
+				const dx = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
+				const dy = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
+				const next = this.nodes
+					.filter((node) => node.shown && node.id !== current.id)
+					.map((node) => {
+						const vx = node.x - current.x;
+						const vy = node.y - current.y;
+						const distance = Math.hypot(vx, vy);
+						const forward = (vx * dx + vy * dy) / Math.max(1, distance);
+						return { node, score: forward > 0 ? distance / forward : Number.POSITIVE_INFINITY };
+					})
+					.filter((item) => Number.isFinite(item.score))
+					.sort((a, b) => a.score - b.score)[0]?.node;
+				if (next) {
+					this.selectedId = next.id;
+					this.refreshFocus();
+					this.onSelect?.(next);
+					this.draw();
+				}
+			}
+			return;
+		}
 		if (key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" || key === "ArrowRight") {
 			event.preventDefault();
 			this.tx += key === "ArrowLeft" ? panStep : key === "ArrowRight" ? -panStep : 0;

@@ -1,7 +1,7 @@
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
 
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
@@ -31,6 +31,7 @@ export interface GraphChromeOptions {
 	layouts: readonly LayoutMode[];
 	layout: LayoutMode;
 	noteButton: boolean;
+	onExport: (kind: ExportKind) => void;
 	onLayout: (mode: LayoutMode) => void;
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
@@ -38,7 +39,6 @@ export interface GraphChromeOptions {
 	analysisButton?: boolean;
 	/** 引用脉络页签，仅主面板开启。 */
 	timelineButton?: boolean;
-	onExport: (kind: ExportKind) => void;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
 	/** Layout buttons. When set, they leave the control host for the narrow rail. */
@@ -76,7 +76,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	const scrubRow = document.createElement("div");
 	scrubRow.className = "cpo-tool-row cpo-scrub-row";
 	const tabRow = document.createElement("div");
-	tabRow.className = "cpo-tool-row";
+	tabRow.className = "cpo-tool-row cpo-tab-row";
 	const hint = document.createElement("p");
 	hint.className = "cpo-tool-hint";
 	let layout = options.layout;
@@ -86,12 +86,10 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	updateHint();
 	const readout = document.createElement("span");
 	readout.className = "cpo-scrub-readout";
-	readout.className = "cpo-scrub-readout";
 	readout.textContent = "全部年份";
 	const output = document.createElement("pre");
 	output.className = "cpo-export-text";
 	output.hidden = true;
-
 	let minYear = 1900;
 	let maxYear = 2020;
 	let timer = 0;

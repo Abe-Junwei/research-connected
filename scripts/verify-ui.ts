@@ -16,6 +16,8 @@ import { buildCommunityRegions } from "../src/community-regions";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation } from "../src/relation";
 import { layoutTimeline, TIMELINE_MIN_WIDTH, UNKNOWN_LIMIT, ZONE_LIMIT } from "../src/timeline-view";
+import { placeLayout } from "../src/layout-modes";
+import { clampSidebarWidth } from "../src/sidebar-resize";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { syntheticGraph } from "./perf-fixture";
 
@@ -132,6 +134,40 @@ function communityRegions(): void {
 	assert.equal(regions[0]?.members, 3, "年份过滤后的隐藏点不计入边界");
 	assert.ok((regions[0]?.points.length ?? 0) >= 3, "圈层由凸包形成");
 	assert.ok((regions[0]?.left ?? 0) < 10, "圈层边界包含柔和留白");
+}
+
+/** 圈层布局：种子社区居中，整体紧凑，不随社区数平方根式外扩。 */
+function compactCommunityLayout(): void {
+	const nodes = [
+		paper("S", "seed"), paper("A1", "reference"), paper("A2", "reference"),
+		paper("B1", "citation"), paper("B2", "citation"), paper("B3", "citation"),
+		paper("C1", "related"), paper("C2", "related"), paper("C3", "related"),
+	];
+	const edges = [
+		edge({ source: "S", target: "A1", weight: 0.8 }),
+		edge({ source: "A1", target: "A2", weight: 0.8 }),
+		edge({ source: "A2", target: "S", weight: 0.8 }),
+		edge({ source: "B1", target: "B2", weight: 0.8 }),
+		edge({ source: "B2", target: "B3", weight: 0.8 }),
+		edge({ source: "B3", target: "B1", weight: 0.8 }),
+		edge({ source: "C1", target: "C2", weight: 0.8 }),
+		edge({ source: "C2", target: "C3", weight: 0.8 }),
+		edge({ source: "C3", target: "C1", weight: 0.8 }),
+	];
+	const placed = placeLayout("kumu", nodes, edges, new Map([["S", 1]]));
+	const byId = new Map(placed.map((node) => [node.id, node]));
+	const seed = byId.get("S")!;
+	assert.ok(Math.hypot(seed.x, seed.y) < 1, "种子论文固定在圈层布局中心");
+	const width = Math.max(...placed.map((node) => node.x)) - Math.min(...placed.map((node) => node.x));
+	const height = Math.max(...placed.map((node) => node.y)) - Math.min(...placed.map((node) => node.y));
+	assert.ok(width < 360 && height < 360, "多个社区的默认包围盒保持紧凑");
+}
+
+function evidenceSidebarSizing(): void {
+	assert.equal(clampSidebarWidth(320), 320, "默认证据栏宽度保持紧凑");
+	assert.equal(clampSidebarWidth(100), 260, "拖拽不会把证据栏缩到不可读");
+	assert.equal(clampSidebarWidth(900), 480, "拖拽不会让证据栏重新挤占图谱");
+	assert.equal(clampSidebarWidth(245.6, 220, 380), 246, "嵌入式使用自己的宽度边界");
 }
 
 /** Analysis view data: visible-node direct citation pairs from raw records. */
@@ -355,6 +391,8 @@ export function verifyUi(): void {
 	badges();
 	focusPath();
 	communityRegions();
+	compactCommunityLayout();
+	evidenceSidebarSizing();
 	analysisPairs();
 	aggregates();
 	timeline();

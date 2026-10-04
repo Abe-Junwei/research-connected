@@ -655,6 +655,12 @@ export function mountGraph3D(
 		if (raf) window.cancelAnimationFrame(raf);
 		raf = 0;
 	};
+	canvas.addEventListener("webglcontextlost", (event) => {
+		event.preventDefault();
+		if (!alive) return;
+		stop();
+		options.onContextLost?.();
+	});
 	controls.addEventListener("change", schedule);
 
 	const syncView = (): void => {

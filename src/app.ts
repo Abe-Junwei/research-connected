@@ -1,9 +1,9 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
-import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -30,6 +30,7 @@ import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, Origin, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
+import { mountSidebarResize } from "./sidebar-resize";
 
 export interface AppDeps {
 	getSettings: () => ConnectedPapersSettings;
@@ -157,18 +158,35 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	zoomIn.setAttribute("aria-label", "放大");
 	zoomOut.setAttribute("aria-label", "缩小");
 	fit.setAttribute("aria-label", "适应窗口");
+	const graphActions = el(stage, "div", "cpo-graph-actions");
+	const sourceActions = el(graphActions, "div", "cpo-source-actions");
+	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
+	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
+	const semanticAction = el(sourceActions, "button", "cpo-action-link", "Semantic Scholar") as HTMLButtonElement;
+	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
+	graphActions.append(zoom);
+	for (const button of [openAlexAction, doiAction, semanticAction]) {
+		button.type = "button";
+		button.hidden = true;
+	}
+	semanticAction.disabled = true;
+	semanticAction.title = "先点选一条引用关系，再读取 Semantic Scholar 引用语义";
 
-	const sheetHost = el(body, "aside", "cpo-evidence-panel");
+	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
+	const sidebarResize = el(body, "div", "cpo-sidebar-resizer");
+	body.insertBefore(sidebarResize, sidebar);
+	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
+	el(evidenceHeader, "h2", undefined, "论文与关系证据");
+	el(evidenceHeader, "p", undefined, "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。");
+	const sheetHost = el(sidebar, "section");
 	const sheet = mountBottomSheet(sheetHost);
-	const evidenceHeading = el(sheetHost, "div", "cpo-evidence-heading");
-	el(evidenceHeading, "strong", undefined, "论文与关系证据");
-	el(evidenceHeading, "span", undefined, "选择节点查看来源与关系");
-	sheetHost.prepend(evidenceHeading);
+	sheet.setExpanded(true);
 	const detail = el(sheet.body, "div", "cpo-detail");
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
-	const actionsBar = el(root, "div", "cpo-actions-bar");
+	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
 	const map = new SimilarityMap(canvas, tooltip, stage);
+	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, { onResize: () => map.resize() });
 	let mapFilter: GraphFilter = { ...emptyFilter(), kinds: { direct: true, cocitation: true, coupling: true, weak: false } };
 	map.setKinds(mapFilter.kinds);
 	buildLegend(kindLegend, () => mapFilter, (next) => {
@@ -190,6 +208,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let scrubYear: number | null = null;
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
+	let semanticPairs: Array<{ citingId: string; citedId: string }> = [];
 	let timelineMetaGraph: SimilarityGraph | null = null;
 	let timelineMetaRequested = false;
 	let timelineMetaLoading = false;
@@ -483,8 +502,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(toolsHost, {
-		layouts: ["temporal", "kumu"],
-		layout: "temporal",
+		layouts: ["kumu", "force2d", "temporal", "radial"],
+		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		analysisButton: true,
@@ -543,6 +562,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 
 	const showDetail = (paper: PaperNode | null): void => {
 		selectedPaper = paper;
+		semanticPairs = [];
+		semanticAction.hidden = true;
+		semanticAction.disabled = true;
 		detail.replaceChildren();
 		if (!paper || !graph) {
 			map.setSelected(null);
@@ -603,13 +625,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 						for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
 					}
 				}
-				if (pairs.length > 0) {
-					const loaded = semanticLoaded(pairs);
-					const semanticButton = el(detail, "button", "cpo-link", loaded ? "已加载引用语义" : "读取 Semantic Scholar 引用语义") as HTMLButtonElement;
-					semanticButton.type = "button";
-					semanticButton.disabled = loaded;
-					if (!loaded) semanticButton.addEventListener("click", () => void loadSemanticEvidence(pairs, semanticButton));
-				}
+				if (pairs.length > 0) syncSemanticAction(pairs);
 			} else {
 				const recorded =
 					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
@@ -639,11 +655,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		el(detail, "p", "cpo-abstract", abstractText(paper));
 		const openAlex = allowedExternalUrl(paper.openAlexUrl);
-		if (openAlex) addLink(detail, "在 OpenAlex 中打开", () => deps.openExternal(openAlex));
-		if (paper.doiUrl) {
-			const doi = allowedExternalUrl(paper.doiUrl);
-			if (doi) addLink(detail, "打开 DOI", () => deps.openExternal(doi));
-		}
+		openAlexAction.hidden = !openAlex;
+		openAlexAction.onclick = openAlex ? () => deps.openExternal(openAlex) : null;
+		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
+		doiAction.hidden = !doi;
+		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 	};
 
 	const loadSemanticEvidence = async (
@@ -686,6 +702,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 	const semanticLoaded = (pairs: Array<{ citingId: string; citedId: string }>): boolean =>
 		pairs.every(pair => graph?.citationEvidence?.get(pair.citingId, pair.citedId)?.sources.includes("semantic-scholar"));
+	const syncSemanticAction = (pairs: Array<{ citingId: string; citedId: string }>): void => {
+		semanticPairs = pairs;
+		semanticAction.hidden = pairs.length === 0;
+		semanticAction.disabled = pairs.length === 0 || semanticLoaded(pairs);
+		semanticAction.textContent = semanticLoaded(pairs) ? "已加载引用语义" : "Semantic Scholar";
+	};
+	semanticAction.onclick = () => {
+		if (!semanticPairs.length) return;
+		void loadSemanticEvidence(semanticPairs, semanticAction);
+	};
 
 	map.onSelect = (paper) => showDetail(paper);
 	map.onEdgeSelect = edge => {
@@ -706,14 +732,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		const pairs = edgeCitationPairs(edge);
 		if (pairs.length) {
 			const loaded = semanticLoaded(pairs);
-			const button = el(detail, "button", "cpo-link", loaded ? "已加载引用语义" : "读取 Semantic Scholar 引用语义");
-			button.type = "button";
-			button.disabled = loaded;
-			if (!loaded) button.onclick = async () => {
-				const current = graph;
-				await loadSemanticEvidence(pairs, button);
-				if (!disposed && current === graph && !button.isConnected) map.onEdgeSelect?.(edge);
-			};
+			syncSemanticAction(pairs);
+			if (!loaded) semanticAction.title = "读取当前引用关系的 Semantic Scholar 引用语义";
 		}
 	};
 	showDetail(null);
@@ -921,7 +941,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	window.addEventListener("research-connected-settings", onSettings);
 
 	const observer = new ResizeObserver(() => {
-		root.classList.toggle("is-narrow", root.clientWidth < 520);
+		root.classList.toggle("is-narrow", root.clientWidth < 780);
 		map.resize();
 		if (!map.hasAdjusted()) map.fit();
 	});
@@ -940,6 +960,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		generation += 1;
 		chrome?.destroy();
 		sheet.destroy();
+		stopSidebarResize();
 		observer.disconnect();
 		root.removeEventListener("keydown", onKey);
 		window.removeEventListener("research-connected-settings", onSettings);

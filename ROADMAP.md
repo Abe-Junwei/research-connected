@@ -18,7 +18,6 @@ Research Connected 是 Obsidian 里的**单篇种子论文相似性地图**。�
 - 详情卡：关系类型与方向、证据来源（OpenAlex / OpenCitations / Semantic Scholar）、S2 意图与 Influential
 - 数据质量防线（1.6.1–1.7.0）：书评等非研究记录过滤、撤稿 ⚠、被引数错配 ⚠、S2 参考文献回填
 - 筛选/图例、年份控件、先验/衍生列表、桑基图与弦图（次级分析视图）
-- BibTeX / YAML / 表格导出与写入笔记
 - 嵌入图谱：尺寸/位置/布局参数、temporal/radial/force2d/force3d 四种布局
 - 采样深度三档（标准/扩展/深度，最深各 1000 条）
 - LLM 默认关闭，关闭时无入口、无请求
