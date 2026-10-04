@@ -22,7 +22,7 @@ import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
 import { runForceLayout } from "../src/layout";
 import { runForceLayout3D } from "../src/layout-3d";
-import { loadNeighborhood, selectNeighbors, countsMismatched, type ReconcileSource } from "../src/neighborhood";
+import { loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
 import { classifyQuery, reconstructAbstract, toPaper } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
@@ -30,6 +30,7 @@ import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
+import { CrossrefClient } from "../src/citation-sources";
 import type { PaperNode } from "../src/types";
 
 function weighted(source: string, target: string, weight: number): GraphEdge {
@@ -510,12 +511,16 @@ async function reconcileOffline(): Promise<void> {
 		bulkCounts: async () => new Map([["10.1/neighbor", { citationCount: 5, referenceCount: 30 }]]),
 		referenceDois: async () => ["10.1/seed"],
 	};
+	const crossref: CrossrefReferenceSource = {
+		referenceDois: async (doi) => doi === "10.1/seed" ? ["10.1/neighbor"] : [],
+	};
 	const graph = await loadNeighborhood(
 		client,
 		{ kind: "openalex", value: "W1" },
 		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, maxNodes: 20 },
 		undefined,
 		reconcile,
+		crossref,
 	);
 	const check = graph.crossCheck?.get("W2");
 	assert.ok(check, "cross-check recorded for the neighbor");
@@ -529,6 +534,10 @@ async function reconcileOffline(): Promise<void> {
 	const evidence = graph.citationEvidence?.get("W2", "W1");
 	assert.ok(evidence?.sources.includes("semantic-scholar"), "backfilled edge credits Semantic Scholar");
 	assert.ok(!evidence?.sources.includes("openalex"), "backfilled edge is not credited to OpenAlex");
+	const crossrefEvidence = graph.citationEvidence?.get("W1", "W2");
+	assert.ok(crossrefEvidence?.sources.includes("crossref"), "Crossref-only reference credits Crossref");
+	assert.ok(!crossrefEvidence?.sources.includes("openalex"), "Crossref backfill is not misattributed to OpenAlex");
+	assert.equal(graph.crossCheck?.get("W1")?.crossrefRefsAdded, 1);
 
 	// Toggle off: no cross-check, no backfill.
 	const off = await loadNeighborhood(
@@ -539,6 +548,12 @@ async function reconcileOffline(): Promise<void> {
 		reconcile,
 	);
 	assert.equal(off.crossCheck, undefined);
+	const crossrefClient = new CrossrefClient(async (url) => {
+		assert.match(url, /api\.crossref\.org\/works\/10\.1\/test/);
+		return { message: { abstract: "<jats:p>Uses &amp; tests</jats:p>", reference: [{ DOI: "10.1/ref" }, { unstructured: "No DOI" }] } };
+	}, "test@example.org");
+	assert.equal(await crossrefClient.abstract("10.1/test"), "Uses & tests");
+	assert.deepEqual(await crossrefClient.referenceDois("10.1/test"), ["10.1/ref"]);
 }
 async function cursorPaging(): Promise<void> {
 	const requested: string[] = [];

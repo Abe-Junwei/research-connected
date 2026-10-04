@@ -140,10 +140,11 @@ Thickness is the same three steps as the legend (弱 / 中 / 强), not a continu
 
 ### 多源证据、分析视图与可选 LLM
 
-OpenCitations、Semantic Scholar 引用语义和可选 LLM 仅在命令面板图谱中提供；分析视图（桑基 / 弦图）在图谱面板和笔记内嵌中都可用。
+OpenCitations 检查、Semantic Scholar 引用语义和可选 LLM 仅在命令面板图谱中提供；Crossref 回退同时用于命令面板与笔记内嵌。分析视图（桑基 / 弦图）在图谱面板和笔记内嵌中都可用。
 
 - **OpenCitations**：建图后顺序检查最多 20 篇有 DOI 的图内论文的参考文献，只补当前节点之间的引用边。仅在 OpenAlex 同样记录了该方向引用时显示双源。状态栏显示已检查数和失败数；这不是全量覆盖。可在设置中填写访问令牌。
 - **Semantic Scholar**：点击直接引用边，选择“读取 Semantic Scholar 引用语义”。也可从论文详情读取它与种子的关系。查询施引论文的参考文献，最多 3 页 / 3000 条；未匹配或截断会提示。只有返回数据才显示 Background / Method / Result；只有明确为 true 才显示 Influential。原始上下文可在证据详情查看。API key 可选。此外，当 OpenAlex 没有某篇论文的摘要时（Nature 等出版商不寄存摘要），打开该论文详情会自动向 Semantic Scholar 查询一次摘要作为回退，取到后标注“摘要来源：Semantic Scholar”；两个源都没有时如实说明。回退按论文触发、会话内缓存，不会批量预取。
+- **Crossref**：作为额外回退，只对 DOI 可识别且 OpenAlex / Semantic Scholar 仍没有参考文献列表的图内论文查询已登记参考文献，每张图最多尝试 12 篇；只将能映射到当前图内 DOI 的条目纳入相似度和引用边，并标记 Crossref 来源。打开缺摘要论文详情时，也会在 Semantic Scholar 没找到后按需查询 Crossref 摘要。Crossref 没登记 DOI 或摘要时不影响主图；这不是完整参考文献补全。
 - **分析**：默认图谱不变。图谱下方常驻条上的“分析”页签可切换按年代聚合的桑基图和按社区聚合的弦图。只统计当前可见论文间的直接引用，去重后按数量绘制带宽。桑基方向是施引 → 被引；弦图合并两个方向。点击带状区域查看论文。聚合不代表学术影响或完整历史。
 - **LLM 默认关闭**：关闭时没有“研究脉络”入口、生成内容或模型请求。开启并填写完整 Endpoint、模型后才出现入口。支持兼容 chat/completions 的 JSON 响应接口；HTTPS 为默认要求，本机 HTTP 服务允许使用。API 密钥保存在插件本地 data.json 中，不是加密密钥库。
 - **手动生成**：只在点击生成时发送种子、最多 8 篇直接参考文献、8 篇直接施引文献，以及已取得的引用证据。摘要发送默认关闭；已获取的引用上下文仍属于证据包。总结针对整张采样图，不跟随年份滑块。未访问全文，不声称完整学术史。
@@ -158,7 +159,7 @@ Settings → Research Connected.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | OpenAlex API 密钥 | empty | Sent as `Authorization: Bearer`. Stored only in local plugin data. |
-| 联系邮箱（mailto） | empty | Appended as `mailto` if it looks like an email. |
+| 联系邮箱（mailto） | empty | OpenAlex 不再因此提高额度；有效邮箱会作为 Crossref 的联系信息。 |
 | 最大节点数 | 50 (range 20–80) | Cap including the seed. 40–60 is the intended range. Applied on the next build. |
 | 纳入参考文献 | on | Seed’s outgoing references. |
 | 纳入施引文献 | on | Works that cite the seed, also used as co-citation context. |
@@ -172,7 +173,7 @@ OpenAlex still answers **without a key**, on a small daily budget. A keyless res
 
 A free key from [openalex.org/settings/api](https://openalex.org/settings/api) raises that budget. OpenAlex documents the free key as about **10×** the keyless allowance. Past the budget, or above 100 requests/second, the API returns **HTTP 429**. The pane tells you to add a key or wait until the daily reset.
 
-The old polite pool is gone. Since February 2026 OpenAlex **ignores `mailto`**. The email setting is still sent when you fill it in, for older gateways, and it does **not** raise the limit. A key is the way to get a higher budget. See [OpenAlex authentication](https://help.openalex.org/api/authentication/).
+Since February 2026 OpenAlex **ignores `mailto`**. The email setting is still sent to older OpenAlex gateways but does **not** raise its limit; Crossref uses a valid email as contact information for its public API. An OpenAlex key is the way to get a higher OpenAlex budget. See [OpenAlex authentication](https://help.openalex.org/api/authentication/).
 
 One map on standard sampling is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Deep sampling cursor-pages the reference and citation lists (up to 5 pages each) and fetches more batched details, around 20 calls in total. Title search is a separate, slightly more expensive call.
 

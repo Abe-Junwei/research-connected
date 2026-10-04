@@ -7,6 +7,47 @@ export interface OpenCitationRow {
 	creation?: string;
 }
 
+export interface CrossrefWork {
+	DOI?: string;
+	abstract?: string;
+	reference?: Array<{ DOI?: string; unstructured?: string }>;
+}
+
+/** Public Crossref DOI metadata, used only as a bounded fallback. */
+export class CrossrefClient {
+	constructor(private readonly getJson: GetJson, private readonly contactEmail: string) {}
+
+	async work(doi: string): Promise<CrossrefWork | null> {
+		const encodedDoi = encodeURIComponent(doi).replace(/%2F/gi, "/");
+		const url = new URL(`https://api.crossref.org/works/${encodedDoi}`);
+		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.contactEmail)) url.searchParams.set("mailto", this.contactEmail);
+		const json = await cachedGet(this.getJson, url.toString(), { headers: { Accept: "application/json" } });
+		if (!json || typeof json !== "object") throw new CitationSourceError("Crossref 返回格式错误。");
+		const message = (json as { message?: unknown }).message;
+		if (!message || typeof message !== "object") throw new CitationSourceError("Crossref 未返回作品元数据。");
+		return message as CrossrefWork;
+	}
+
+	async referenceDois(doi: string): Promise<string[]> {
+		const work = await this.work(doi);
+		return [...new Set((work?.reference ?? []).flatMap((row) => {
+			const value = row.DOI?.trim().toLowerCase();
+			return value ? [value] : [];
+		}))];
+	}
+
+	async abstract(doi: string): Promise<string | null> {
+		const work = await this.work(doi);
+		if (!work?.abstract) return null;
+		const text = work.abstract
+			.replace(/<[^>]*>/g, " ")
+			.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+			.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+			.replace(/\s+/g, " ").trim();
+		return text || null;
+	}
+}
+
 export class CitationSourceError extends Error {}
 
 export class OpenCitationsClient {
@@ -179,6 +220,17 @@ export async function semanticAbstract(
 	} catch {
 		return null;
 	}
+}
+
+export async function crossrefAbstract(
+	getJson: GetJson,
+	contactEmail: string,
+	paper: { doiUrl: string | null },
+): Promise<string | null> {
+	const doi = doiFromPaper(paper);
+	if (!doi) return null;
+	try { return await new CrossrefClient(getJson, contactEmail).abstract(doi); }
+	catch { return null; }
 }
 
 function pids(value: string | undefined): string[] {

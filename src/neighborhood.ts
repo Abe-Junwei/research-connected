@@ -58,6 +58,8 @@ export interface CrossCheck {
 	s2References: number | null;
 	/** Reference links to other graph nodes that came from the S2 backfill. */
 	refsAdded: number;
+	/** Reference links that came from Crossref after OpenAlex/S2 had no list. */
+	crossrefRefsAdded?: number;
 	/** True when the two sources disagree by an order of magnitude — usually a misattributed record. */
 	mismatched: boolean;
 }
@@ -65,6 +67,10 @@ export interface CrossCheck {
 /** What loadNeighborhood needs from Semantic Scholar for reconciliation. */
 export interface ReconcileSource {
 	bulkCounts(dois: string[]): Promise<Map<string, S2Counts>>;
+	referenceDois(doi: string): Promise<string[]>;
+}
+
+export interface CrossrefReferenceSource {
 	referenceDois(doi: string): Promise<string[]>;
 }
 
@@ -96,6 +102,7 @@ export async function loadNeighborhood(
 	settings: ConnectedPapersSettings,
 	onStage?: (stage: LoadStage) => void,
 	reconcile?: ReconcileSource | null,
+	crossref?: CrossrefReferenceSource | null,
 ): Promise<SimilarityGraph> {
 	if (!settings.includeReferences && !settings.includeCitations && !settings.includeRelated) {
 		throw new OpenAlexError("请至少开启一种邻居策略（参考文献、施引或相关作品）。");
@@ -145,6 +152,7 @@ export async function loadNeighborhood(
 
 	const refLists = new Map<string, string[]>();
 	refLists.set(seed.id, referenceIds(seedRaw.referenced_works));
+	const openAlexLinks = new Set(refLists.get(seed.id)!.map((id) => `${seed.id}\0${id}`));
 
 	// Citing papers arrive most-cited first; the context cap bounds the batched
 	// reference-list fetch when deep sampling returned hundreds of citers.
@@ -165,6 +173,7 @@ export async function loadNeighborhood(
 				const ids = referenceIds(raw.referenced_works);
 				const previous = refLists.get(id);
 				if (!previous || ids.length > 0) refLists.set(id, ids);
+				for (const refId of ids) openAlexLinks.add(`${id}\0${refId}`);
 				const paper = byId.get(id);
 				const abstract = reconstructAbstract(raw.abstract_inverted_index);
 				if (paper && abstract) paper.abstract = abstract;
@@ -236,6 +245,37 @@ export async function loadNeighborhood(
 		}
 	}
 
+	// Crossref is a second, bounded fallback: only query graph nodes whose
+	// reference list is still empty after OpenAlex and Semantic Scholar.
+	const crossrefLinks = new Set<string>();
+	if (crossref) {
+		const doiToId = new Map<string, string>();
+		for (const paper of [seed, ...picked]) {
+			const doi = doiFromPaper(paper);
+			if (doi) doiToId.set(doi.toLowerCase(), paper.id);
+		}
+		const gaps = [seed, ...picked]
+			.filter((paper) => doiFromPaper(paper) !== null && (refLists.get(paper.id) ?? []).length === 0)
+			.slice(0, MAX_RECONCILE_BACKFILL);
+		for (const paper of gaps) {
+			const doi = doiFromPaper(paper);
+			if (!doi) continue;
+			try {
+				const refDois = await crossref.referenceDois(doi);
+				const hits = unique(refDois.map((ref) => doiToId.get(ref.toLowerCase()) ?? "").filter((id) => id && id !== paper.id));
+				if (hits.length > 0) {
+					refLists.set(paper.id, unique([...(refLists.get(paper.id) ?? []), ...hits]));
+					for (const hit of hits) crossrefLinks.add(`${paper.id}\0${hit}`);
+					const check = crossCheck.get(paper.id) ?? { s2Citations: null, s2References: null, refsAdded: 0, mismatched: false };
+					check.crossrefRefsAdded = hits.length;
+					crossCheck.set(paper.id, check);
+				}
+			} catch {
+				// A Crossref miss or transient failure must not fail map construction.
+			}
+		}
+	}
+
 	const referencesMap = new Map<string, Set<string>>();
 	for (const paper of [seed, ...picked]) {
 		referencesMap.set(paper.id, new Set(refLists.get(paper.id) ?? []));
@@ -265,11 +305,12 @@ export async function loadNeighborhood(
 		for (const ref of refs) {
 			const target = catalog.get(ref);
 			if (!target) continue;
-			const evidence = directEvidence(source, target, true, false);
+			const evidence = directEvidence(source, target, openAlexLinks.has(`${id}\0${ref}`), false);
 			if (s2Links.has(`${id}\0${ref}`)) {
 				// Backfilled link: OpenAlex never listed it, Semantic Scholar did.
 				evidence.sources = ["semantic-scholar"];
 			}
+			if (crossrefLinks.has(`${id}\0${ref}`)) evidence.sources = [...new Set([...evidence.sources, "crossref" as const])];
 			citationEvidence.set(evidence);
 		}
 	}

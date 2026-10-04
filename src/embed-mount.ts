@@ -1,6 +1,6 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { directCitationEdges, drawFlows } from "./analysis-view";
-import { semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
+import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation, edgeCitationPairs } from "./citation-evidence";
 import { detectCommunities } from "./communities";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
@@ -322,17 +322,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let generation = 0;
 	let graphView: Graph3DHandle | null = null;
 	let alive = true;
-	/** Abstract fallback: ids already asked, ids Semantic Scholar filled, ids both sources lack. */
+	/** Abstract fallback: which source filled an abstract, or which DOI has no known abstract. */
 	const abstractRequested = new Set<string>();
 	const abstractFromS2 = new Set<string>();
+	const abstractFromCrossref = new Set<string>();
 	const abstractMissing = new Set<string>();
 
 	const embedAbstractText = (paper: PaperNode): string => {
 		if (paper.abstract) {
-			return paper.abstract + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+			const source = abstractFromS2.has(paper.id) ? "Semantic Scholar" : abstractFromCrossref.has(paper.id) ? "Crossref" : "";
+			return paper.abstract + (source ? `（摘要来源：${source}）` : "");
 		}
-		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
-		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
+		if (abstractMissing.has(paper.id)) return "OpenAlex、Semantic Scholar 和 Crossref 都没有这篇的摘要。";
+		return "OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…";
 	};
 
 	const placeDetailPlaceholder = (): void => {
@@ -428,11 +430,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
-			void semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper).then((text) => {
+			void (async () => {
+				const s2Text = await semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper);
+				if (s2Text) return { text: s2Text, source: "s2" as const };
+				const crossrefText = await crossrefAbstract(deps.getJson, deps.getSettings().contactEmail, paper);
+				return crossrefText ? { text: crossrefText, source: "crossref" as const } : null;
+			})().then((result) => {
 				if (!alive || token !== generation) return;
-				if (text) {
-					paper.abstract = text;
-					abstractFromS2.add(paper.id);
+				if (result) {
+					paper.abstract = result.text;
+					if (result.source === "s2") abstractFromS2.add(paper.id);
+					else abstractFromCrossref.add(paper.id);
 				} else {
 					abstractMissing.add(paper.id);
 				}
@@ -563,6 +571,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 						if (token === generation) message.textContent = STAGE_TEXT[stage];
 					},
 					reconcileFor(deps, settings),
+					new CrossrefClient(deps.getJson, settings.contactEmail),
 				);
 				if (spec.depth === 2) {
 					const expanded = await expandDepth(clientFor(deps, settings), graph, cap);

@@ -9,7 +9,7 @@ export type CitationRelation = "background" | "method" | "extension" | "validati
 export interface CitationEvidence {
 	citingId: string;
 	citedId: string;
-	sources: Array<"openalex" | "opencitations" | "semantic-scholar">;
+	sources: Array<"openalex" | "opencitations" | "semantic-scholar" | "crossref">;
 	intents: CitationIntent[];
 	influential?: boolean;
 	contexts: string[];
@@ -93,6 +93,7 @@ export interface PaperStateLike {
 export interface CrossCheckLike {
 	mismatched: boolean;
 	refsAdded: number;
+	crossrefRefsAdded?: number;
 }
 
 /**
@@ -108,6 +109,7 @@ export function paperStateBadges(paper: PaperStateLike, check: CrossCheckLike | 
 	if (flagged) badges.push({ label: flagged, tone: "warn" });
 	if (check?.mismatched) badges.push({ label: "⚠ 数据源差异", tone: "warn" });
 	if (check && check.refsAdded > 0) badges.push({ label: `S2 回填 ${check.refsAdded} 条`, tone: "plain" });
+	if (check?.crossrefRefsAdded) badges.push({ label: `Crossref 补充 ${check.crossrefRefsAdded} 条`, tone: "plain" });
 	return badges;
 }
 

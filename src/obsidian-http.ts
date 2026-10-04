@@ -5,6 +5,7 @@ import { explainStatus, OpenAlexError, type GetJson } from "./openalex";
 const SERVICE_NAME: Record<string, string> = {
 	"api.semanticscholar.org": "Semantic Scholar",
 	"api.opencitations.net": "OpenCitations",
+	"api.crossref.org": "Crossref",
 };
 
 function serviceName(url: string): string {

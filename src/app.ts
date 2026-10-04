@@ -7,7 +7,7 @@ import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStat
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
-import { OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
+import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
 import { mergeOpenCitation, edgeCitationPairs, evidenceFromSemanticCitation, evidenceLabel } from "./citation-evidence";
 import { directCitationEdges, drawFlows } from "./analysis-view";
 import {
@@ -184,9 +184,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let disposed = false;
 	let narrativeBusy = false;
 	let settingsRevision = 0;
-	/** Abstract fallback: ids already asked, ids Semantic Scholar filled, ids both sources lack. */
+	/** Abstract fallback: which source filled an abstract, or which DOI has no known abstract. */
 	const abstractRequested = new Set<string>();
 	const abstractFromS2 = new Set<string>();
+	const abstractFromCrossref = new Set<string>();
 	const abstractMissing = new Set<string>();
 	const llmReady = (): boolean => {
 		const s = deps.getSettings();
@@ -525,10 +526,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 
 	const abstractText = (paper: PaperNode): string => {
 		if (paper.abstract) {
-			return paper.abstract + (abstractFromS2.has(paper.id) ? "（摘要来源：Semantic Scholar）" : "");
+			const source = abstractFromS2.has(paper.id) ? "Semantic Scholar" : abstractFromCrossref.has(paper.id) ? "Crossref" : "";
+			return paper.abstract + (source ? `（摘要来源：${source}）` : "");
 		}
-		if (abstractMissing.has(paper.id)) return "OpenAlex 和 Semantic Scholar 都没有这篇的摘要。";
-		return "OpenAlex 没有摘要，正在询问 Semantic Scholar…";
+		if (abstractMissing.has(paper.id)) return "OpenAlex、Semantic Scholar 和 Crossref 都没有这篇的摘要。";
+		return "OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…";
 	};
 
 	const showDetail = (paper: PaperNode | null): void => {
@@ -610,11 +612,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
-			void semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper).then((text) => {
+			void (async () => {
+				const s2Text = await semanticAbstract(deps.getJson, deps.getSettings().semanticScholarApiKey, paper);
+				if (s2Text) return { text: s2Text, source: "s2" as const };
+				const crossrefText = await crossrefAbstract(deps.getJson, deps.getSettings().contactEmail, paper);
+				return crossrefText ? { text: crossrefText, source: "crossref" as const } : null;
+			})().then((result) => {
 				if (disposed || token !== generation) return;
-				if (text) {
-					paper.abstract = text;
-					abstractFromS2.add(paper.id);
+				if (result) {
+					paper.abstract = result.text;
+					if (result.source === "s2") abstractFromS2.add(paper.id);
+					else abstractFromCrossref.add(paper.id);
 				} else {
 					abstractMissing.add(paper.id);
 				}
@@ -793,6 +801,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 					status.textContent = STAGE_TEXT[stage];
 				},
 				reconcileSource(),
+				new CrossrefClient(deps.getJson, deps.getSettings().contactEmail),
 			);
 			if (token !== generation) return;
 			applyGraph(next);
