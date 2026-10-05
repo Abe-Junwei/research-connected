@@ -39,15 +39,17 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	const card = el(parent, "section", "cpo-card");
 	const badges = el(card, "div", "cpo-badge-row");
 	el(badges, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
-	if (paper.venue) {
-		const venue = el(badges, "span", "cpo-chip cpo-chip-venue", paper.venue);
-		venue.title = paper.venue;
-	}
 	if (paper.year !== null) el(badges, "span", "cpo-chip", `${paper.year} 年`);
 	if (paper.workType) el(badges, "span", "cpo-chip", paper.workType);
 	el(badges, "span", "cpo-chip cpo-chip-muted", `被引 ${formatCount(paper.citedByCount)}`);
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
 	paintAuthorChips(card, paper);
+	if (paper.venue) {
+		const row = el(card, "div", "cpo-badge-row cpo-venue-row");
+		el(row, "span", "cpo-chip-label", "出处");
+		const venue = el(row, "span", "cpo-chip cpo-chip-venue", paper.venue);
+		venue.title = paper.venue;
+	}
 	paintPaperStateBadges(card, paper, check);
 	if (paper.concepts.length > 0) {
 		const topics = el(card, "div", "cpo-badge-row");
