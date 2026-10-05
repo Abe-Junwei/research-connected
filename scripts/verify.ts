@@ -554,6 +554,7 @@ async function reconcileOffline(): Promise<void> {
 	assert.ok(check, "cross-check recorded for the neighbor");
 	assert.equal(check.mismatched, true, "500 vs 5 is an order-of-magnitude mismatch");
 	assert.equal(check.refsAdded, 1, "one backfilled link into the graph");
+	assert.ok(graph.rawReferenceLists?.get("W2")?.some((ref) => ref.source === "semantic-scholar" && ref.doi === "10.1/seed"));
 	const edge = graph.edges.find(
 		(item) =>
 			(item.source === "W2" && item.target === "W1") || (item.source === "W1" && item.target === "W2"),
@@ -566,6 +567,7 @@ async function reconcileOffline(): Promise<void> {
 	assert.ok(crossrefEvidence?.sources.includes("crossref"), "Crossref-only reference credits Crossref");
 	assert.ok(!crossrefEvidence?.sources.includes("openalex"), "Crossref backfill is not misattributed to OpenAlex");
 	assert.equal(graph.crossCheck?.get("W1")?.crossrefRefsAdded, 1);
+	assert.ok(graph.rawReferenceLists?.get("W1")?.some((ref) => ref.source === "crossref" && ref.doi === "10.1/neighbor"));
 
 	// Toggle off: no cross-check, no backfill.
 	const off = await loadNeighborhood(

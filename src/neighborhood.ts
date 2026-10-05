@@ -4,7 +4,7 @@ import {
 	type RawWork,
 	type SampledWorks,
 } from "./openalex";
-import { reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
+import { normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
@@ -44,6 +44,8 @@ export interface SimilarityGraph {
 	};
 	/** Reference lists for graph nodes and for citing papers kept as co-citation context. */
 	referenceLists: ReadonlyMap<string, readonly string[]>;
+	/** Raw external references retained even when they cannot be resolved into an OpenAlex node. */
+	rawReferenceLists?: ReadonlyMap<string, readonly ExternalReference[]>;
 	/** Titles we already fetched, including citers that did not become nodes. */
 	catalog: readonly PaperNode[];
 	citationEvidence?: CitationEvidenceStore;
@@ -53,6 +55,12 @@ export interface SimilarityGraph {
 	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
 	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
+}
+
+export interface ExternalReference {
+	source: "openalex" | "semantic-scholar" | "crossref";
+	externalId: string;
+	doi?: string;
 }
 
 export interface RetrievalStats {
@@ -173,7 +181,10 @@ export async function loadNeighborhood(
 	);
 
 	const refLists = new Map<string, string[]>();
-	refLists.set(seed.id, referenceIds(seedRaw.referenced_works));
+	const rawReferenceLists = new Map<string, ExternalReference[]>();
+	const seedReferenceIds = referenceIds(seedRaw.referenced_works);
+	refLists.set(seed.id, seedReferenceIds);
+	rawReferenceLists.set(seed.id, seedReferenceIds.map((id) => ({ source: "openalex", externalId: id })));
 	const openAlexLinks = new Set(refLists.get(seed.id)!.map((id) => `${seed.id}\0${id}`));
 
 	// Citing papers arrive most-cited first; the context cap bounds the batched
@@ -193,6 +204,7 @@ export async function loadNeighborhood(
 				const id = raw.id ? shortId(raw.id) : "";
 				if (!id) continue;
 				const ids = referenceIds(raw.referenced_works);
+				rawReferenceLists.set(id, ids.map((refId) => ({ source: "openalex", externalId: refId })));
 				const previous = refLists.get(id);
 				if (!previous || ids.length > 0) refLists.set(id, ids);
 				for (const refId of ids) openAlexLinks.add(`${id}\0${refId}`);
@@ -246,8 +258,10 @@ export async function loadNeighborhood(
 					if (!doi) continue;
 					try {
 						const refDois = await reconcile.referenceDois(doi);
+						const normalizedDois = refDois.map(normalizeDoi).filter((ref): ref is string => Boolean(ref));
+						mergeRawReferences(rawReferenceLists, paper.id, "semantic-scholar", normalizedDois);
 						const hits = unique(
-							refDois
+							normalizedDois
 								.map((ref) => doiToId.get(ref) ?? "")
 								.filter((id) => id !== "" && id !== paper.id),
 						);
@@ -283,9 +297,11 @@ export async function loadNeighborhood(
 		for (const paper of gaps) {
 			const doi = doiFromPaper(paper);
 			if (!doi) continue;
-			try {
-				const refDois = await crossref.referenceDois(doi);
-				const hits = unique(refDois.map((ref) => doiToId.get(ref.toLowerCase()) ?? "").filter((id) => id && id !== paper.id));
+				try {
+					const refDois = await crossref.referenceDois(doi);
+					const normalizedDois = refDois.map(normalizeDoi).filter((ref): ref is string => Boolean(ref));
+					mergeRawReferences(rawReferenceLists, paper.id, "crossref", normalizedDois);
+					const hits = unique(normalizedDois.map((ref) => doiToId.get(ref) ?? "").filter((id) => id && id !== paper.id));
 				if (hits.length > 0) {
 					refLists.set(paper.id, unique([...(refLists.get(paper.id) ?? []), ...hits]));
 					for (const hit of hits) crossrefLinks.add(`${paper.id}\0${hit}`);
@@ -349,6 +365,7 @@ export async function loadNeighborhood(
 			related: settings.includeRelated,
 		},
 		referenceLists,
+		rawReferenceLists,
 		catalog: [...catalog.values()],
 		citationEvidence,
 		skippedNonResearch,
@@ -451,6 +468,23 @@ function statsFor(
 
 function countNonResearch(works: RawWork[], origin: Origin, seedId: string): number {
 	return asPapers(works, origin, seedId).filter((paper) => Boolean(nonResearchLabel(paper))).length;
+}
+
+function mergeRawReferences(
+	lists: Map<string, ExternalReference[]>,
+	workId: string,
+	source: ExternalReference["source"],
+	dois: string[],
+): void {
+	const current = lists.get(workId) ?? [];
+	const seen = new Set(current.map((ref) => `${ref.source}\0${ref.externalId}`));
+	for (const doi of dois) {
+		const key = `${source}\0${doi}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		current.push({ source, externalId: doi, doi });
+	}
+	lists.set(workId, current);
 }
 
 function withoutSeedDuplicate(papers: PaperNode[], seed: PaperNode): PaperNode[] {
