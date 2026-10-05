@@ -42,6 +42,7 @@ function paper(id: string, origin: PaperNode["origin"]): PaperNode {
 		year: 2010,
 		citedByCount: 10,
 		authors: "A",
+		authorList: ["A"],
 		abstract: "",
 		doiUrl: null,
 		openAlexUrl: `https://openalex.org/${id}`,
@@ -49,6 +50,7 @@ function paper(id: string, origin: PaperNode["origin"]): PaperNode {
 		origin,
 		language: null,
 		workType: null,
+		venue: null,
 		concepts: [],
 		retracted: false,
 	};

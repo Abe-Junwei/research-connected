@@ -1,15 +1,16 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
-import { emptyFilter, relationFacts, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
+import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { edgeSourcesText, paintAbstractCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import type { LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
-import { mergeOpenCitation, edgeCitationPairs, evidenceLabel } from "./citation-evidence";
+import { mergeOpenCitation, SOURCE_TEXT } from "./citation-evidence";
 import { directCitationEdges, drawFlows } from "./analysis-view";
 import {
 	buildCitationTimeline,
@@ -29,7 +30,7 @@ import { classifyQuery, nonResearchLabel, toPaper, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
-import type { GraphEdge, Origin, PaperNode, SearchHit } from "./types";
+import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 
@@ -57,13 +58,6 @@ const WARNING_TEXT: Record<LoadWarning, string> = {
 	related: "相关作品没有读到",
 	details: "部分参考文献列表没有读到，相似度只基于拿到的数据",
 	crosscheck: "Semantic Scholar 交叉比对没有完成（额度或网络），图谱仍基于 OpenAlex",
-};
-
-const ORIGIN_TEXT: Record<Origin, string> = {
-	seed: "种子论文",
-	reference: "种子的参考文献",
-	citation: "引用了种子",
-	related: "OpenAlex 相关作品",
 };
 
 /** Pane UI shared by the Obsidian view and the browser preview. */
@@ -176,7 +170,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	el(evidenceHeader, "h2", undefined, "论文与关系证据");
 	el(evidenceHeader, "p", undefined, "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。");
 	const sheetHost = el(sidebar, "section");
-	const sheet = mountBottomSheet(sheetHost);
+	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
 	const detail = el(sheet.body, "div", "cpo-detail");
 	const listPanel = el(sheet.body, "div", "cpo-agg");
@@ -322,11 +316,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			timelineExtraMeta.clear();
 		}
 		const timeline = buildCitationTimeline(graph, timelineExtraMeta);
+		const sourceNames = timeline.sources.map((source) => SOURCE_TEXT[source as keyof typeof SOURCE_TEXT] ?? source);
 		el(
 			listPanel,
 			"p",
 			"cpo-side-tip",
-			`引用关系来源：${timeline.sources.join(" + ") || "OpenAlex 采样"} · 当前采样 ${graph.nodes.length} 篇节点`,
+			`引用关系来源：${sourceNames.join(" + ") || "OpenAlex 采样"} · 当前采样 ${graph.nodes.length} 篇节点`,
 		);
 		el(listPanel, "p", "cpo-side-tip", `${TIMELINE_SAMPLING_NOTE}${TIMELINE_IMPACT_NOTE}`);
 		const missingCount = missingReferenceIds(graph, timelineExtraMeta, Number.MAX_SAFE_INTEGER).length;
@@ -567,6 +562,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		return "OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…";
 	};
 
+	const getEvidence = (citingId: string, citedId: string) => graph?.citationEvidence?.get(citingId, citedId) ?? null;
+	const edgeSources = (edge: GraphEdge): string => edgeSourcesText(edge, getEvidence);
+
 	const showDetail = (paper: PaperNode | null): void => {
 		selectedPaper = paper;
 		selectedEdge = null;
@@ -581,64 +579,28 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		map.setSelected(paper.id);
 		const year = paper.year === null ? "年份不详" : String(paper.year);
-		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
-		el(detail, "p", "cpo-meta", `${year} · 被引 ${formatCount(paper.citedByCount)} · ${ORIGIN_TEXT[paper.origin]}`);
-		if (!paper.isSeed) {
-			const score = graph.seedScore.get(paper.id);
-			if (score !== undefined) {
-				el(detail, "p", "cpo-score", `图谱综合相近度 ${score.toFixed(2)}（含引用与结构信号）`);
-				const seedId = graph.nodes.find((node) => node.isSeed)?.id;
-				const edge = seedId ? findEdge(graph.edges, seedId, paper.id) : null;
-				if (edge?.structuralSimilarity === null) {
-					el(detail, "p", "cpo-score", "文献结构相似度不可用（当前缺少可比较数据）");
-				} else if (typeof edge?.structuralSimilarity === "number") {
-					el(detail, "p", "cpo-score", `文献结构相似度 ${edge.structuralSimilarity.toFixed(2)}（共享参考文献 / 共被引）`);
-				}
-			}
-		}
-		el(detail, "p", "cpo-authors", paper.authors);
-		const facets = [
-			paper.language ? `语言 ${paper.language}` : "",
-			paper.workType ? `类型 ${paper.workType}` : "",
-			paper.concepts.length > 0 ? `主题 ${paper.concepts.slice(0, 3).join("、")}` : "",
-		].filter(Boolean);
-		if (facets.length > 0) el(detail, "p", "cpo-meta", facets.join(" · "));
-		const check = graph.crossCheck?.get(paper.id);
-		paintPaperStateBadges(detail, paper, check);
-		if (paper.retracted) {
-			el(detail, "p", "cpo-side-tip", "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。");
-		}
-		const flagged = nonResearchLabel(paper);
-		if (flagged) {
-			el(detail, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);
-		}
-		if (check?.mismatched) {
-			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
-			el(detail, "p", "cpo-side-tip", `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`);
-		}
+		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`, { lang: paper.language });
+		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
 			const from = link ? graph.nodes.find((node) => node.id === link.source) : undefined;
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
+			const score = graph.seedScore.get(paper.id);
 			if (link && from && to) {
-				paintRelationCard(detail, link, from, to);
-				const pairs = edgeCitationPairs(link);
-				for (const pair of pairs) {
-					const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
-					paintEvidenceBadges(detail, evidence);
-					if (evidence) {
-						el(detail, "p", "cpo-evidence", `证据：${evidenceLabel(evidence)} · ${evidence.sources.join(" + ")}`);
-						for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
-					}
-				}
+				paintRelationSection(detail, link, from, to, { sources: edgeSources(link), getEvidence, seedScore: score });
 			} else {
 				const recorded =
 					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
-				if (!recorded) el(detail, "p", "cpo-evidence", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
+				if (score !== undefined || !recorded) {
+					const card = el(detail, "section", "cpo-card");
+					if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "含引用与结构信号");
+					if (!recorded) el(card, "p", "cpo-fact-note", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
+				}
 			}
+			paintJumpStrip(detail, seedNode, (target) => showDetail(target));
 		}
-		el(detail, "h3", "cpo-kicker", "摘要");
+		paintAbstractCard(detail, paper, abstractText);
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
@@ -659,32 +621,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				if (selectedPaper === paper && tab === "graph") showDetail(paper);
 			});
 		}
-		el(detail, "p", "cpo-abstract", abstractText(paper));
 		const openAlex = allowedExternalUrl(paper.openAlexUrl);
 		openAlexAction.hidden = !openAlex;
 		openAlexAction.onclick = openAlex ? () => deps.openExternal(openAlex) : null;
 		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
 		doiAction.hidden = !doi;
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
-	};
-
-	const edgeSources = (edge: GraphEdge): string => {
-		const sources = new Set(edgeCitationPairs(edge).flatMap(p => graph?.citationEvidence?.get(p.citingId, p.citedId)?.sources ?? []));
-		return sources.size ? [...sources].join(" + ") : "OpenAlex 采样";
-	};
-
-	/** 关系证据卡片：一句关系导语 + 标签/数值行 + 注意事项，替代以前的整段平铺文本。 */
-	const paintRelationCard = (parent: HTMLElement, edge: GraphEdge, a: PaperNode, b: PaperNode): void => {
-		const info = relationFacts(edge, a, b, edgeSources(edge));
-		const card = el(parent, "div", "cpo-fact-card");
-		el(card, "p", "cpo-fact-lead", info.lead);
-		const list = el(card, "dl", "cpo-facts");
-		for (const fact of info.facts) {
-			const row = el(list, "div", "cpo-fact");
-			el(row, "dt", undefined, fact.label);
-			el(row, "dd", undefined, fact.value);
-		}
-		for (const caveat of info.caveats) el(card, "p", "cpo-fact-note", caveat);
 	};
 
 	map.onSelect = (paper) => showDetail(paper);
@@ -696,15 +638,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		doiAction.hidden = true;
 		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
-		paintRelationCard(detail, edge, a, b);
-		for (const pair of edgeCitationPairs(edge)) {
-			const evidence = graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null;
-			paintEvidenceBadges(detail, evidence);
-			if (evidence) {
-				el(detail, "p", "cpo-evidence", evidence.sources.join(" + ") + " · " + evidenceLabel(evidence));
-				for (const context of evidence.contexts.slice(0, 5)) el(detail, "blockquote", "cpo-side-tip", context);
-			}
-		}
+		paintRelationSection(detail, edge, a, b, { sources: edgeSources(edge), getEvidence });
+		paintJumpStrip(detail, a, (target) => showDetail(target));
+		paintJumpStrip(detail, b, (target) => showDetail(target));
 	};
 	map.onEdgeSelect = (edge) => {
 		selectedEdge = edge;

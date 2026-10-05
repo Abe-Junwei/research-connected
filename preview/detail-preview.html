@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="../styles.css">
 <style>
 	body { margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; background: #f6f5f2; }
-	.mock { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+	.mock { display: flex; gap: 24px; padding: 24px; align-items: flex-start; flex-wrap: wrap; }
 	.panel { width: 340px; background: #fff; border: 1px solid #e3e1dc; border-radius: 12px; overflow: hidden; }
 	.stage { position: relative; width: 340px; height: 120px; background: #f6f5f2; border: 1px solid #e3e1dc; border-radius: 12px; }
 	.stage .cpo-graph-actions { opacity: 1; visibility: visible; transform: none; }
@@ -16,29 +16,138 @@
 <body>
 <div class="mock">
 	<div>
-		<h3 class="cap">证据卡片（面板详情）</h3>
+		<h3 class="cap">节点详情（S3 完整四卡）</h3>
+		<div class="panel">
+			<div class="cpo-root" style="display:block">
+				<div class="cpo-evidence-sidebar">
+					<button type="button" class="cpo-sheet-toggle" aria-expanded="true">
+						<span class="cpo-sheet-title">The grammar of engagement II: typology a…</span>
+						<span class="cpo-tag cpo-sheet-tag">EN</span>
+						<span class="cpo-sheet-meta">2017 · 被引 121</span>
+						<span class="cpo-sheet-chevron">收起</span>
+					</button>
+					<div class="cpo-sheet-body">
+						<div class="cpo-detail">
+							<section class="cpo-card">
+								<div class="cpo-badge-row">
+									<span class="cpo-chip cpo-chip-accent">施引文献</span>
+									<span class="cpo-chip cpo-chip-venue" title="Language Dynamics and Change">Language Dynamics and Change</span>
+									<span class="cpo-chip">2017 年</span>
+									<span class="cpo-chip">article</span>
+									<span class="cpo-chip cpo-chip-muted">被引 121</span>
+								</div>
+								<h3 class="cpo-card-title">The grammar of engagement II: typology and diachrony</h3>
+								<div class="cpo-badge-row cpo-author-chips">
+									<span class="cpo-chip-label">主要作者</span>
+									<span class="cpo-chip cpo-chip-author">Nicholas Evans</span>
+									<span class="cpo-chip cpo-chip-author">Henrik Bergqvist</span>
+									<span class="cpo-chip cpo-chip-author">Lila San Roque</span>
+								</div>
+								<div class="cpo-badge-row">
+									<span class="cpo-chip cpo-chip-topic">Language, Discourse, Communication</span>
+									<span class="cpo-chip cpo-chip-topic">Syntax, Semantics</span>
+								</div>
+							</section>
+							<section class="cpo-card">
+								<p class="cpo-fact-lead">Evans 2017 引用了 Bergqvist 2017</p>
+								<div class="cpo-meter">
+									<div class="cpo-meter-head">
+										<span class="cpo-meter-label">图谱综合相似度</span>
+										<span class="cpo-meter-value">0.39</span>
+									</div>
+									<div class="cpo-meter-track"><div class="cpo-meter-fill" style="width: 39%"></div></div>
+									<p class="cpo-meter-hint">含引用与结构信号</p>
+								</div>
+								<div class="cpo-meter">
+									<div class="cpo-meter-head">
+										<span class="cpo-meter-label">文献结构相似度</span>
+										<span class="cpo-meter-value">0.32</span>
+									</div>
+									<div class="cpo-meter-track"><div class="cpo-meter-fill cpo-meter-fill-alt" style="width: 32%"></div></div>
+									<p class="cpo-meter-hint">共享参考文献 / 共被引</p>
+								</div>
+								<div class="cpo-stat-grid">
+									<div class="cpo-stat"><span class="cpo-stat-label">强度</span><span class="cpo-stat-value">中</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">共享参考文献</span><span class="cpo-stat-value">3 篇</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">共被引</span><span class="cpo-stat-value">6 次</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">来源</span><span class="cpo-stat-value">OpenAlex + OpenCitations</span></div>
+								</div>
+								<span class="cpo-badges">
+									<span class="cpo-badge cpo-badge-strong">双源确认</span>
+								</span>
+								<p class="cpo-evidence">证据：方法 · 高影响</p>
+								<blockquote class="cpo-side-tip">…using the engagement framework developed in…</blockquote>
+								<p class="cpo-fact-note">引用列表可能不完整</p>
+							</section>
+							<section class="cpo-card">
+								<div class="cpo-card-head">
+									<h3 class="cpo-kicker">摘要</h3>
+									<button type="button" class="cpo-text-btn">复制</button>
+								</div>
+								<div class="cpo-abstract-wrap">
+									<p class="cpo-abstract cpo-abstract-clamp">Engagement systems encode the relative accessibility of an entity or state of affairs to the speaker and addressee, and are thus underpinned by our social cognitive capacities. In our first foray into engagement (Part 1), we focused on specialised semantic contrasts as found in entity-level deictic markers, adverbs and particles, and clause-level markers such as egophoric or epistemic systems.</p>
+									<div class="cpo-abstract-fade"></div>
+								</div>
+								<button type="button" class="cpo-text-btn cpo-abstract-toggle">展开全文</button>
+							</section>
+							<section class="cpo-jump-strip">
+								<div class="cpo-jump-info">
+									<div class="cpo-badge-row">
+										<span class="cpo-chip cpo-chip-accent">种子论文</span>
+										<span class="cpo-chip cpo-chip-muted">2017 · 被引 13</span>
+									</div>
+									<p class="cpo-jump-title">Person and Knowledge: Introduction</p>
+									<p class="cpo-jump-meta">Henrik Bergqvist, Seppo Kittilä</p>
+								</div>
+								<button type="button" class="cpo-text-btn">查看 →</button>
+							</section>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div>
+		<h3 class="cap">空态与弱证据（S5 相似度不可用 + S11 单源）</h3>
 		<div class="panel">
 			<div class="cpo-root" style="display:block">
 				<div class="cpo-evidence-sidebar">
 					<div class="cpo-sheet-body">
 						<div class="cpo-detail">
-							<p class="cpo-meta">2017 · 被引 121 · 施引文献</p>
-							<p class="cpo-authors">Nicholas Evans, Henrik Bergqvist, Lila San Roque</p>
-							<div class="cpo-fact-card">
-								<p class="cpo-fact-lead">Evans 2017 引用了 Bergqvist 2017</p>
-								<dl class="cpo-facts">
-									<div class="cpo-fact"><dt>强度</dt><dd>强</dd></div>
-									<div class="cpo-fact"><dt>相似度</dt><dd>0.39</dd></div>
-									<div class="cpo-fact"><dt>共享参考文献</dt><dd>3 篇</dd></div>
-									<div class="cpo-fact"><dt>共被引</dt><dd>6 次</dd></div>
-									<div class="cpo-fact"><dt>来源</dt><dd>openalex + opencitations</dd></div>
-								</dl>
+							<section class="cpo-card">
+								<p class="cpo-fact-lead">没有直接引用记录</p>
+								<div class="cpo-meter">
+									<div class="cpo-meter-head">
+										<span class="cpo-meter-label">图谱综合相似度</span>
+										<span class="cpo-meter-value">0.18</span>
+									</div>
+									<div class="cpo-meter-track"><div class="cpo-meter-fill" style="width: 18%"></div></div>
+									<p class="cpo-meter-hint">含引用与结构信号</p>
+								</div>
+								<div class="cpo-meter">
+									<div class="cpo-meter-head">
+										<span class="cpo-meter-label">文献结构相似度</span>
+										<span class="cpo-meter-na">不可用</span>
+									</div>
+									<p class="cpo-meter-hint">当前缺少可比较数据</p>
+								</div>
+								<div class="cpo-stat-grid">
+									<div class="cpo-stat"><span class="cpo-stat-label">强度</span><span class="cpo-stat-value">弱</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">共享参考文献</span><span class="cpo-stat-value">0 篇</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">共被引</span><span class="cpo-stat-value">1 次</span></div>
+									<div class="cpo-stat"><span class="cpo-stat-label">来源</span><span class="cpo-stat-value">OpenAlex 采样</span></div>
+								</div>
+								<p class="cpo-fact-note">图谱相似关系，不代表直接引用</p>
 								<p class="cpo-fact-note">引用列表可能不完整</p>
-							</div>
-							<p class="cpo-evidence">证据：Method · Influential · openalex + semantic-scholar</p>
-							<blockquote class="cpo-side-tip">…using the engagement framework developed in…</blockquote>
-							<h3 class="cpo-kicker">摘要</h3>
-							<p class="cpo-abstract">This paper develops a typology of engagement systems across languages, showing how…</p>
+							</section>
+							<section class="cpo-card">
+								<div class="cpo-card-head">
+									<h3 class="cpo-kicker">摘要</h3>
+								</div>
+								<div class="cpo-abstract-wrap">
+									<p class="cpo-abstract">OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…</p>
+								</div>
+							</section>
 						</div>
 					</div>
 				</div>

@@ -134,6 +134,7 @@ function makePaper(index: number, origin: Origin, rand: () => number): PaperNode
 		year: rand() < 0.12 ? null : 1980 + Math.floor(rand() * 45),
 		citedByCount: Math.floor(Math.pow(10, rand() * 4)),
 		authors: `Author ${index}, Coauthor ${index}`,
+		authorList: [`Author ${index}`, `Coauthor ${index}`],
 		abstract: Array.from({ length: 12 }, () => WORDS[Math.floor(rand() * WORDS.length)] ?? "").join(" "),
 		doiUrl: rand() < 0.1 ? null : `https://doi.org/10.5555/${index}`,
 		openAlexUrl: `https://openalex.org/${id}`,
@@ -141,6 +142,7 @@ function makePaper(index: number, origin: Origin, rand: () => number): PaperNode
 		origin,
 		language: "en",
 		workType: "article",
+		venue: rand() < 0.15 ? null : `Journal of ${topic}`,
 		concepts: [topic, WORDS[index % WORDS.length] ?? ""],
 		retracted: rand() < 0.01,
 	};

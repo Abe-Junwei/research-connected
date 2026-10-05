@@ -63,10 +63,24 @@ export function evidenceFromSemanticCitation(
 
 export function evidenceLabel(evidence: CitationEvidence | null): string {
 	if (!evidence) return "暂无额外引用证据";
-	const labels = evidence.intents.map((intent) => intent === "result" ? "Result" : `${intent.slice(0, 1).toUpperCase()}${intent.slice(1)}`);
-	if (evidence.influential) labels.push("Influential");
+	const labels = evidence.intents.map((intent) => INTENT_TEXT[intent]);
+	if (evidence.influential) labels.push("高影响");
 	return labels.length > 0 ? labels.join(" · ") : "已确认引用关系，暂无引用意图";
 }
+
+const INTENT_TEXT: Record<CitationIntent, string> = {
+	background: "背景",
+	method: "方法",
+	result: "结果",
+};
+
+/** Display names for evidence sources, for stats and source lines. */
+export const SOURCE_TEXT: Record<CitationEvidence["sources"][number], string> = {
+	openalex: "OpenAlex",
+	opencitations: "OpenCitations",
+	"semantic-scholar": "Semantic Scholar",
+	crossref: "Crossref",
+};
 
 export interface EvidenceBadge {
 	label: string;

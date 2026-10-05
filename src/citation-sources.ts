@@ -1,4 +1,5 @@
 import type { GetJson } from "./openalex";
+import { cleanAbstractText } from "./paper";
 
 export interface OpenCitationRow {
 	oci?: string;
@@ -44,7 +45,7 @@ export class CrossrefClient {
 			.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 			.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
 			.replace(/\s+/g, " ").trim();
-		return text || null;
+		return cleanAbstractText(text) || null;
 	}
 }
 
@@ -218,7 +219,7 @@ export class SemanticScholarClient {
 		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}`);
 		url.searchParams.set("fields", "abstract");
 		const result = (await this.get(url.toString())) as { abstract?: string | null };
-		const text = typeof result.abstract === "string" ? result.abstract.trim() : "";
+		const text = typeof result.abstract === "string" ? cleanAbstractText(result.abstract) : "";
 		return text || null;
 	}
 

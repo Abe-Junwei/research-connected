@@ -58,7 +58,7 @@ export interface GraphChrome {
 
 export interface BottomSheet {
 	body: HTMLElement;
-	setSummary(title: string, meta: string): void;
+	setSummary(title: string, meta: string, tags?: { lang?: string | null }): void;
 	setExpanded(open: boolean): void;
 	destroy(): void;
 }
@@ -249,10 +249,26 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	};
 }
 
-/** One-line paper strip. Starts collapsed; the body is about 160px when open. */
-export function mountBottomSheet(host: HTMLElement): BottomSheet {
+/** One-line paper strip. Starts collapsed; the body is about 160px when open.
+   With `collapsible: false` the toggle strip is not rendered and the body is always visible. */
+export function mountBottomSheet(host: HTMLElement, options?: { collapsible?: boolean }): BottomSheet {
 	host.classList.add("cpo-sheet", "is-collapsed");
 	host.replaceChildren();
+	const body = document.createElement("div");
+	body.className = "cpo-sheet-body";
+	if (options?.collapsible === false) {
+		host.classList.remove("is-collapsed");
+		host.append(body);
+		return {
+			body,
+			setSummary(): void {},
+			setExpanded(): void {},
+			destroy(): void {
+				host.replaceChildren();
+				host.classList.remove("cpo-sheet", "is-collapsed");
+			},
+		};
+	}
 	const toggle = document.createElement("button");
 	toggle.type = "button";
 	toggle.className = "cpo-sheet-toggle";
@@ -260,14 +276,15 @@ export function mountBottomSheet(host: HTMLElement): BottomSheet {
 	const title = document.createElement("span");
 	title.className = "cpo-sheet-title";
 	title.textContent = "点选节点查看论文";
+	const langTag = document.createElement("span");
+	langTag.className = "cpo-tag cpo-sheet-tag";
+	langTag.hidden = true;
 	const meta = document.createElement("span");
 	meta.className = "cpo-sheet-meta";
 	const chevron = document.createElement("span");
 	chevron.className = "cpo-sheet-chevron";
 	chevron.textContent = "展开";
-	toggle.append(title, meta, chevron);
-	const body = document.createElement("div");
-	body.className = "cpo-sheet-body";
+	toggle.append(title, langTag, meta, chevron);
 	host.append(toggle, body);
 
 	const setExpanded = (open: boolean): void => {
@@ -279,9 +296,12 @@ export function mountBottomSheet(host: HTMLElement): BottomSheet {
 
 	return {
 		body,
-		setSummary(nextTitle: string, nextMeta: string): void {
+		setSummary(nextTitle: string, nextMeta: string, tags?: { lang?: string | null }): void {
 			title.textContent = nextTitle;
 			meta.textContent = nextMeta;
+			const lang = tags?.lang ?? null;
+			langTag.hidden = !lang;
+			if (lang) langTag.textContent = lang.toUpperCase();
 		},
 		setExpanded,
 		destroy(): void {

@@ -9,9 +9,9 @@ import type { GraphEdge, PaperNode } from "../src/types";
 
 export async function verifyEvidence(): Promise<void> {
 	const paper = (id: string, seed = false): PaperNode => ({
-		id, isSeed: seed, title: id, year: seed ? 2010 : 2020, authors: "Author",
+		id, isSeed: seed, title: id, year: seed ? 2010 : 2020, authors: "Author", authorList: ["Author"],
 		abstract: "private abstract", doiUrl: null, openAlexUrl: "https://openalex.org/" + id,
-		origin: seed ? "seed" : "citation", citedByCount: 10, language: null, workType: null, retracted: false, concepts: [],
+		origin: seed ? "seed" : "citation", citedByCount: 10, language: null, workType: null, venue: null, retracted: false, concepts: [],
 	});
 	const seed = paper("W1", true), prior = paper("W2"), later = paper("W3");
 	const graph: SimilarityGraph = {

@@ -6,6 +6,8 @@ export interface PaperNode {
 	year: number | null;
 	citedByCount: number;
 	authors: string;
+	/** Structured author display names in authorship order; empty when unknown. */
+	authorList: string[];
 	abstract: string;
 	doiUrl: string | null;
 	openAlexUrl: string;
@@ -15,6 +17,8 @@ export interface PaperNode {
 	language: string | null;
 	/** OpenAlex work type, such as `article`, when present. */
 	workType: string | null;
+	/** Host venue name (journal or book title) from the primary location, when present. */
+	venue: string | null;
 	/** Topic/concept display names OpenAlex attached to the work. Empty when absent. */
 	concepts: string[];
 	/** Current OpenAlex topic classifications, with IDs and per-work scores. */

@@ -60,7 +60,20 @@ export function reconstructAbstract(
 		const word = placed[i];
 		if (word) words.push(word);
 	}
-	return words.join(" ");
+	return cleanAbstractText(words.join(" "));
+}
+
+/**
+ * Publisher-deposited abstracts often carry the JATS section label as a
+ * leading word ("Abstract", "Summary"), with or without punctuation. Strip
+ * that label; a real sentence starting with the word is rare enough, and the
+ * bare-word form is only stripped before an uppercase/CJK opening.
+ */
+export function cleanAbstractText(text: string): string {
+	return text
+		.replace(/^\s*(?:abstract|summary)\s*[:.．。\-–—]\s*/i, "")
+		.replace(/^abstract\s+(?=[A-Z\u4e00-\u9fff"“‘'])/i, "")
+		.trim();
 }
 
 export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
@@ -69,12 +82,14 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 	if (!/^W\d+$/.test(id)) return null;
 	const title = (raw.display_name ?? "").trim();
 	if (!title) return null;
+	const names = authorNames(raw.authorships);
 	return {
 		id,
 		title,
 		year: typeof raw.publication_year === "number" ? raw.publication_year : null,
 		citedByCount: typeof raw.cited_by_count === "number" ? raw.cited_by_count : 0,
-		authors: formatAuthors(raw.authorships),
+		authors: formatAuthorNames(names),
+		authorList: names,
 		abstract: reconstructAbstract(raw.abstract_inverted_index),
 		doiUrl: toDoiUrl(raw.doi),
 		openAlexUrl: `https://openalex.org/${id}`,
@@ -82,6 +97,7 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		origin,
 		language: cleanToken(raw.language),
 		workType: cleanToken(raw.type),
+		venue: cleanName(raw.primary_location?.source?.display_name),
 		retracted: raw.is_retracted === true,
 		concepts: conceptNames(raw.topics, raw.concepts),
 		topicTags: topicTags(raw.topics, raw.concepts),
@@ -133,6 +149,13 @@ function cleanToken(value: string | null | undefined): string | null {
 	return trimmed || null;
 }
 
+/** Venue/source names keep their case; only whitespace is normalized. */
+function cleanName(value: string | null | undefined): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim().replace(/\s+/g, " ");
+	return trimmed || null;
+}
+
 function conceptNames(topics: RawWork["topics"], concepts: RawWork["concepts"]): string[] {
 	const ranked = [...(topics?.length ? topics : concepts ?? [])].sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0));
 	const names: string[] = [];
@@ -165,12 +188,16 @@ function topicTags(topics: RawWork["topics"], concepts: RawWork["concepts"]): Ar
 	});
 }
 
-function formatAuthors(authorships: RawWork["authorships"]): string {
+function authorNames(authorships: RawWork["authorships"]): string[] {
 	const names: string[] = [];
 	for (const authorship of authorships ?? []) {
 		const name = authorship?.author?.display_name?.trim();
 		if (name) names.push(name);
 	}
+	return names;
+}
+
+function formatAuthorNames(names: string[]): string {
 	if (names.length === 0) return "作者不详";
 	if (names.length <= 3) return names.join(", ");
 	return `${names.slice(0, 3).join(", ")} 等`;

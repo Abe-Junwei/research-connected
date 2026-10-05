@@ -57,6 +57,7 @@ function paper(id: string, origin: PaperNode["origin"], citedByCount: number): P
 		year: 2020,
 		citedByCount,
 		authors: "A",
+		authorList: ["A"],
 		abstract: "",
 		doiUrl: null,
 		openAlexUrl: `https://openalex.org/${id}`,
@@ -64,6 +65,7 @@ function paper(id: string, origin: PaperNode["origin"], citedByCount: number): P
 		origin,
 		language: null,
 		workType: null,
+		venue: null,
 		retracted: false,
 		concepts: [],
 	};

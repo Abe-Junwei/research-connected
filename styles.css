@@ -1744,3 +1744,337 @@
 		height: 32px;
 	}
 }
+
+/* 详情卡片化：元数据 / 关系证据 / 摘要 / 跳转条。灰底白卡，配色走既有主题变量。 */
+.cpo-evidence-sidebar > .cpo-sheet {
+	background: #f6f5f2;
+}
+
+.cpo-evidence-sidebar .cpo-sheet-body {
+	background: #f6f5f2;
+}
+
+.cpo-card {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	padding: 10px 12px;
+	border: 1px solid rgba(60, 64, 70, 0.1);
+	border-radius: 10px;
+	background: var(--background-primary);
+}
+
+.cpo-card .cpo-kicker,
+.cpo-card .cpo-side-tip,
+.cpo-card .cpo-fact-note,
+.cpo-card .cpo-evidence,
+.cpo-card blockquote.cpo-side-tip {
+	margin: 0;
+}
+
+.cpo-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.cpo-card-title {
+	margin: 0;
+	color: var(--text-normal);
+	font-size: 14px;
+	font-weight: 650;
+	line-height: 1.4;
+}
+
+.cpo-card .cpo-authors {
+	margin: 0;
+	font-size: 12.5px;
+}
+
+.cpo-badge-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+}
+
+.cpo-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 7px;
+	border: 1px solid rgba(60, 64, 70, 0.09);
+	border-radius: 8px;
+	background: rgba(60, 64, 70, 0.05);
+	color: #6b7280;
+	font-size: 10px;
+	line-height: 1.6;
+	white-space: nowrap;
+}
+
+.cpo-chip-accent {
+	border-color: rgba(166, 124, 46, 0.28);
+	background: rgba(166, 124, 46, 0.12);
+	color: #6f5019;
+	font-weight: 600;
+}
+
+.cpo-chip-muted {
+	font-variant-numeric: tabular-nums;
+}
+
+.cpo-chip-topic {
+	background: transparent;
+	white-space: normal;
+}
+
+/* 出处（期刊名 / 书名）：长名截断，悬停 title 看全名。 */
+.cpo-chip-venue {
+	display: inline-block;
+	max-width: 240px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	border-color: rgba(43, 179, 154, 0.3);
+	background: rgba(43, 179, 154, 0.09);
+	color: #1d6e60;
+}
+
+/* 标题行的语言小标签。 */
+.cpo-sheet-tag {
+	flex: none;
+	padding: 0 5px;
+	border: 1px solid rgba(60, 64, 70, 0.12);
+	border-radius: 5px;
+	background: rgba(60, 64, 70, 0.06);
+	color: var(--text-muted);
+	font-size: 9.5px;
+	font-weight: 650;
+	line-height: 1.7;
+	letter-spacing: 0.04em;
+}
+
+.cpo-meter {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.cpo-meter-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 11px;
+}
+
+.cpo-meter-label {
+	color: #6b7280;
+}
+
+.cpo-meter-value {
+	color: var(--text-normal);
+	font-weight: 650;
+	font-variant-numeric: tabular-nums;
+}
+
+.cpo-meter-na {
+	color: #9aa0a6;
+}
+
+.cpo-meter-track {
+	height: 6px;
+	border-radius: 999px;
+	background: rgba(60, 64, 70, 0.1);
+	overflow: hidden;
+}
+
+.cpo-meter-fill {
+	height: 100%;
+	border-radius: 999px;
+	background: var(--cpo-accent);
+}
+
+.cpo-meter-fill-alt {
+	background: #4a90d9;
+}
+
+.cpo-meter-hint {
+	margin: 0;
+	color: #9aa0a6;
+	font-size: 10px;
+}
+
+.cpo-stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+	gap: 6px;
+}
+
+.cpo-stat {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	padding: 6px 8px;
+	border: 1px solid rgba(60, 64, 70, 0.07);
+	border-radius: 8px;
+	background: rgba(60, 64, 70, 0.04);
+}
+
+.cpo-stat-label {
+	color: #9aa0a6;
+	font-size: 10px;
+}
+
+.cpo-stat-value {
+	color: var(--text-normal);
+	font-size: 12px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.cpo-abstract-wrap {
+	position: relative;
+}
+
+.cpo-abstract-clamp {
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.cpo-abstract-fade {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	height: 22px;
+	background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--background-primary));
+	pointer-events: none;
+}
+
+.cpo-root button.cpo-text-btn,
+.cpo-embed button.cpo-text-btn {
+	flex: none;
+	margin: 0;
+	padding: 2px 7px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: #a67c2e;
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.cpo-root button.cpo-text-btn:hover,
+.cpo-embed button.cpo-text-btn:hover {
+	background: rgba(60, 64, 70, 0.07);
+}
+
+.cpo-root button.cpo-abstract-toggle,
+.cpo-embed button.cpo-abstract-toggle {
+	align-self: center;
+}
+
+.cpo-jump-strip {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 12px;
+	border: 1px solid rgba(60, 64, 70, 0.1);
+	border-radius: 10px;
+	background: var(--background-primary);
+}
+
+.cpo-jump-info {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.cpo-jump-title {
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.cpo-jump-meta {
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #9aa0a6;
+	font-size: 10.5px;
+}
+
+/* 作者 chips：结构化 authorList 逐人渲染。 */
+.cpo-chip-label {
+	color: #9aa0a6;
+	font-size: 10px;
+}
+
+.cpo-chip-author {
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 10.5px;
+}
+
+/* embed 详情里的卡片间距与主面板一致。 */
+.cpo-embed-detail > * + * {
+	margin-top: 8px;
+}
+
+/* 排版修正：压住 Obsidian 主题的 .view-content h3 / p 默认样式，统一卡片内节奏。 */
+.cpo-detail .cpo-card p,
+.cpo-embed-detail .cpo-card p,
+.cpo-detail .cpo-jump-strip p,
+.cpo-embed-detail .cpo-jump-strip p,
+.cpo-detail .cpo-card blockquote,
+.cpo-embed-detail .cpo-card blockquote {
+	margin: 0;
+}
+
+.cpo-card h3.cpo-card-title {
+	margin: 0;
+	padding: 0;
+	border: none;
+	color: var(--text-normal);
+	font-size: 14px;
+	font-weight: 650;
+	line-height: 1.4;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+.cpo-card h3.cpo-kicker {
+	margin: 0;
+	padding: 0;
+	border: none;
+	color: #9aa0a6;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.3;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+.cpo-card .cpo-evidence {
+	line-height: 1.5;
+}
+
+/* 跳转条标题：两行内完整展示，超出才省略。 */
+.cpo-jump-title {
+	white-space: normal;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	line-height: 1.35;
+}

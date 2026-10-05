@@ -1,24 +1,24 @@
 import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { directCitationEdges, drawFlows } from "./analysis-view";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
-import { mergeOpenCitation, edgeCitationPairs } from "./citation-evidence";
+import { mergeOpenCitation } from "./citation-evidence";
 import { detectCommunities } from "./communities";
+import { edgeSourcesText, paintAbstractCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { buildFilters, buildLegend } from "./filter-controls";
-import { emptyFilter, evidenceText, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, paintPaperStateBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
+import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
 import type { ColorMode, LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
-import { nonResearchLabel, reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
+import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
-import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 
 export interface EmbedDeps {
@@ -150,7 +150,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
 	sidebar.append(sheetHost);
-	const sheet = mountBottomSheet(sheetHost);
+	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
 	const detail = document.createElement("div");
 	detail.className = "cpo-embed-detail";
@@ -401,77 +401,44 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		openGraphAction.hidden = !deps.openGraph;
 		openGraphAction.onclick = deps.openGraph ? () => deps.openGraph?.(spec.target) : null;
 		detail.replaceChildren();
-		// The sheet strip already carries the title; the body starts at the meta line.
-		const meta = document.createElement("p");
-		meta.className = "cpo-embed-detail-meta";
-		const year = paper.year === null ? "年份不详" : String(paper.year);
-		meta.textContent = `${year} · 被引 ${formatCount(paper.citedByCount)} · ${paper.authors}`;
-		detail.append(meta);
-		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`);
-		const check = graph.crossCheck?.get(paper.id);
-		paintPaperStateBadges(detail, paper, check);
-		if (paper.retracted) {
-			const note = document.createElement("p");
-			note.className = "cpo-side-tip";
-			note.textContent = "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。";
-			detail.append(note);
-		}
-		const flagged = nonResearchLabel(paper);
-		if (flagged) {
-			const note = document.createElement("p");
-			note.className = "cpo-side-tip";
-			note.textContent = `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书——这是 OpenAlex 的数据特点。`;
-			detail.append(note);
-		}
-		if (check?.mismatched) {
-			const note = document.createElement("p");
-			note.className = "cpo-side-tip";
-			const s2 = check.s2Citations === null ? "无记录" : formatCount(check.s2Citations);
-			note.textContent = `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。通常是记录错配（例如书评继承了原书的引用），引用前请核实。`;
-			detail.append(note);
-		}
+		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-		const edgeEvidence = (edge: GraphEdge): void => {
-			const pairs = edgeCitationPairs(edge);
-			if (pairs.length === 0) return;
-			const evidence =
-				pairs
-					.map((pair) => graph.citationEvidence?.get(pair.citingId, pair.citedId) ?? null)
-					.find((item) => item !== null) ?? null;
-			paintEvidenceBadges(detail, evidence);
-		};
+		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
 		if (!paper.isSeed && seed) {
 			const toSeed = findEdge(graph.edges, paper.id, seed.id);
-			const line = document.createElement("p");
-			line.className = "cpo-embed-detail-rel";
 			if (toSeed) {
 				const from = byId.get(toSeed.source);
 				const to = byId.get(toSeed.target);
-				line.textContent = from && to ? evidenceText(toSeed, from, to) : "与种子相连";
+				if (from && to) {
+					paintRelationSection(detail, toSeed, from, to, {
+						sources: edgeSourcesText(toSeed, getEvidence),
+						getEvidence,
+						seedScore: graph.seedScore.get(paper.id),
+					});
+				}
 			} else {
 				const score = graph.seedScore.get(paper.id);
-				line.textContent =
-					score === undefined
-						? "与种子没有直接连线"
-						: `与种子没有直接连线 · 相近 ${score.toFixed(2)} · ${SIMILARITY_NOT_CITATION}`;
+				const card = document.createElement("section");
+				card.className = "cpo-card";
+				if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "含引用与结构信号");
+				const note = document.createElement("p");
+				note.className = "cpo-fact-note";
+				note.textContent = score === undefined ? "与种子没有直接连线" : `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`;
+				card.append(note);
+				detail.append(card);
 			}
-			detail.append(line);
-			if (toSeed) edgeEvidence(toSeed);
+			paintJumpStrip(detail, seed, (target) => {
+				if (currentGraph) showDetail(target, currentGraph, null);
+			});
 		}
 		if (link && seed && !samePair(link, paper.id, seed.id)) {
 			const from = byId.get(link.source);
 			const to = byId.get(link.target);
 			if (from && to) {
-				const line = document.createElement("p");
-				line.className = "cpo-embed-detail-rel";
-				line.textContent = evidenceText(link, from, to);
-				detail.append(line);
-				edgeEvidence(link);
+				paintRelationSection(detail, link, from, to, { sources: edgeSourcesText(link, getEvidence), getEvidence });
 			}
 		}
-	const abstract = document.createElement("p");
-		abstract.className = "cpo-embed-detail-abstract";
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
@@ -492,8 +459,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				if (selected === paper && currentGraph) showDetail(paper, currentGraph, null);
 			});
 		}
-		abstract.textContent = embedAbstractText(paper);
-		detail.append(abstract);
+		paintAbstractCard(detail, paper, embedAbstractText);
 	};
 
 	const snapshotView = (): void => {
