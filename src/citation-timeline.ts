@@ -39,7 +39,7 @@ export interface CitationTimeline {
 }
 
 export const TIMELINE_SCOPE_NOTE = "只含与种子的直接引用记录（参考文献列表与引用证据），不含相似关系。";
-export const LIST_VS_TIMELINE_NOTE = "列表统计当前子图内互引频次；「引用脉络」只含与种子的直接引用记录，两者口径不同。";
+export const LIST_VS_TIMELINE_NOTE = "按图内互引频次统计；「引用脉络」只列种子的直接引用。";
 export const TIMELINE_SAMPLING_NOTE = "参考文献可能不完整；施引论文按被引数排序采样且有上限（最多 400 篇上下文），施引一侧天然偏向高被引论文。";
 export const TIMELINE_IMPACT_NOTE = "「引用了种子」不等于受种子实质影响。";
 export const TIMELINE_EMPTY_TEXT = "当前采样范围内没有与种子的直接引用记录。参考文献可能不完整，或施引采样尚未覆盖。";

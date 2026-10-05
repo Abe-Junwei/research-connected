@@ -48,8 +48,19 @@ export interface SimilarityGraph {
 	citationEvidence?: CitationEvidenceStore;
 	/** Book reviews, editorials, and other non-research records dropped from the sample. */
 	skippedNonResearch: number;
+	/** Per-source sampling counters. Optional to keep offline fixtures backwards-compatible. */
+	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
 	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
+}
+
+export interface RetrievalStats {
+	rawFetched: number;
+	accepted: number;
+	filtered: number;
+	pages: number;
+	exhausted: boolean;
+	partial: boolean;
 }
 
 /** Semantic Scholar numbers for the same DOI, plus what backfill changed. */
@@ -116,10 +127,14 @@ export async function loadNeighborhood(
 
 	onStage?.("fetching");
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
+	const acceptsResearch = (work: RawWork): boolean => {
+		const paper = toPaper(work, "related");
+		return Boolean(paper && paper.id !== seed.id && !nonResearchLabel(paper));
+	};
 	const [references, citations, related] = await Promise.all([
-		loadGroup(settings.includeReferences, () => client.referencedBySeed(seed.id, tier.references, tier.pages)),
-		loadGroup(settings.includeCitations, () => client.citingSeed(seed.id, tier.citations, tier.pages)),
-		loadGroup(settings.includeRelated, () => client.relatedTo(seed.id, tier.related, 1)),
+		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", tier.pages, acceptsResearch)),
+		loadGroup(settings.includeCitations, () => client.sampleWorks(`cites:${seed.id}`, tier.citations, tier.citations, "cited_by_count:desc", tier.pages, acceptsResearch)),
+		loadGroup(settings.includeRelated, () => client.sampleWorks(`related_to:${seed.id}`, tier.related, tier.related, undefined, 1, acceptsResearch)),
 	]);
 
 	const warnings: LoadWarning[] = [];
@@ -316,7 +331,7 @@ export async function loadNeighborhood(
 		}
 	}
 
-	return {
+		return {
 		nodes: [seed, ...picked],
 		edges,
 		seedScore,
@@ -330,6 +345,11 @@ export async function loadNeighborhood(
 		catalog: [...catalog.values()],
 		citationEvidence,
 		skippedNonResearch,
+		retrievalStats: {
+			references: statsFor(references.sample, refAll.length, refPapers.length),
+			citations: statsFor(citations.sample, citeAll.length, citePapers.length),
+			related: statsFor(related.sample, relatedAll.length, relatedPapers.length),
+		},
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 	};
 }
@@ -395,14 +415,30 @@ export function selectNeighbors(
 
 async function loadGroup(
 	enabled: boolean,
-	run: () => Promise<RawWork[]>,
-): Promise<{ works: RawWork[]; error?: string }> {
-	if (!enabled) return { works: [] };
+	run: () => Promise<import("./openalex").SampledWorks>,
+): Promise<{ works: RawWork[]; sample: import("./openalex").SampledWorks; error?: string }> {
+	if (!enabled) return { works: [], sample: { works: [], rawFetched: 0, pages: 0, exhausted: true } };
 	try {
-		return { works: await run() };
+		const sample = await run();
+		return { works: sample.works, sample };
 	} catch (error) {
-		return { works: [], error: error instanceof Error ? error.message : "请求失败" };
+		return { works: [], sample: { works: [], rawFetched: 0, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
 	}
+}
+
+function statsFor(
+	sample: { rawFetched: number; pages: number; exhausted: boolean },
+	rawCount: number,
+	accepted: number,
+): RetrievalStats {
+	return {
+		rawFetched: sample.rawFetched,
+		accepted,
+		filtered: Math.max(0, rawCount - accepted),
+		pages: sample.pages,
+		exhausted: sample.exhausted,
+		partial: accepted < rawCount,
+	};
 }
 
 function asPapers(works: RawWork[], origin: Origin, seedId: string): PaperNode[] {
@@ -429,7 +465,15 @@ function dedupe(list: PaperNode[], seedId: string): PaperNode[] {
 }
 
 function byImpact(a: PaperNode, b: PaperNode): number {
-	return b.citedByCount - a.citedByCount || a.id.localeCompare(b.id);
+	return impactScore(b) - impactScore(a) || a.id.localeCompare(b.id);
+}
+
+function impactScore(paper: Pick<PaperNode, "citedByCount" | "year" | "retracted">): number {
+	const citations = Math.log1p(Math.max(0, paper.citedByCount));
+	const currentYear = new Date().getFullYear();
+	const recentYears = paper.year === null ? 0 : Math.max(0, paper.year - (currentYear - 20));
+	const recencyBoost = 1 + Math.min(1, recentYears / 20) * 0.35;
+	return citations * recencyBoost * (paper.retracted ? 0.1 : 1);
 }
 
 function unique(ids: string[]): string[] {

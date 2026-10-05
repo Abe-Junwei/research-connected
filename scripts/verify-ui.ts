@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
-import { directCitationEdges, EMPTY_FLOWS_TEXT } from "../src/analysis-view";
 import { CitationEvidenceStore, directEvidence, edgeCitationPairs, evidenceBadges } from "../src/citation-evidence";
 import {
 	buildCitationTimeline,
@@ -170,50 +169,6 @@ function evidenceSidebarSizing(): void {
 	assert.equal(clampSidebarWidth(100), 260, "拖拽不会把证据栏缩到不可读");
 	assert.equal(clampSidebarWidth(900), 480, "拖拽不会让证据栏重新挤占图谱");
 	assert.equal(clampSidebarWidth(245.6, 220, 380), 246, "嵌入式使用自己的宽度边界");
-}
-
-/** Analysis view data: visible-node direct citation pairs from raw records. */
-function analysisPairs(): void {
-	const seedNode = paper("S", "seed");
-	const a = paper("A", "reference");
-	const b = paper("B", "citation");
-	const c = paper("C", "citation");
-	const d = paper("D", "citation");
-	const evidence = new CitationEvidenceStore();
-	evidence.set(directEvidence(a, b, false, true));
-	evidence.set(directEvidence(d, a, true, false));
-	const records = {
-		referenceLists: new Map<string, readonly string[]>([
-			["A", ["B", "S"]],
-			["B", ["A", "A"]],
-			["C", ["A"]],
-			["S", ["A"]],
-		]),
-		citationEvidence: evidence,
-	};
-
-	const visible = new Set(["S", "A", "B"]);
-	const edges = directCitationEdges(records, visible);
-	const keys = edges.map((item) => `${item.source}->${item.target}`).sort();
-	assert.deepEqual(keys, ["A->B", "A->S", "B->A", "S->A"], "both directions, evidence deduped into the same pair");
-	for (const item of edges) {
-		assert.equal(item.direct, "source-cites-target", "source is always the citing paper");
-		assert.ok(visible.has(item.source) && visible.has(item.target), "pairs stay inside the visible set");
-	}
-	assert.equal(directCitationEdges(records, new Set(["A"])).length, 0, "no pair with only one endpoint visible");
-	assert.equal(directCitationEdges({ referenceLists: new Map() }, visible).length, 0, "empty records, no requests, no pairs");
-
-	const synthetic = syntheticGraph(60, 7);
-	const syntheticVisible = new Set(synthetic.nodes.map((node) => node.id));
-	const flowEdges = directCitationEdges(synthetic, syntheticVisible);
-	assert.ok(flowEdges.length > 0, "synthetic fixture carries direct citations");
-	const expected = new Set<string>();
-	for (const [citing, refs] of synthetic.referenceLists) {
-		for (const cited of refs) {
-			if (syntheticVisible.has(citing) && syntheticVisible.has(cited) && citing !== cited) expected.add(`${citing}->${cited}`);
-		}
-	}
-	assert.equal(flowEdges.length, expected.size, "one flow edge per visible reference-list pair");
 }
 
 /** Aggregates: exact counts, the >=2 threshold, and the 15-row cap. */
@@ -395,9 +350,7 @@ export function verifyUi(): void {
 	communityRegions();
 	compactCommunityLayout();
 	evidenceSidebarSizing();
-	analysisPairs();
 	aggregates();
 	timeline();
-	assert.match(EMPTY_FLOWS_TEXT, /无可绘制关系/, "分析页空状态文案");
 	console.log("ui checks passed");
 }

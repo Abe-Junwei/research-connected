@@ -27,6 +27,13 @@ export interface OpenAlexAuth {
 	contactEmail: string;
 }
 
+export interface SampledWorks {
+	works: RawWork[];
+	rawFetched: number;
+	pages: number;
+	exhausted: boolean;
+}
+
 const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location";
 const WORK_SELECT = `${LIST_SELECT},abstract_inverted_index,referenced_works,related_works`;
 const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
@@ -94,6 +101,38 @@ export class OpenAlexClient {
 
 	relatedTo(seedId: string, perPage: number, pages = 1): Promise<RawWork[]> {
 		return this.listFilter(`related_to:${seedId}`, perPage, undefined, pages);
+	}
+
+	/** Cursor-sample until enough records pass the caller's filter or the budget ends. */
+	async sampleWorks(
+		filter: string,
+		target: number,
+		perPage: number,
+		sort: string | undefined,
+		maxPages: number,
+		accept: (work: RawWork) => boolean,
+	): Promise<SampledWorks> {
+		const url = new URL(`${OPENALEX_API}/works`);
+		url.searchParams.set("filter", filter);
+		url.searchParams.set("per_page", String(perPage));
+		if (sort) url.searchParams.set("sort", sort);
+		url.searchParams.set("select", LIST_SELECT);
+		if (maxPages > 1) url.searchParams.set("cursor", "*");
+
+		const works: RawWork[] = [];
+		let rawFetched = 0;
+		let pages = 0;
+		let nextCursor: string | null = "*";
+		while (pages < Math.max(1, maxPages) && works.length < target && nextCursor) {
+			if (pages > 0) url.searchParams.set("cursor", nextCursor);
+			const page = await this.getPage(url);
+			pages += 1;
+			rawFetched += page.results.length;
+			works.push(...page.results.filter(accept));
+			nextCursor = page.nextCursor;
+			if (page.results.length === 0) break;
+		}
+		return { works: works.slice(0, target), rawFetched, pages, exhausted: !nextCursor };
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {

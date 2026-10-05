@@ -1,7 +1,7 @@
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "analysis" | "timeline";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "timeline";
 
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
@@ -36,7 +36,6 @@ export interface GraphChromeOptions {
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
-	analysisButton?: boolean;
 	/** 引用脉络页签，仅主面板开启。 */
 	timelineButton?: boolean;
 	/** Tabs and export actions. When set, they leave the control host. */
@@ -172,7 +171,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		["derivative", "衍生工作"],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", "研究脉络"]);
-	if (options.analysisButton) tabs.push(["analysis", "分析"]);
 	if (options.timelineButton) tabs.push(["timeline", "引用脉络"]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {

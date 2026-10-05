@@ -653,11 +653,6 @@
 	max-height: 300px;
 }
 
-/* The analysis view (Sankey / chord) needs more vertical room. */
-.cpo-embed .cpo-sheet-analysis:not(.is-collapsed) {
-	max-height: 480px;
-}
-
 .cpo-meta {
 	display: flex;
 	flex-direction: column;
@@ -1468,7 +1463,6 @@
 	outline-offset: 1px;
 	border-radius: 2px;
 }
-.cpo-analysis-svg { width: 100%; min-height: 280px; display: block; color: var(--text-normal); }
 .cpo-timeline-scroll { width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
 .cpo-timeline-svg { min-width: 520px; min-height: 0; display: block; color: var(--text-normal); }
 .cpo-root .cpo-sheet-analysis:not(.is-collapsed) { max-height: 50%; }
@@ -1697,10 +1691,6 @@
 .cpo-evidence-sidebar .cpo-detail,
 .cpo-evidence-sidebar .cpo-embed-detail {
 	max-width: 100%;
-}
-
-.cpo-evidence-sidebar .cpo-analysis-svg {
-	min-height: 220px;
 }
 
 @media (max-width: 779px) {

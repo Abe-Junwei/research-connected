@@ -3,10 +3,12 @@ import type { PaperNode } from "./types";
 
 /** List views. They do not add edge types. */
 export const PRIOR_DEFINITION =
-	"先验工作：常被当前子图里的论文引用。数字是有多少篇子图论文的参考文献列表包含它。这是列表，不是新的连线。引用列表可能不完整。";
+	"被图内至少 2 篇论文共同引用的文献；引用列表可能不完整。";
 
 export const DERIVATIVE_DEFINITION =
-	"衍生工作：常引用当前子图里的论文。数字是它的参考文献列表里包含多少篇子图论文。这是列表，不是新的连线。引用列表可能不完整。";
+	"引用了至少 2 篇图内论文的后续工作；引用列表可能不完整。";
+
+export const AGGREGATE_EMPTY_TEXT = "当前子图里没有命中至少 2 次的文献。";
 
 export interface RankedWork {
 	paper: PaperNode;

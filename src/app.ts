@@ -1,4 +1,4 @@
-import { DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
+import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
@@ -11,7 +11,6 @@ import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neig
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
 import { mergeOpenCitation, SOURCE_TEXT } from "./citation-evidence";
-import { directCitationEdges, drawFlows } from "./analysis-view";
 import {
 	buildCitationTimeline,
 	LIST_VS_TIMELINE_NOTE,
@@ -195,7 +194,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let narrativeInput: NarrativeEvidence | null = null;
 	let narrativeMeta = "";
 	let narrativeError = "";
-	let analysisMode: "sankey" | "chord" = "sankey";
 	let scrubYear: number | null = null;
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
@@ -247,7 +245,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	};
 
 	const paintLists = (): void => {
-		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "analysis" || tab === "research" || tab === "timeline");
+		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research" || tab === "timeline");
 		detail.hidden = tab !== "graph";
 		if (tab === "research") {
 			paintResearch();
@@ -255,10 +253,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		if (tab === "timeline") {
 			paintTimeline();
-			return;
-		}
-		if (tab === "analysis") {
-			paintAnalysis();
 			return;
 		}
 		if (!graph || tab === "graph") {
@@ -280,7 +274,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		if (rows.length === 0) {
 			const empty = document.createElement("p");
 			empty.className = "cpo-agg-empty";
-			empty.textContent = "当前子图里没有达到「经常」的文献（至少被数到 2 次）。采样到的引用列表可能不完整。";
+			empty.textContent = AGGREGATE_EMPTY_TEXT;
 			listPanel.append(empty);
 			return;
 		}
@@ -369,36 +363,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				}
 			})();
 		}
-	};
-
-	const paintAnalysis = (): void => {
-		listPanel.hidden = false;
-		listPanel.replaceChildren();
-		el(listPanel, "h3", "cpo-kicker", "分析视图");
-		el(listPanel, "p", "cpo-side-tip", "次要分析视图：只使用当前图谱和筛选结果，不会发起新的数据请求。仅统计当前可见节点之间的直接引用对，不含相似关系。");
-		const controls = el(listPanel, "div", "cpo-tools cpo-tool-row");
-		const sankey = el(controls, "button", "cpo-tool", "桑基") as HTMLButtonElement;
-		const chord = el(controls, "button", "cpo-tool", "弦图") as HTMLButtonElement;
-		sankey.classList.toggle("is-on", analysisMode === "sankey");
-		chord.classList.toggle("is-on", analysisMode === "chord");
-		sankey.addEventListener("click", () => { analysisMode = "sankey"; paintAnalysis(); });
-		chord.addEventListener("click", () => { analysisMode = "chord"; paintAnalysis(); });
-		if (!graph) return;
-		const visible = shownNodes();
-		const edges = directCitationEdges(graph, new Set(visible.map((node) => node.id)));
-		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-		svg.classList.add("cpo-analysis-svg");
-		svg.setAttribute("viewBox", "0 0 760 440");
-		svg.setAttribute("role", "img");
-		svg.setAttribute("aria-label", analysisMode === "sankey" ? "按年份聚合的引用流" : "按社区聚合的引用关系");
-		listPanel.append(svg);
-		const selection = el(listPanel, "div");
-		drawFlows(svg, visible, edges, analysisMode, map.getCommunities(), papers => {
-			selection.replaceChildren();
-			for (const paper of papers) addLink(selection, paper.title, () => {
-				activateGraphTab(); showDetail(paper);
-			});
-		});
 	};
 
 	const paintResearch = (): void => {
@@ -498,7 +462,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
-		analysisButton: true,
 		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
