@@ -15,6 +15,8 @@ export interface ConnectedPapersSettings {
 	sampleDepth: SampleDepth;
 	/** Cross-check OpenAlex numbers against Semantic Scholar and backfill missing reference lists. */
 	s2Reconcile: boolean;
+	/** Fetch SPECTER2 embeddings with the S2 bulk request for semantic scoring (needs s2Reconcile). */
+	semanticEmbedding: boolean;
 	includeReferences: boolean;
 	includeCitations: boolean;
 	includeRelated: boolean;
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	maxNodes: 50,
 	sampleDepth: "standard",
 	s2Reconcile: true,
+	semanticEmbedding: true,
 	includeReferences: true,
 	includeCitations: true,
 	includeRelated: true,

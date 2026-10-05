@@ -134,6 +134,18 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("语义向量（SPECTER2）")
+			.setDesc(
+				"随上面的批量核对一同取回 Semantic Scholar 的 SPECTER2 语义向量，用于文本相似度打分（不增加请求数，向量只存内存）。接口不可用或某篇缺向量时自动退回本地文本相似度。需先开启交叉比对。",
+			)
+			.addToggle((toggle) => {
+				toggle.setValue(this.store.settings.semanticEmbedding).onChange(async (value) => {
+					this.store.settings.semanticEmbedding = value;
+					await this.store.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
 			.setName("启用 LLM 研究脉络")
 			.setDesc("关闭时不显示研究脉络入口，也不会发送任何 LLM 请求。")
 			.addToggle((toggle) => {

@@ -1,7 +1,7 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { buildFilters, buildLegend } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -55,20 +55,43 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	shell.className = "cpo-embed";
 	root.append(shell);
 
-	const bar = document.createElement("div");
-	bar.className = "cpo-embed-bar";
-	const status = document.createElement("p");
-	status.className = "cpo-embed-status";
-	status.setAttribute("role", "status");
+	const bar = document.createElement("header");
+	bar.className = "cpo-bar";
+	const topLine = document.createElement("div");
+	topLine.className = "cpo-topline";
+	const brand = document.createElement("div");
+	brand.className = "cpo-brand";
+	const brandMark = document.createElement("span");
+	brandMark.className = "cpo-brand-mark";
+	brandMark.textContent = "R";
+	const brandName = document.createElement("strong");
+	brandName.textContent = "Research Connected";
+	brand.append(brandMark, brandName);
 	const reload = document.createElement("button");
 	reload.type = "button";
-	reload.className = "cpo-embed-reload";
+	reload.className = "cpo-ghost";
 	reload.textContent = "重新加载";
-	bar.append(status, reload);
+	topLine.append(brand, reload);
+	const status = document.createElement("p");
+	status.className = "cpo-status";
+	status.setAttribute("role", "status");
+	bar.append(topLine, status);
 	shell.append(bar);
 
+	const seedSummary = document.createElement("div");
+	seedSummary.className = "cpo-seed-summary";
+	seedSummary.hidden = true;
+	const seedMark = document.createElement("span");
+	seedMark.className = "cpo-seed-mark";
+	const seedTitle = document.createElement("strong");
+	seedTitle.className = "cpo-seed-title";
+	const seedMeta = document.createElement("span");
+	seedMeta.className = "cpo-seed-meta";
+	seedSummary.append(seedMark, seedTitle, seedMeta);
+	shell.append(seedSummary);
+
 	const body = document.createElement("div");
-	body.className = "cpo-embed-body";
+	body.className = "cpo-body";
 	if (parsed.ok) body.style.height = `${parsed.spec.height}px`;
 	shell.append(body);
 
@@ -84,17 +107,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	rail.append(filterButton, layoutHost);
 
 	const stage = document.createElement("div");
-	stage.className = "cpo-embed-stage";
-	const message = document.createElement("p");
-	message.className = "cpo-embed-message";
+	stage.className = "cpo-stage";
+	const message = document.createElement("div");
+	message.className = "cpo-empty";
+	const messageText = document.createElement("p");
+	message.append(messageText);
 	const tooltip = document.createElement("div");
-	tooltip.className = "cpo-embed-tooltip";
+	tooltip.className = "cpo-tooltip";
 	tooltip.hidden = true;
 	const zoom = document.createElement("div");
 	zoom.className = "cpo-zoom";
-	const zoomIn = zoomButton("+", "放大");
-	const zoomOut = zoomButton("−", "缩小");
-	const zoomFit = zoomButton("适配", "适应窗口");
+	const zoomIn = iconButton("+", "放大");
+	const zoomOut = iconButton("−", "缩小");
+	const zoomFit = iconButton("适配", "适应窗口");
 	zoom.append(zoomIn, zoomOut, zoomFit);
 	const graphActions = document.createElement("div");
 	graphActions.className = "cpo-graph-actions";
@@ -107,14 +132,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	doiAction.className = "cpo-action-link";
 	doiAction.textContent = "DOI ↗";
 	const openGraphAction = document.createElement("button");
-	openGraphAction.className = "cpo-action-link cpo-action-link-right";
+	openGraphAction.className = "cpo-action-link";
 	openGraphAction.textContent = "在图谱中打开";
 	for (const button of [openAlexAction, doiAction, openGraphAction]) {
 		button.type = "button";
 		button.hidden = true;
 	}
 	sourceActions.append(openAlexAction, doiAction);
-	graphActions.append(sourceActions, zoom, openGraphAction);
+	const graphActionSpacer = document.createElement("span");
+	graphActionSpacer.className = "cpo-graph-action-spacer";
+	graphActions.append(sourceActions, graphActionSpacer, zoom, openGraphAction);
 	const drawer = document.createElement("div");
 	drawer.className = "cpo-drawer";
 	drawer.hidden = true;
@@ -123,14 +150,34 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	drawerTitle.textContent = "筛选 / 图例";
 	const tip = document.createElement("p");
 	tip.className = "cpo-side-tip";
-	tip.textContent = "拖拽移动，⌘/Ctrl+滚动缩放；三维下拖拽旋转、右键平移。节点位置固定。";
+	tip.textContent = "拖拽平移，⌘/Ctrl+滚动缩放；三维下拖拽旋转、右键平移。点选节点或连线，详情在右侧栏展开。";
+	const kindLegend = document.createElement("div");
+	kindLegend.className = "cpo-drawer-legend";
 	const legend = document.createElement("div");
-	legend.className = "cpo-embed-legend";
+	legend.className = "cpo-legend";
+	const rampWrap = document.createElement("span");
+	rampWrap.className = "cpo-ramp-wrap";
+	const rampStart = document.createElement("span");
+	rampStart.textContent = "较低";
+	const ramp = document.createElement("span");
+	ramp.className = "cpo-ramp cpo-topic-ramp";
+	const rampEnd = document.createElement("span");
+	rampEnd.textContent = "较高";
+	rampWrap.append(rampStart, ramp, rampEnd);
+	const rampHint = document.createElement("span");
+	rampHint.textContent = "与种子的主题相似度";
+	const grayHint = document.createElement("span");
+	grayHint.textContent = "灰色缺主题数据";
+	const sizeHint = document.createElement("span");
+	sizeHint.textContent = "圆点略大 = 被引更多";
+	const seedHint = document.createElement("span");
+	seedHint.textContent = "双环 = 种子";
+	legend.append(rampWrap, rampHint, grayHint, sizeHint, seedHint);
 	const filters = document.createElement("div");
 	filters.className = "cpo-embed-filters";
 	const tools = document.createElement("div");
 	tools.classList.add("cpo-drawer-tools");
-	drawer.append(drawerTitle, tip, legend, filters, tools);
+	drawer.append(drawerTitle, tip, kindLegend, legend, filters, tools);
 	stage.append(message, tooltip, graphActions, drawer);
 	body.append(rail, stage);
 	const sidebarResize = document.createElement("div");
@@ -143,7 +190,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const evidenceTitle = document.createElement("h2");
 	evidenceTitle.textContent = "论文与关系证据";
 	const evidenceHint = document.createElement("p");
-	evidenceHint.textContent = "点选节点查看来源与关系；拖动左侧边缘调整宽度。";
+	evidenceHint.textContent = "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。";
 	evidenceHeader.append(evidenceTitle, evidenceHint);
 	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
@@ -151,7 +198,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
 	const detail = document.createElement("div");
-	detail.className = "cpo-embed-detail";
+	detail.className = "cpo-detail";
 	const listPanel = document.createElement("div");
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
@@ -169,7 +216,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	if (!parsed.ok) {
 		shell.classList.add("is-error");
 		status.textContent = "代码块还不能建图";
-		message.textContent = parsed.error;
+		messageText.textContent = parsed.error;
 		reload.hidden = true;
 		rail.hidden = true;
 		sidebar.hidden = true;
@@ -186,7 +233,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const stateKey = cacheKey(spec.target, spec.maxNodes ?? deps.getSettings().maxNodes, spec.depth, deps.getSettings());
 	const saved = viewStates.get(stateKey);
 	let viewFilter = saved?.filter ?? filterFromSpec(spec);
-	buildLegend(legend, () => viewFilter, (next) => {
+	buildLegend(kindLegend, () => viewFilter, (next) => {
 		viewFilter = next;
 		graphView?.setFilter(viewFilter);
 		paintLists();
@@ -222,7 +269,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(tools, {
-		layouts: ["kumu", "temporal", "radial", "force2d", "force3d"],
+		layouts: ["kumu", "force2d", "temporal", "radial", "force3d"],
 		layout: layoutMode,
 		noteButton: Boolean(deps.createNote),
 		actionsHost: actionsBar,
@@ -276,13 +323,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const clearPlacement = applyPlacement(root, anchor, spec);
 	const stopResize = mountResizeHandle(body, anchor, () => graphView?.resize());
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, {
-		defaultWidth: 280,
-		minWidth: 220,
-		maxWidth: 380,
 		onResize: () => graphView?.resize(),
 	});
 	const narrowObserver = new ResizeObserver(() => {
-		shell.classList.toggle("is-narrow", shell.clientWidth < 760);
+		shell.classList.toggle("is-narrow", shell.clientWidth < 780);
 	});
 	narrowObserver.observe(shell);
 	zoomIn.addEventListener("click", () => graphView?.zoomBy(1.2));
@@ -322,7 +366,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		openGraphAction.hidden = !deps.openGraph;
 		detail.replaceChildren();
 		const empty = document.createElement("p");
-		empty.className = "cpo-embed-detail-empty";
+		empty.className = "cpo-side-tip";
 		empty.textContent = "点选节点查看题名、年份、作者和证据。";
 		detail.append(empty);
 		sheet.setSummary("点选节点查看论文", "");
@@ -359,6 +403,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 						getEvidence,
 						seedScore: graph.seedScore.get(paper.id),
 						semanticScore: graph.semanticScores?.get(paper.id),
+						semanticHint: semanticHintFor(graph.semanticMode),
 					});
 				}
 			} else {
@@ -367,7 +412,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				card.className = "cpo-card";
 				if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "结构 + 语义信号");
 				const semantic = graph.semanticScores?.get(paper.id);
-				if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, "标题 / 摘要 / 主题，本地计算", true);
+				if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, semanticHintFor(graph.semanticMode), true);
 				const note = document.createElement("p");
 				note.className = "cpo-fact-note";
 				note.textContent = score === undefined ? "与种子没有直接连线" : `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`;
@@ -436,7 +481,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 						contextRecoveries += 1;
 						if (contextRecoveries > 2) {
 							message.hidden = false;
-							message.textContent = "图形上下文反复丢失，点右上角「重新加载」恢复图谱。";
+							messageText.textContent = "图形上下文反复丢失，点「重新加载」恢复图谱。";
 							return;
 						}
 						void load(false);
@@ -453,10 +498,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			paintLists();
 		} catch (error) {
 			message.hidden = false;
-			message.textContent = error instanceof Error ? error.message : "三维图谱没有建起来。";
+			messageText.textContent = error instanceof Error ? error.message : "三维图谱没有建起来。";
 			return;
 		}
 		const seed = graph.nodes.find((node) => node.isSeed);
+		if (seed) {
+			seedSummary.hidden = false;
+			seedTitle.textContent = seed.title || seed.id;
+			seedMeta.textContent = [seed.authors, seed.year ?? "年份不详", "种子论文"].filter(Boolean).join(" · ");
+		} else {
+			seedSummary.hidden = true;
+		}
 		status.textContent = `${seed?.title ?? "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
 		}`;
@@ -503,8 +555,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		graphView = null;
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
+		seedSummary.hidden = true;
 		message.hidden = false;
-		message.textContent = STAGE_TEXT.resolving;
+		messageText.textContent = STAGE_TEXT.resolving;
 		status.textContent = "正在向 OpenAlex 读取…";
 		reload.disabled = true;
 		const settings = { ...deps.getSettings() };
@@ -520,7 +573,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					spec.target,
 					{ ...settings, maxNodes: firstCap },
 					(stage) => {
-						if (token === generation) message.textContent = STAGE_TEXT[stage];
+						if (token === generation) messageText.textContent = STAGE_TEXT[stage];
 					},
 					reconcileFor(deps, settings),
 					new CrossrefClient(deps.getJson, settings.contactEmail),
@@ -538,7 +591,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		} catch (error) {
 			if (!alive || token !== generation) return;
 			message.hidden = false;
-			message.textContent = error instanceof Error ? error.message : "构建图谱失败。";
+			messageText.textContent = error instanceof Error ? error.message : "构建图谱失败。";
 			status.textContent = "图谱没有建起来";
 		} finally {
 			if (token === generation) reload.disabled = false;
@@ -680,10 +733,10 @@ function mountResizeHandle(graphArea: HTMLElement, anchor: HTMLElement, onResize
 	};
 }
 
-function zoomButton(label: string, aria: string): HTMLButtonElement {
+function iconButton(label: string, aria: string): HTMLButtonElement {
 	const button = document.createElement("button");
 	button.type = "button";
-	button.className = "cpo-zoom-btn";
+	button.className = "cpo-icon";
 	button.textContent = label;
 	button.setAttribute("aria-label", aria);
 	return button;
@@ -874,7 +927,7 @@ async function copyText(text: string): Promise<void> {
 function addLink(parent: HTMLElement, label: string, onClick: () => void): void {
 	const button = document.createElement("button");
 	button.type = "button";
-	button.className = "cpo-embed-link";
+	button.className = "cpo-link";
 	button.textContent = label;
 	button.addEventListener("click", (event) => {
 		event.preventDefault();

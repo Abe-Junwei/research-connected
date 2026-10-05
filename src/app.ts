@@ -3,7 +3,7 @@ import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, semanticHintFor } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import type { LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
@@ -677,7 +677,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
 			const score = graph.seedScore.get(paper.id);
 			if (link && from && to) {
-				paintRelationSection(detail, link, from, to, { sources: edgeSources(link), getEvidence, seedScore: score, semanticScore: graph.semanticScores?.get(paper.id) });
+				paintRelationSection(detail, link, from, to, { sources: edgeSources(link), getEvidence, seedScore: score, semanticScore: graph.semanticScores?.get(paper.id), semanticHint: semanticHintFor(graph.semanticMode) });
 			} else {
 				const recorded =
 					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
@@ -685,7 +685,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					const card = el(detail, "section", "cpo-card");
 					if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "结构 + 语义信号");
 					const semantic = graph.semanticScores?.get(paper.id);
-					if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, "标题 / 摘要 / 主题，本地计算", true);
+					if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, semanticHintFor(graph.semanticMode), true);
 					if (!recorded) el(card, "p", "cpo-fact-note", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
 				}
 			}

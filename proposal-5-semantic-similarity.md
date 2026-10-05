@@ -70,6 +70,11 @@ Phase B 若引入 embedding，沿用同样的两处接入点即可，无需改�
 
 ## 3. Phase B：SPECTER2 向量（共用现有批量请求）
 
+> ✅ 已落地（待发布），与方案的两处差异：
+> 1. **降级粒度**：embedding 字段并入 `bulkCounts` 同一请求（零额外往返），但某一批次带 embedding 失败时自动降级为该批次的纯计数请求——语义功能永远不可能拖垮交叉比对。
+> 2. **接入点**：向量在建图阶段才取回（候选选择之后），所以只进入展示用 `semanticScore`（0.75×向量余弦 + 0.25×主题余弦，单侧缺向量退回 Phase A 本地通道）与 seedScore 混合，**不参与候选排序**——候选排序仍是 Phase A 的 0.5×权威 + 0.5×本地语义。
+> 图上记录 `semanticMode`（embedding/local）与 `semanticModel`（模型名，防向量空间漂移）；设置页新增「语义向量（SPECTER2）」开关（默认开，需先开交叉比对）。
+
 **3.1 请求改造**
 
 `bulkCounts` 的 `fields` 从 `citationCount,referenceCount,externalIds` 扩展为 `…,embedding`；返回的向量存入**仅内存**的 `Map<string, Float32Array>`（key 为论文 id），不进 settings、不进暂存持久化（768 维 × 80 篇 ≈ 240KB，随图重建即可）。

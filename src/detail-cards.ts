@@ -24,9 +24,16 @@ export interface RelationSectionOptions {
 	seedScore?: number;
 	/** 本地语义分（BM25+主题）；null 显示「不可用」，undefined 不渲染该 meter。 */
 	semanticScore?: number | null;
+	/** 语义 meter 的 hint；缺省为本地通道文案。 */
+	semanticHint?: string;
 }
 
 const AUTHOR_CHIP_LIMIT = 6;
+
+/** 语义 meter 的 hint 文案：向量通道与本地通道分开标注。 */
+export function semanticHintFor(mode?: "embedding" | "local"): string {
+	return mode === "embedding" ? "SPECTER2 语义向量 + 主题" : "标题 / 摘要 / 主题，本地计算";
+}
 
 /** Author chips from the structured list; falls back to the joined string. */
 export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
@@ -131,7 +138,7 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 		paintMeter(card, "文献结构相似度", edge.structuralSimilarity, "共享参考文献 / 共被引", true);
 	}
 	if (options.semanticScore !== undefined) {
-		paintMeter(card, "文本相似度", options.semanticScore, "标题 / 摘要 / 主题，本地计算", true);
+		paintMeter(card, "文本相似度", options.semanticScore, options.semanticHint ?? "标题 / 摘要 / 主题，本地计算", true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
 	paintStat(grid, "强度", TIER_LABEL[strengthTier(edge)]);

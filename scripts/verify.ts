@@ -29,9 +29,9 @@ import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
-import { buildSemanticScorer, tokenize } from "../src/text-similarity";
+import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
 import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
-import { CrossrefClient } from "../src/citation-sources";
+import { CrossrefClient, SemanticScholarClient } from "../src/citation-sources";
 import type { PaperNode } from "../src/types";
 
 function weighted(source: string, target: string, weight: number): GraphEdge {
@@ -510,6 +510,43 @@ function semanticChecks(): void {
 	const topicNode = { ...paper("D", "reference", 1), title: "", concepts: [], topicTags: [{ id: "T1", name: "Syntax", score: 0.8 }] };
 	const topicScore = buildSemanticScorer(topicSeed, [topicNode]).score(topicNode);
 	assert.ok(topicScore !== null && topicScore > 0.9, "文本缺失时主题余弦兜底");
+
+	// Phase B：SPECTER2 向量通道
+	assert.equal(embeddingCosine([1, 0], [1, 0]), 1, "同向向量余弦为 1");
+	assert.equal(embeddingCosine([1, 0], [0, 1]), 0, "正交向量余弦为 0");
+	assert.equal(embeddingCosine([1, 0], [-1, 0]), 0, "负余弦钳到 0");
+	assert.equal(embeddingCosine([1, 0], [1, 0, 0]), null, "维度不符不可用");
+	assert.equal(embeddingCosine([0, 0], [1, 0]), null, "零向量不可用");
+
+	// 双侧有向量时向量压过文本：far 与 seed 文本无关，但向量同向 → 高分。
+	const embSeed = { ...paper("SE", "seed", 1), title: "Evidentiality and epistemic modality", concepts: ["Linguistics"] };
+	const embNear = { ...paper("EN", "reference", 1), title: "Quantum chromodynamics lattice", concepts: ["Physics"] };
+	const embFar = { ...paper("EF", "reference", 1), title: "Epistemic modality and evidential markers", concepts: ["Linguistics"] };
+	const embScorer = buildSemanticScorer(
+		embSeed,
+		[embNear, embFar],
+		new Map([
+			["SE", [1, 0, 0]],
+			["EN", [0.9, 0.1, 0]],
+			["EF", [0, 1, 0]],
+		]),
+	);
+	const embNearScore = embScorer.score(embNear);
+	const embFarScore = embScorer.score(embFar);
+	assert.ok(embNearScore !== null && embFarScore !== null);
+	assert.ok(embNearScore > embFarScore, "有向量时按向量余弦排序，而非文本重合");
+	assert.ok(Math.abs(embNearScore - embeddingCosine([1, 0, 0], [0.9, 0.1, 0])!) < 1e-9, "无主题时向量分独立成项");
+
+	// 单侧缺向量：该节点退回本地 BM25，其余节点仍走向量。
+	const mixedScorer = buildSemanticScorer(seed, [near, far], new Map([["S", [1, 0]], ["A", [0.9, 0.1]]]));
+	const mixedNear = mixedScorer.score(near);
+	const mixedFar = mixedScorer.score(far);
+	assert.ok(mixedNear !== null && mixedNear > 0.6, "有向量的节点走向量通道");
+	assert.ok(mixedFar !== null && mixedFar < 0.5, "缺向量的节点退回本地 BM25");
+
+	// seed 缺向量：全图退回本地通道。
+	const noSeedVec = buildSemanticScorer(seed, [near, far], new Map([["A", [1, 0]]]));
+	assert.equal(noSeedVec.score(near), buildSemanticScorer(seed, [near, far]).score(near), "seed 无向量时等同本地通道");
 }
 
 async function main(): Promise<void> {
@@ -622,6 +659,57 @@ async function reconcileOffline(): Promise<void> {
 		reconcile,
 	);
 	assert.equal(off.crossCheck, undefined);
+
+	// Phase B：批量请求带 embedding 字段时，向量进入语义通道。
+	const vecReconcile: ReconcileSource = {
+		embeddingModel: "specter2",
+		bulkCounts: async (_dois, opts) =>
+			new Map([
+				["10.1/seed", { citationCount: 100, referenceCount: 10, ...(opts?.embedding ? { embedding: [1, 0, 0] } : {}) }],
+				["10.1/neighbor", { citationCount: 500, referenceCount: 30, ...(opts?.embedding ? { embedding: [0.9, 0.1, 0] } : {}) }],
+			]),
+		referenceDois: async () => [],
+	};
+	const withVec = await loadNeighborhood(
+		client,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, maxNodes: 20 },
+		undefined,
+		vecReconcile,
+	);
+	assert.equal(withVec.semanticMode, "embedding", "seed 有向量时启用向量通道");
+	assert.equal(withVec.semanticModel, "specter2", "记录向量模型名");
+	assert.ok((withVec.semanticScores?.get("W2") ?? 0) > 0.9, "同向向量给出高语义分");
+
+	// 设置关掉语义向量：同一 reconcile 也只走本地通道。
+	const vecOff = await loadNeighborhood(
+		client,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, semanticEmbedding: false, maxNodes: 20 },
+		undefined,
+		vecReconcile,
+	);
+	assert.equal(vecOff.semanticMode, "local", "semanticEmbedding 关闭时退回本地通道");
+
+	// 客户端降级：embedding 字段被拒时自动退回纯计数请求，交叉比对不受影响。
+	const requestedFields: string[] = [];
+	const s2 = new SemanticScholarClient(async () => ({}), "", async (url) => {
+		const fields = new URL(url).searchParams.get("fields") ?? "";
+		requestedFields.push(fields);
+		if (fields.includes("embedding")) throw new Error("400 unknown field");
+		return [{ externalIds: { DOI: "10.1/x" }, citationCount: 7, referenceCount: 3 }];
+	});
+	const counts = await s2.bulkCounts(["10.1/x"], { embedding: true });
+	assert.equal(counts.get("10.1/x")?.citationCount, 7, "embedding 被拒后仍拿到计数");
+	assert.ok(requestedFields.some((f) => !f.includes("embedding")), "失败后降级为纯计数请求");
+
+	// 正常返回 embedding：解析向量与模型名。
+	const s2ok = new SemanticScholarClient(async () => ({}), "", async () => [
+		{ externalIds: { DOI: "10.1/y" }, citationCount: 1, referenceCount: 1, embedding: { model: "specter2", vector: [0.1, 0.2] } },
+	]);
+	const okCounts = await s2ok.bulkCounts(["10.1/y"], { embedding: true });
+	assert.deepEqual(okCounts.get("10.1/y")?.embedding, [0.1, 0.2]);
+	assert.equal(s2ok.embeddingModel, "specter2");
 	const crossrefClient = new CrossrefClient(async (url) => {
 		assert.match(url, /api\.crossref\.org\/works\/10\.1\/test/);
 		return { message: { abstract: "<jats:p>Uses &amp; tests</jats:p>", reference: [{ DOI: "10.1/ref" }, { unstructured: "No DOI" }] } };

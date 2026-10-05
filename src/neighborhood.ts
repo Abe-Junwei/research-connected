@@ -58,6 +58,10 @@ export interface SimilarityGraph {
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
 	/** 语义相似度（BM25+主题余弦，本地计算），键为节点 id；null = 信号缺失。 */
 	semanticScores?: ReadonlyMap<string, number | null>;
+	/** 语义通道来源：embedding = SPECTER2 向量参与，local = 纯本地 BM25+主题。 */
+	semanticMode?: "embedding" | "local";
+	/** 向量模型名（随批量请求返回），用于识别向量空间漂移。 */
+	semanticModel?: string | null;
 }
 
 export interface ExternalReference {
@@ -89,8 +93,10 @@ export interface CrossCheck {
 
 /** What loadNeighborhood needs from Semantic Scholar for reconciliation. */
 export interface ReconcileSource {
-	bulkCounts(dois: string[]): Promise<Map<string, S2Counts>>;
+	bulkCounts(dois: string[], opts?: { embedding?: boolean }): Promise<Map<string, S2Counts>>;
 	referenceDois(doi: string): Promise<string[]>;
+	/** Model name of the embeddings from the last bulkCounts call, when provided. */
+	readonly embeddingModel?: string | null;
 }
 
 export interface CrossrefReferenceSource {
@@ -236,6 +242,8 @@ export async function loadNeighborhood(
 	// backfilled from S2 (only links into this graph matter for scoring).
 	const crossCheck = new Map<string, CrossCheck>();
 	const s2Links = new Set<string>();
+	// SPECTER2 vectors from the same bulk request (Phase B), keyed by node id.
+	const embeddings = new Map<string, number[]>();
 	if (reconcile && settings.s2Reconcile) {
 		try {
 			const doiToId = new Map<string, string>();
@@ -244,12 +252,13 @@ export async function loadNeighborhood(
 				if (doi) doiToId.set(doi.toLowerCase(), paper.id);
 			}
 			if (doiToId.size > 0) {
-				const counts = await reconcile.bulkCounts([...doiToId.keys()]);
+				const counts = await reconcile.bulkCounts([...doiToId.keys()], { embedding: settings.semanticEmbedding });
 				const byId = new Map([seed, ...picked].map((paper) => [paper.id, paper] as const));
 				for (const [doi, count] of counts) {
 					const id = doiToId.get(doi);
 					const paper = id ? byId.get(id) : undefined;
 					if (!id || !paper) continue;
+					if (Array.isArray(count.embedding) && count.embedding.length > 0) embeddings.set(id, count.embedding);
 					crossCheck.set(id, {
 						s2Citations: count.citationCount,
 						s2References: count.referenceCount,
@@ -347,7 +356,9 @@ export async function loadNeighborhood(
 
 	// 展示用完整语义分（摘要已就位）：图谱综合分 = 0.55 结构 + 0.45 语义；
 	// 语义缺失的节点保持原结构分。放射布局的距离编码跟着 seedScore 走。
-	const semanticScorer = buildSemanticScorer(seed, picked);
+	// seed 有 SPECTER2 向量时打分器自动对双侧有向量的节点启用向量通道。
+	const semanticMode: "embedding" | "local" = embeddings.has(seed.id) ? "embedding" : "local";
+	const semanticScorer = buildSemanticScorer(seed, picked, embeddings.size > 0 ? embeddings : undefined);
 	const semanticScores = new Map<string, number | null>();
 	for (const paper of picked) semanticScores.set(paper.id, semanticScorer.score(paper));
 	for (const [id, score] of seedScore) {
@@ -403,6 +414,8 @@ export async function loadNeighborhood(
 		},
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 		semanticScores,
+		semanticMode,
+		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
 	};
 }
 

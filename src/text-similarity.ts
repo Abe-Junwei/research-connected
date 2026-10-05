@@ -14,6 +14,26 @@ const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 /** BM25 与主题余弦都有时的 BM25 权重（主题占 0.4）。 */
 const TEXT_WEIGHT = 0.6;
+/** SPECTER2 向量与主题余弦都有时的向量权重（主题占 0.25）。 */
+const EMBED_WEIGHT = 0.75;
+
+/** SPECTER2 余弦，钳到 0–1（负值视为无信号）；维度不符或零向量返回 null。 */
+export function embeddingCosine(a: readonly number[], b: readonly number[]): number | null {
+	if (a.length === 0 || a.length !== b.length) return null;
+	let dot = 0;
+	let normA = 0;
+	let normB = 0;
+	for (let i = 0; i < a.length; i++) {
+		const ai = a[i]!;
+		const bi = b[i]!;
+		dot += ai * bi;
+		normA += ai * ai;
+		normB += bi * bi;
+	}
+	if (normA === 0 || normB === 0) return null;
+	const cos = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+	return Math.max(0, Math.min(1, cos));
+}
 
 const STOPWORDS = new Set([
 	"the", "and", "for", "with", "from", "that", "this", "these", "those", "are", "was", "were", "has", "have", "had",
@@ -47,8 +67,25 @@ export interface SemanticScorer {
 	score(node: PaperNode): number | null;
 }
 
-/** 以 seed 为查询、corpus 为文档集构建打分器；BM25 分数在语料内按最大值归一。 */
-export function buildSemanticScorer(seed: PaperNode, corpus: readonly PaperNode[]): SemanticScorer {
+/**
+ * 以 seed 为查询、corpus 为文档集构建打分器；BM25 分数在语料内按最大值归一。
+ * 传入 embeddings（SPECTER2，键为节点 id）时，seed 与节点都有向量的对改用
+ * 0.75×向量余弦 + 0.25×主题余弦；单侧缺向量的节点自动退回本地 BM25 通道。
+ */
+export function buildSemanticScorer(
+	seed: PaperNode,
+	corpus: readonly PaperNode[],
+	embeddings?: ReadonlyMap<string, readonly number[]>,
+): SemanticScorer {
+	const seedVec = embeddings?.get(seed.id);
+	const embeddingScore = (node: PaperNode): number | null => {
+		const nodeVec = seedVec ? embeddings?.get(node.id) : undefined;
+		if (!seedVec || !nodeVec) return null;
+		const cos = embeddingCosine(seedVec, nodeVec);
+		if (cos === null) return null;
+		const topic = topicSimilarity(seed.topicTags, node.topicTags);
+		return topic === null ? cos : EMBED_WEIGHT * cos + (1 - EMBED_WEIGHT) * topic;
+	};
 	const docs = new Map<string, string[]>();
 	for (const paper of [seed, ...corpus]) {
 		const tokens = docTokens(paper);
@@ -56,7 +93,8 @@ export function buildSemanticScorer(seed: PaperNode, corpus: readonly PaperNode[
 	}
 	const seedTokens = docs.get(seed.id) ?? [];
 	if (docs.size < 2 || seedTokens.length === 0) {
-		const topicOnly = (node: PaperNode): number | null => topicSimilarity(seed.topicTags, node.topicTags);
+		const topicOnly = (node: PaperNode): number | null =>
+			embeddingScore(node) ?? topicSimilarity(seed.topicTags, node.topicTags);
 		return { score: topicOnly };
 	}
 
@@ -91,6 +129,8 @@ export function buildSemanticScorer(seed: PaperNode, corpus: readonly PaperNode[
 
 	return {
 		score(node: PaperNode): number | null {
+			const embedded = embeddingScore(node);
+			if (embedded !== null) return embedded;
 			const text = max > 0 ? (raw.get(node.id) ?? 0) / max : null;
 			const topic = topicSimilarity(seed.topicTags, node.topicTags);
 			if (text === null) return topic;

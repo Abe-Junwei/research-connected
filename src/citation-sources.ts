@@ -109,6 +109,8 @@ export type PostJson = (
 export interface S2Counts {
 	citationCount: number | null;
 	referenceCount: number | null;
+	/** SPECTER2 vector, present only when the request asked for embeddings. */
+	embedding?: number[] | null;
 }
 
 export interface SemanticCitation {
@@ -131,49 +133,71 @@ export class SemanticScholarClient {
 		private readonly postJson?: PostJson,
 	) {}
 
+	/** Model name of the embeddings returned by the last bulkCounts call (null when none). */
+	embeddingModel: string | null = null;
+
 	/**
 	 * One batched lookup (POST /paper/batch, up to 500 ids) that cross-checks
 	 * OpenAlex numbers. Keys of the returned map are the lowercased DOIs that
-	 * Semantic Scholar recognized.
+	 * Semantic Scholar recognized. With `opts.embedding` the same request also
+	 * asks for SPECTER2 vectors; a chunk that fails with embeddings is retried
+	 * without them so semantic scoring can never endanger the cross-check.
 	 */
-	async bulkCounts(dois: string[]): Promise<Map<string, S2Counts>> {
+	async bulkCounts(dois: string[], opts?: { embedding?: boolean }): Promise<Map<string, S2Counts>> {
 		if (!this.postJson || dois.length === 0) return new Map();
-		const url = new URL("https://api.semanticscholar.org/graph/v1/paper/batch");
-		url.searchParams.set("fields", "citationCount,referenceCount,externalIds");
+		const base = "https://api.semanticscholar.org/graph/v1/paper/batch";
+		const fields = opts?.embedding
+			? "citationCount,referenceCount,externalIds,embedding"
+			: "citationCount,referenceCount,externalIds";
 		const out = new Map<string, S2Counts>();
+		this.embeddingModel = null;
 		for (let i = 0; i < dois.length; i += 500) {
 			const chunk = dois.slice(i, i + 500);
+			const body = JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) });
 			let json: unknown = null;
 			let ok = false;
 			let lastError: unknown = new CitationSourceError("Semantic Scholar 批量接口返回格式错误。");
-			for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-				if (attempt > 0) await pause(1200);
+			const attempt = async (fieldSet: string): Promise<boolean> => {
+				const url = new URL(base);
+				url.searchParams.set("fields", fieldSet);
 				try {
-					json = await this.postJson(url.toString(), {
+					json = await this.postJson!(url.toString(), {
 						headers: {
 							Accept: "application/json",
 							"Content-Type": "application/json",
 							...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
 						},
-						body: JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) }),
+						body,
 					});
-					if (Array.isArray(json)) ok = true;
-					else lastError = s2FormatError("批量接口", json);
+					if (Array.isArray(json)) return true;
+					lastError = s2FormatError("批量接口", json);
 				} catch (error) {
 					lastError = error;
 				}
+				return false;
+			};
+			if (await attempt(fields)) ok = true;
+			else {
+				await pause(1200);
+				if (await attempt(fields)) ok = true;
+				// Embedding field rejected outright (e.g. endpoint change): drop to counts-only.
+				else if (opts?.embedding && (await attempt("citationCount,referenceCount,externalIds"))) ok = true;
 			}
 			if (!ok) throw lastError;
 			for (const item of json as Array<{
 				citationCount?: number | null;
 				referenceCount?: number | null;
 				externalIds?: Record<string, string | null> | null;
+				embedding?: { model?: string | null; vector?: number[] | null } | null;
 			} | null>) {
 				const doi = item?.externalIds?.DOI?.toLowerCase();
 				if (!item || !doi) continue;
+				const vector = Array.isArray(item.embedding?.vector) ? item.embedding.vector : null;
+				if (vector && item.embedding?.model && !this.embeddingModel) this.embeddingModel = item.embedding.model;
 				out.set(doi, {
 					citationCount: typeof item.citationCount === "number" ? item.citationCount : null,
 					referenceCount: typeof item.referenceCount === "number" ? item.referenceCount : null,
+					...(opts?.embedding ? { embedding: vector } : {}),
 				});
 			}
 		}
