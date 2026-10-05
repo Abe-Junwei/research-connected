@@ -402,6 +402,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const open = el(row, "button", "cpo-text-btn", "查看") as HTMLButtonElement;
 			open.type = "button";
 			open.onclick = () => { if (graph?.nodes.some((node) => node.id === item.paper.id)) { activateGraphTab(); showDetail(item.paper); } };
+			const read = el(row, "button", "cpo-text-btn", item.read ? "标为未读" : "标为已读") as HTMLButtonElement;
+			read.type = "button";
+			read.onclick = async () => { item.read = !item.read; await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
 			const remove = el(row, "button", "cpo-text-btn", "移除") as HTMLButtonElement;
 			remove.type = "button";
 			remove.onclick = async () => { deps.getSettings().stagedPapers = items.filter((other) => stageKey(other) !== stageKey(item)); await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
