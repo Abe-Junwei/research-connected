@@ -1,7 +1,8 @@
 import { performance } from "node:perf_hooks";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { placeLayout, type LayoutMode } from "../src/layout-modes";
-import { selectNeighbors } from "../src/neighborhood";
+import { buildPairSimilarity } from "../src/diversity";
+import { MMR_LAMBDA, selectNeighbors } from "../src/neighborhood";
 import { buildSimilarity } from "../src/similarity";
 import { syntheticGraph, syntheticNeighborhood } from "./perf-fixture";
 
@@ -35,10 +36,13 @@ console.log("| - | ----- | ----- | ----------------- | ------- | -------- | ----
 for (const size of SIZES) {
 	const nb = syntheticNeighborhood(size);
 	const scoring = timeMedian(() => {
+		const pool = [...nb.groups.reference, ...nb.groups.citation, ...nb.groups.related];
 		const picked = selectNeighbors(
 			{ maxNodes: size, includeReferences: true, includeCitations: true, includeRelated: true },
 			nb.groups,
 			nb.seed.id,
+			undefined,
+			{ sim: buildPairSimilarity(pool), lambda: MMR_LAMBDA },
 		);
 		const references = new Map<string, Set<string>>();
 		for (const paper of [nb.seed, ...picked]) {

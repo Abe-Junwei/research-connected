@@ -93,11 +93,15 @@ Phase B 若引入 embedding，沿用同样的两处接入点即可，无需改�
 
 **验收**：mock 批量返回部分 null 向量的单测；断网/429 降级路径单测；真实种子人工抽查 10 条高分候选是否确实语义相关。
 
-## 4. Phase C：融合与多样性（可选，评审后决定）
+## 4. Phase C：MMR 多样性与入选解释（已落地）
 
-- MMR 多样性：入选时惩罚与已选节点语义过于接近者（λ=0.3），防止图谱被同一小方向占满
-- 「为什么入选」解释：候选卡片可展开 结构/语义/权威 三分数（默认折叠，避免仪表盘化）
-- 不做：pairwise 全对 embedding 边（80² 视觉噪音），语义只参与排序与 seed 相对距离，不生成新边型
+> ✅ 评审后按修正落地，不引入新请求、不碰 LLM、不做 pairwise embedding 边。
+
+- **候选两两相似度**：`src/diversity.ts` 词项 TF 余弦（0.6）+ 主题余弦（0.4），对称、[0,1]、可空、按 id 对 memo。不用 seed 导向的 BM25（非对称、依赖 query/corpus）。SPECTER2 仍只在入选之后随批量核对取回。
+- **MMR**：`λ × relevance − (1−λ) × max(与已选相似度)`。`λ` 是相关性权重，不是 0.3 扣减系数。默认 `MMR_LAMBDA = 0.7`（0.6–0.8 带内中值）。`npm run mmr-sweep` 在合成邻域上 diversity 几乎平坦，不把 0.7 当成测出的拐点。
+- **入选原因**：`selectionRank: Map<id, {authority, semantic, relevance}>` 仅 picked、仅内存。详情折叠卡（面板 + embed）展示这三项，外加「建图后当前综合分」（未参与入选）。semantic 缺失保留 null。
+- **embed cache**：`sampleDepth` / `s2Reconcile` / `semanticEmbedding` / OpenAlex key / S2 key 有无都进 cache key。
+- **不做**：pairwise 全对 embedding 边。
 
 ## 5. 口径红线（沿用既有原则）
 
@@ -111,12 +115,12 @@ Phase B 若引入 embedding，沿用同样的两处接入点即可，无需改�
 | --- | --- | --- | --- |
 | A | BM25 + 主题余弦合成 semanticScore，接入排序与详情 meter | 单测全绿 + 人工对比 | 1.9.0（与暂存列表同批或紧随其后） |
 | B | S2 embedding 并入批量请求、内存向量、降级链 | mock/降级单测 + 抽查 | 1.9.x |
-| C | MMR 与入选解释 | 评审后定 | 1.10.0 评估 |
+| C | MMR 与入选解释 | 对称 pair sim + 标准 MMR + selectionRank 真值折叠卡；λ sweep 作观察脚本 | **1.9.x** |
 
 ## 7. 风险清单
 
 1. **S2 限速**：无 key 共享池紧张——embedding 字段并入现有请求就是为了不增加请求数；失败降级 Phase A
 2. **摘要缺失率**：OpenAlex 部分老文献无摘要，Phase A 有标题+concepts 兜底，最差退回 null 显示「不可用」
 3. **多语言**：BM25 对中文用字 bigram；SPECTER2 本身对非英语论文质量下降，主题余弦辅助项缓解
-4. **语义扎堆**：高语义权重会把图拉向同质 cluster——排序权重里 structural 保持最大（0.45），Phase C 的 MMR 兜底
+4. **语义扎堆**：选择阶段没有结构分（0.5 权威 + 0.5 本地语义）；Phase C 用标准 MMR（λ=0.7）在 origin 配额内做多样性，pairwise 信号是词项/主题余弦而不是向量
 5. **向量版本漂移**：S2 可能升级 embedding 模型，缓存带版本号，不匹配即弃

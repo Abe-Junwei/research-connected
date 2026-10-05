@@ -35,6 +35,18 @@ if (mode === "perf") {
 	process.exit(0);
 }
 
+if (mode === "sweep") {
+	await esbuild.build({
+		entryPoints: ["scripts/mmr-sweep.ts"],
+		bundle: true,
+		platform: "node",
+		format: "cjs",
+		outfile: "scripts/mmr-sweep.cjs",
+		logLevel: "info",
+	});
+	process.exit(0);
+}
+
 if (mode === "preview") {
 	await esbuild.build({
 		entryPoints: ["preview/main.ts"],

@@ -7,6 +7,7 @@ import {
 import { normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
+import { buildPairSimilarity } from "./diversity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
@@ -62,7 +63,25 @@ export interface SimilarityGraph {
 	semanticMode?: "embedding" | "local";
 	/** 向量模型名（随批量请求返回），用于识别向量空间漂移。 */
 	semanticModel?: string | null;
+	/** 入选时的真实决策依据（仅 picked 节点，仅内存，不持久化）。 */
+	selectionRank?: ReadonlyMap<string, SelectionRank>;
 }
+
+/** 候选入选时的分数快照；semantic 缺失保留 null（UI 显示「不可用」）。 */
+export interface SelectionRank {
+	authority: number;
+	semantic: number | null;
+	relevance: number;
+}
+
+/** MMR 多样性选项：sim 为对称可空的候选两两相似度，lambda 为相关性权重。 */
+export interface MmrOptions {
+	sim(a: PaperNode, b: PaperNode): number | null;
+	lambda: number;
+}
+
+/** 标准 MMR 的相关性权重。合成邻域 sweep 在 0.6–0.8 几乎平坦，取区间中值。 */
+export const MMR_LAMBDA = 0.7;
 
 export interface ExternalReference {
 	source: "openalex" | "semantic-scholar" | "crossref";
@@ -189,6 +208,8 @@ export async function loadNeighborhood(
 		const semantic = preSemantic.score(paper);
 		return semantic === null ? authority : 0.5 * authority + 0.5 * semantic;
 	};
+	// MMR 多样性（Phase C）：候选两两相似度用对称的词项/主题余弦，不请求向量。
+	const mmr: MmrOptions = { sim: buildPairSimilarity(rankPool), lambda: MMR_LAMBDA };
 	const picked = selectNeighbors(
 		settings,
 		{
@@ -198,7 +219,17 @@ export async function loadNeighborhood(
 		},
 		seed.id,
 		rankCandidate,
+		mmr,
 	);
+	// 入选原因（C2）：保存选择时的真实分数，semantic 缺失保留 null。
+	const selectionRank = new Map<string, SelectionRank>();
+	for (const paper of picked) {
+		selectionRank.set(paper.id, {
+			authority: impactScore(paper) / maxImpact,
+			semantic: preSemantic.score(paper),
+			relevance: rankCandidate(paper),
+		});
+	}
 
 	const refLists = new Map<string, string[]>();
 	const rawReferenceLists = new Map<string, ExternalReference[]>();
@@ -416,6 +447,7 @@ export async function loadNeighborhood(
 		semanticScores,
 		semanticMode,
 		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
+		selectionRank,
 	};
 }
 
@@ -426,29 +458,74 @@ export function selectNeighbors(
 	>,
 	groups: { reference: PaperNode[]; citation: PaperNode[]; related: PaperNode[] },
 	seedId: string,
-	rank: (paper: PaperNode) => number = impactScore,
+	rank?: (paper: PaperNode) => number,
+	mmr?: MmrOptions,
 ): PaperNode[] {
 	const maxNodes = clampInt(settings.maxNodes, 20, 300);
 	const slots = maxNodes - 1;
-	const byRank = (a: PaperNode, b: PaperNode): number => rank(b) - rank(a) || byImpact(a, b);
+	const relevanceOf = rank ?? impactScore;
+	const byRank = (a: PaperNode, b: PaperNode): number => relevanceOf(b) - relevanceOf(a) || byImpact(a, b);
 	const pools = {
 		reference: settings.includeReferences ? dedupe(groups.reference, seedId, byRank) : [],
 		citation: settings.includeCitations ? dedupe(groups.citation, seedId, byRank) : [],
 		related: settings.includeRelated ? dedupe(groups.related, seedId, byRank) : [],
 	};
 	const chosen = new Map<string, PaperNode>();
+	// MMR 已选序列：多样性惩罚对所有已选节点取最大值，与池无关。
+	const chosenList: PaperNode[] = [];
 
+	// MMR 惩罚增量缓存：每个候选只与「新增」的已选节点补算相似度，
+	// 摊还后每次挑选是 O(剩余候选)，deep 档 500 池 × 300 名额也可承受。
+	const penaltyCache = new Map<string, { value: number; version: number }>();
+	const penaltyOf = (paper: PaperNode): number => {
+		if (!mmr) return 0;
+		const entry = penaltyCache.get(paper.id);
+		let value = entry?.value ?? 0;
+		const from = entry?.version ?? 0;
+		for (let k = from; k < chosenList.length; k++) {
+			const sim = mmr.sim(paper, chosenList[k]!);
+			if (sim !== null && sim > value) value = sim;
+		}
+		penaltyCache.set(paper.id, { value, version: chosenList.length });
+		return value;
+	};
+
+	// MMR 贪心：每次取 λ×相关性 − (1−λ)×与已选最大相似度 最高者；
+	// 平局按相关性再按 id，保证确定性。null 相似度按 0 惩罚处理。
 	const take = (list: PaperNode[], count: number): void => {
 		let got = 0;
-		for (const paper of list) {
-			if (got >= count || chosen.size >= slots) return;
-			const key = identityKey(paper);
+		const remaining = [...list];
+		while (got < count && chosen.size < slots && remaining.length > 0) {
+			let bestIndex = 0;
+			let bestScore = -Infinity;
+			let bestRelevance = -Infinity;
+			for (let i = 0; i < remaining.length; i++) {
+				const paper = remaining[i]!;
+				const relevance = relevanceOf(paper);
+				const score = mmr && chosenList.length > 0
+					? mmr.lambda * relevance - (1 - mmr.lambda) * penaltyOf(paper)
+					: relevance;
+				const current = remaining[bestIndex]!;
+				const better =
+					score > bestScore + 1e-12 ||
+					(Math.abs(score - bestScore) <= 1e-12 &&
+						(relevance > bestRelevance + 1e-12 ||
+							(Math.abs(relevance - bestRelevance) <= 1e-12 && paper.id < current.id)));
+				if (better) {
+					bestScore = score;
+					bestRelevance = relevance;
+					bestIndex = i;
+				}
+			}
+			const next = remaining.splice(bestIndex, 1)[0]!;
+			const key = identityKey(next);
 			const prev = chosen.get(key);
 			if (prev) {
-				if (ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) chosen.set(key, paper);
+				if (ORIGIN_RANK[next.origin] > ORIGIN_RANK[prev.origin]) chosen.set(key, next);
 				continue;
 			}
-			chosen.set(key, paper);
+			chosen.set(key, next);
+			chosenList.push(next);
 			got += 1;
 		}
 	};

@@ -14,5 +14,6 @@ data.json
 scripts/verify.cjs
 scripts/check-review.cjs
 scripts/perf.cjs
+scripts/mmr-sweep.cjs
 preview/preview.js
 preview/embed.js

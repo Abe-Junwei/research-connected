@@ -1,7 +1,7 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -414,6 +414,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				card.append(note);
 				detail.append(card);
 			}
+			const rankInfo = graph.selectionRank?.get(paper.id);
+			if (rankInfo) paintSelectionReasons(detail, rankInfo, graph.seedScore.get(paper.id));
 			paintJumpStrip(detail, seed, (target) => {
 				if (currentGraph) showDetail(target, currentGraph, null);
 			});
@@ -858,7 +860,12 @@ function cacheKey(
 		settings.includeReferences ? "1" : "0",
 		settings.includeCitations ? "1" : "0",
 		settings.includeRelated ? "1" : "0",
+		// 会改变候选采样与评分语义的设置必须进 key，避免展示陈旧解释。
+		settings.sampleDepth,
+		settings.s2Reconcile ? "s2" : "nos2",
+		settings.semanticEmbedding ? "emb" : "noemb",
 		settings.apiKey.trim() ? "keyed" : "anon",
+		settings.semanticScholarApiKey.trim() ? "s2k" : "s2anon",
 	].join("|");
 }
 

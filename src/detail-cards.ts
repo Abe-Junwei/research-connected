@@ -2,6 +2,7 @@ import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, t
 import type { RankedWork } from "./aggregates";
 import { relationFacts, strengthTier, TIER_LABEL } from "./graph-filter";
 import { paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
+import type { SelectionRank } from "./neighborhood";
 import { nonResearchLabel } from "./paper";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { formatCount } from "./visual";
@@ -201,6 +202,23 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 export function edgeSourcesText(edge: GraphEdge, getEvidence: (citingId: string, citedId: string) => CitationEvidence | null): string {
 	const sources = new Set(edgeCitationPairs(edge).flatMap((pair) => getEvidence(pair.citingId, pair.citedId)?.sources ?? []));
 	return sources.size ? [...sources].map((source) => SOURCE_TEXT[source]).join(" + ") : "OpenAlex 采样";
+}
+
+/** 「入选原因」折叠区：候选选择时的真实分数快照（仅 picked 节点有）。 */
+export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, currentScore?: number): void {
+	const details = document.createElement("details");
+	details.className = "cpo-card cpo-why";
+	const summary = document.createElement("summary");
+	summary.textContent = "入选原因";
+	details.append(summary);
+	paintMeter(details, "权威分", rank.authority, "log 被引 × 新近度，候选池内归一", true);
+	paintMeter(details, "选择时语义分", rank.semantic, "标题 / 主题，本地计算（选择时摘要尚未补取）", true);
+	paintMeter(details, "选择时相关性", rank.relevance, "0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分", true);
+	if (currentScore !== undefined) {
+		paintMeter(details, "建图后当前综合分", currentScore, "结构 + 语义信号；未参与候选入选");
+	}
+	el(details, "p", "cpo-fact-note", "入选还受来源配额与多样性（MMR）影响。");
+	parent.append(details);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(

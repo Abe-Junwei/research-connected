@@ -120,7 +120,7 @@ Research Connected 是 Obsidian 里的**单篇种子论文相似性地图**。�
 | 3.7 数据正确性 | 过滤后自动补页（书评等占位会补满配额）；每路 RetrievalStats（请求/命中/过滤/去重/部分失败）；候选排序改 log(1+被引)×年龄衰减；撤稿降权+开关 | 候选不足不再沉默；撤稿不参与高分排序；调试面板可解释「为什么图里没有某篇」 | 待开工，1.9.x |
 | 4 工作流 | 暂存列表（持久化、按种子分组、带来源简述） | ✅ 已完成：`saveData` + `{version:1,items}`、按种子分组、来源文案、表格/BibTeX/清单笔记导出；懒加载 S2 边证据补专门测试 | **1.9.0** |
 | 5 DOI 路径 | 独立命令 + 预算边界 | ✅ 已完成：命令面板入口、已抓取 `referenceLists` 预算 BFS、方向/检查量/耗尽提示、同长路径切换；明示「预算内」 | **1.10.0** |
-| 6 语义相似度 | 见 proposal-5：Phase A 本地 BM25+主题余弦合成 semanticScore 接入排序与详情 meter；Phase B SPECTER2 向量并入 S2 批量请求（带降级链）；Phase C MMR 多样性（可选评审） | ✅ Phase A+B 已落地（待发布）：本地通道（排序 0.5 权威+0.5 语义、seedScore 0.55 结构+0.45 语义、详情 meter）+ 向量通道（随批量核对取回、批次级降级、设置开关、semanticMode/Model 记录）；差异说明见 proposal-5 §2A/§3 | **1.9.x**；Phase C 待评审 |
+| 6 语义相似度 | 见 proposal-5：Phase A 本地 BM25+主题余弦；Phase B SPECTER2 并入 S2 批量请求；Phase C MMR + 入选解释 | ✅ A+B+C 已落地（待发布）：排序 0.5 权威+0.5 本地语义、seedScore 0.55 结构+0.45 语义、详情 meter、向量通道（批次降级）、标准 MMR（λ=0.7，对称 pair sim）、selectionRank 折叠卡。差异见 proposal-5 §2A/§3/§4 | **1.9.x** |
 
 每阶段结束后跑阶段 0 的截图 + 性能回归。
 

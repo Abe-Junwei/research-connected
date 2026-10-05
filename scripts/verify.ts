@@ -29,6 +29,7 @@ import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
+import { buildPairSimilarity } from "../src/diversity";
 import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
 import { CrossrefClient, SemanticScholarClient } from "../src/citation-sources";
 import type { PaperNode } from "../src/types";
@@ -529,9 +530,88 @@ function semanticChecks(): void {
 	assert.equal(noSeedVec.score(near), buildSemanticScorer(seed, [near, far]).score(near), "seed 无向量时等同本地通道");
 }
 
+/** Phase C：pair diversity similarity 与 MMR 选择行为。 */
+function diversityChecks(): void {
+	// pair similarity：对称、[0,1]、空特征 null、memo 一致。
+	const pa = { ...paper("PA", "reference", 10), title: "Graph neural networks for molecules", concepts: ["Chemistry"] };
+	const pb = { ...paper("PB", "reference", 10), title: "Molecular graph networks", concepts: ["Chemistry"] };
+	const pc = { ...paper("PC", "reference", 10), title: "Climate policy instruments", concepts: ["Economics"] };
+	const blank = { ...paper("PD", "reference", 10), title: "", concepts: [] };
+	const sim = buildPairSimilarity([pa, pb, pc, blank]);
+	const ab = sim(pa, pb);
+	assert.ok(ab !== null && ab > 0 && ab <= 1, "相关论文相似度在 (0,1]");
+	assert.equal(sim(pa, pb), sim(pb, pa), "pair similarity 对称");
+	assert.equal(sim(pa, pb), ab, "memoized 结果一致");
+	assert.equal(sim(blank, pa), null, "空特征返回 null");
+	assert.ok((sim(pa, pc) ?? 1) < ab, "无关论文相似度更低");
+
+	// MMR：首项取最高相关性；候选充足时相似的克隆体被挤出名额；确定性；null 不惩罚。
+	const rel = (p: PaperNode): number => p.citedByCount / 100;
+	const clones = Array.from({ length: 20 }, (_, i) => ({
+		...paper(`C${i}`, "reference", 100),
+		title: "evidentiality in grammar",
+		concepts: [] as string[],
+	}));
+	const distinctTitles = ["quantum lattice gauge", "climate policy carbon", "neural synapse cortex", "protein folding enzyme", "bayesian causal inference"];
+	const distinct = distinctTitles.map((title, i) => ({
+		...paper(`D${i}`, "reference", 90),
+		title,
+		concepts: [] as string[],
+	}));
+	const groups = { reference: [...clones, ...distinct], citation: [], related: [] };
+	const pickSettings = { maxNodes: 20, includeReferences: true, includeCitations: false, includeRelated: false };
+	const noMmr = new Set(selectNeighbors(pickSettings, groups, "SEED", rel).map((p) => p.id));
+	assert.equal([...noMmr].filter((id) => id.startsWith("D")).length, 0, "无 MMR 时克隆体占满名额");
+	const mmr = { sim: buildPairSimilarity([...clones, ...distinct]), lambda: 0.5 };
+	const withMmr = selectNeighbors(pickSettings, groups, "SEED", rel, mmr).map((p) => p.id);
+	assert.equal(withMmr.filter((id) => id.startsWith("D")).length, 5, "MMR 挤出克隆体，纳入相异候选");
+	assert.equal(withMmr[0], "C0", "MMR 首项仍是最高相关性");
+	assert.deepEqual(
+		selectNeighbors(pickSettings, groups, "SEED", rel, mmr).map((p) => p.id),
+		withMmr,
+		"MMR 结果确定",
+	);
+	assert.deepEqual(
+		new Set(selectNeighbors(pickSettings, groups, "SEED", rel, { sim: () => null, lambda: 0.5 }).map((p) => p.id)),
+		noMmr,
+		"相似度全 null 时等同无 MMR",
+	);
+
+	// 跨池去重与 related 配额不受 MMR 影响。
+	const dupRef = { ...paper("X1", "reference", 80), doiUrl: "https://doi.org/10.9/dup", title: "alpha topic" };
+	const dupCite = { ...paper("X2", "citation", 70), doiUrl: "https://doi.org/10.9/dup", title: "alpha topic" };
+	const deduped = selectNeighbors(
+		{ maxNodes: 20, includeReferences: true, includeCitations: true, includeRelated: false },
+		{ reference: [dupRef], citation: [dupCite], related: [] },
+		"SEED",
+		rel,
+		mmr,
+	);
+	assert.equal(deduped.length, 1, "同 DOI 跨池去重");
+	assert.equal(deduped[0]?.origin, "reference", "保留更高 origin 的版本");
+	const relatedPool = Array.from({ length: 12 }, (_, i) => ({
+		...paper(`R${i}`, "related", 90 - i),
+		title: `related topic ${i % 3} variant ${i}`,
+	}));
+	const referencePool = Array.from({ length: 15 }, (_, i) => ({
+		...paper(`F${i}`, "reference", 80 - i),
+		title: `reference work ${i % 4} part ${i}`,
+	}));
+	const quota = selectNeighbors(
+		{ maxNodes: 20, includeReferences: true, includeCitations: false, includeRelated: true },
+		{ reference: referencePool, citation: [], related: relatedPool },
+		"SEED",
+		rel,
+		mmr,
+	);
+	assert.equal(quota.length, 19, "名额填满");
+	assert.ok(quota.filter((p) => p.origin === "related").length <= 6, "related 配额上限不变");
+}
+
 async function main(): Promise<void> {
 	unit();
 	semanticChecks();
+	diversityChecks();
 	await verifyEvidence();
 	verifyUi();
 	await cursorPaging();
@@ -629,6 +709,14 @@ async function reconcileOffline(): Promise<void> {
 	assert.ok(!crossrefEvidence?.sources.includes("openalex"), "Crossref backfill is not misattributed to OpenAlex");
 	assert.equal(graph.crossCheck?.get("W1")?.crossrefRefsAdded, 1);
 	assert.ok(graph.rawReferenceLists?.get("W1")?.some((ref) => ref.source === "crossref" && ref.doi === "10.1/neighbor"));
+
+	// C2 入选原因快照：仅 picked 节点入图，semantic 缺失保留 null。
+	const rankW2 = graph.selectionRank?.get("W2");
+	assert.ok(rankW2, "picked 节点有入选快照");
+	assert.ok(typeof rankW2.authority === "number" && typeof rankW2.relevance === "number");
+	assert.equal(rankW2.semantic, null, "无主题且标题无有效词项时语义为 null");
+	assert.equal(rankW2.relevance, rankW2.authority, "语义缺失时相关性等于权威分");
+	assert.equal(graph.selectionRank?.has("W1"), false, "种子不进 selectionRank");
 
 	// Toggle off: no cross-check, no backfill.
 	const off = await loadNeighborhood(

@@ -3,7 +3,7 @@ import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import type { LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
@@ -690,6 +690,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					if (!recorded) el(card, "p", "cpo-fact-note", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
 				}
 			}
+			const rankInfo = graph.selectionRank?.get(paper.id);
+			if (rankInfo) paintSelectionReasons(detail, rankInfo, score);
 			paintJumpStrip(detail, seedNode, (target) => showDetail(target));
 		}
 		paintAbstractCard(detail, paper, abstractText);
