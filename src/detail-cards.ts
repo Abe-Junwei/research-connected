@@ -22,6 +22,8 @@ export interface RelationSectionOptions {
 	sources: string;
 	getEvidence(citingId: string, citedId: string): CitationEvidence | null;
 	seedScore?: number;
+	/** 本地语义分（BM25+主题）；null 显示「不可用」，undefined 不渲染该 meter。 */
+	semanticScore?: number | null;
 }
 
 const AUTHOR_CHIP_LIMIT = 6;
@@ -124,9 +126,12 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 	const card = el(parent, "section", "cpo-card");
 	const info = relationFacts(edge, a, b, options.sources);
 	el(card, "p", "cpo-fact-lead", info.lead);
-	if (options.seedScore !== undefined) paintMeter(card, "图谱综合相似度", options.seedScore, "含引用与结构信号");
+	if (options.seedScore !== undefined) paintMeter(card, "图谱综合相似度", options.seedScore, "结构 + 语义信号");
 	if (edge.structuralSimilarity !== undefined) {
 		paintMeter(card, "文献结构相似度", edge.structuralSimilarity, "共享参考文献 / 共被引", true);
+	}
+	if (options.semanticScore !== undefined) {
+		paintMeter(card, "文本相似度", options.semanticScore, "标题 / 摘要 / 主题，本地计算", true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
 	paintStat(grid, "强度", TIER_LABEL[strengthTier(edge)]);

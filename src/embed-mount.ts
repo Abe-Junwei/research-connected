@@ -358,13 +358,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 						sources: edgeSourcesText(toSeed, getEvidence),
 						getEvidence,
 						seedScore: graph.seedScore.get(paper.id),
+						semanticScore: graph.semanticScores?.get(paper.id),
 					});
 				}
 			} else {
 				const score = graph.seedScore.get(paper.id);
 				const card = document.createElement("section");
 				card.className = "cpo-card";
-				if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "含引用与结构信号");
+				if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "结构 + 语义信号");
+				const semantic = graph.semanticScores?.get(paper.id);
+				if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, "标题 / 摘要 / 主题，本地计算", true);
 				const note = document.createElement("p");
 				note.className = "cpo-fact-note";
 				note.textContent = score === undefined ? "与种子没有直接连线" : `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`;

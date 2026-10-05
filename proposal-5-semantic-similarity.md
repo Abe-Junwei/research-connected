@@ -58,6 +58,16 @@ semanticScore(node) = 0.6 × bm25Norm(seed, node) + 0.4 × topicSimilarity(seed,
 
 **验收**：离线单测覆盖（同标题高分、无关论文低分、无摘要降级、中文 bigram）；以一篇跨学科种子人工对比开关前后候选差异；`npm run perf` 300 节点耗时回归不明显劣化（BM25 是 O(n²·词表)，80 节点规模无感）。
 
+## 2A. Phase A 落地备注（已上线，对本方案的一处有意偏离）
+
+候选排序原设计为 `0.45×structural + 0.35×semantic + 0.20×authority`，实际落地时做了调整：**候选选择阶段结构分不可得**——候选的参考文献列表要等建图时才拉取，此时 `structural(seed)` 尚未计算。因此：
+
+- `selectNeighbors` 排序用 `0.5×authority + 0.5×semantic`（semantic 缺失时退回纯 authority），authority 用归一化后的 impactScore（÷ 批次最大值）
+- 结构分在建图完成后通过 `seedScore` 混合进入：`0.55×structural + 0.45×semantic`，语义缺失则保持纯结构原值
+- 效果差异：原方案语义只影响候选挑选，落地版语义同时影响候选挑选（0.5 权重）和放射距离编码（0.45 权重），语义对最终呈现的影响实际更强
+
+Phase B 若引入 embedding，沿用同样的两处接入点即可，无需改回三层混合。
+
 ## 3. Phase B：SPECTER2 向量（共用现有批量请求）
 
 **3.1 请求改造**

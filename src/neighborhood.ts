@@ -6,6 +6,7 @@ import {
 } from "./openalex";
 import { normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
+import { buildSemanticScorer } from "./text-similarity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
@@ -55,6 +56,8 @@ export interface SimilarityGraph {
 	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
 	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
+	/** 语义相似度（BM25+主题余弦，本地计算），键为节点 id；null = 信号缺失。 */
+	semanticScores?: ReadonlyMap<string, number | null>;
 }
 
 export interface ExternalReference {
@@ -170,6 +173,16 @@ export async function loadNeighborhood(
 		countNonResearch(references.sample.rejected, "reference", seed.id) +
 		countNonResearch(citations.sample.rejected, "citation", seed.id) +
 		countNonResearch(related.sample.rejected, "related", seed.id);
+	// 候选排序：权威分（log 被引 × 新近度，3.7c）与语义分（标题/concepts/主题，
+	// 摘要此刻尚未补取）各占一半；语义缺失时退回纯权威分。
+	const rankPool = [...refPapers, ...citePapers, ...relatedPapers];
+	const preSemantic = buildSemanticScorer(seed, rankPool);
+	const maxImpact = Math.max(1e-9, ...rankPool.map((paper) => impactScore(paper)));
+	const rankCandidate = (paper: PaperNode): number => {
+		const authority = impactScore(paper) / maxImpact;
+		const semantic = preSemantic.score(paper);
+		return semantic === null ? authority : 0.5 * authority + 0.5 * semantic;
+	};
 	const picked = selectNeighbors(
 		settings,
 		{
@@ -178,6 +191,7 @@ export async function loadNeighborhood(
 			related: withoutSeedDuplicate(relatedPapers, seed),
 		},
 		seed.id,
+		rankCandidate,
 	);
 
 	const refLists = new Map<string, string[]>();
@@ -331,6 +345,19 @@ export async function loadNeighborhood(
 		contexts,
 	});
 
+	// 展示用完整语义分（摘要已就位）：图谱综合分 = 0.55 结构 + 0.45 语义；
+	// 语义缺失的节点保持原结构分。放射布局的距离编码跟着 seedScore 走。
+	const semanticScorer = buildSemanticScorer(seed, picked);
+	const semanticScores = new Map<string, number | null>();
+	for (const paper of picked) semanticScores.set(paper.id, semanticScorer.score(paper));
+	for (const [id, score] of seedScore) {
+		if (id === seed.id) continue;
+		const semantic = semanticScores.get(id);
+		if (semantic !== null && semantic !== undefined) {
+			seedScore.set(id, Math.min(1, 0.55 * score + 0.45 * semantic));
+		}
+	}
+
 	const referenceLists = new Map<string, readonly string[]>();
 	for (const [id, ids] of refLists) referenceLists.set(id, ids);
 	const catalog = new Map<string, PaperNode>();
@@ -375,6 +402,7 @@ export async function loadNeighborhood(
 			related: statsFor(related.sample, relatedPapers.length, tier.related),
 		},
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
+		semanticScores,
 	};
 }
 
@@ -385,13 +413,15 @@ export function selectNeighbors(
 	>,
 	groups: { reference: PaperNode[]; citation: PaperNode[]; related: PaperNode[] },
 	seedId: string,
+	rank: (paper: PaperNode) => number = impactScore,
 ): PaperNode[] {
 	const maxNodes = clampInt(settings.maxNodes, 20, 300);
 	const slots = maxNodes - 1;
+	const byRank = (a: PaperNode, b: PaperNode): number => rank(b) - rank(a) || byImpact(a, b);
 	const pools = {
-		reference: settings.includeReferences ? dedupe(groups.reference, seedId) : [],
-		citation: settings.includeCitations ? dedupe(groups.citation, seedId) : [],
-		related: settings.includeRelated ? dedupe(groups.related, seedId) : [],
+		reference: settings.includeReferences ? dedupe(groups.reference, seedId, byRank) : [],
+		citation: settings.includeCitations ? dedupe(groups.citation, seedId, byRank) : [],
+		related: settings.includeRelated ? dedupe(groups.related, seedId, byRank) : [],
 	};
 	const chosen = new Map<string, PaperNode>();
 
@@ -430,12 +460,12 @@ export function selectNeighbors(
 			take(pools[key], count);
 		}
 		if (chosen.size < slots) {
-			const rest = [...pools.reference, ...pools.citation, ...pools.related].sort(byImpact);
+			const rest = [...pools.reference, ...pools.citation, ...pools.related].sort(byRank);
 			take(rest, slots - chosen.size);
 		}
 	}
 
-	return [...chosen.values()].sort(byImpact);
+	return [...chosen.values()].sort(byRank);
 }
 
 async function loadGroup(
@@ -505,7 +535,7 @@ function researchOnly(papers: PaperNode[]): PaperNode[] {
 	return papers.filter((paper) => !nonResearchLabel(paper));
 }
 
-function dedupe(list: PaperNode[], seedId: string): PaperNode[] {
+function dedupe(list: PaperNode[], seedId: string, byRank: (a: PaperNode, b: PaperNode) => number = byImpact): PaperNode[] {
 	const map = new Map<string, PaperNode>();
 	for (const paper of list) {
 		if (paper.id === seedId) continue;
@@ -513,7 +543,7 @@ function dedupe(list: PaperNode[], seedId: string): PaperNode[] {
 		const prev = map.get(key);
 		if (!prev || ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) map.set(key, paper);
 	}
-	return [...map.values()].sort(byImpact);
+	return [...map.values()].sort(byRank);
 }
 
 function identityKey(paper: PaperNode): string {

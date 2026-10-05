@@ -10,7 +10,14 @@ import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
-import { edgeCitationPairs, evidenceFromSemanticCitation, mergeOpenCitation, SOURCE_TEXT } from "./citation-evidence";
+import {
+	CitationEvidenceStore,
+	edgeDetailStillCurrent,
+	edgePairNeedingS2Context,
+	mergeOpenCitation,
+	mergeS2CitationsForPair,
+	SOURCE_TEXT,
+} from "./citation-evidence";
 import {
 	buildCitationTimeline,
 	LIST_VS_TIMELINE_NOTE,
@@ -25,14 +32,26 @@ import {
 import { drawTimeline } from "./timeline-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
 import { summarizeWithLlmPost } from "./llm";
-import { classifyQuery, nonResearchLabel, normalizeDoi, toPaper, toSearchHit } from "./paper";
+import {
+	DEFAULT_PATH_BUDGET,
+	findBudgetedCitationPath,
+	resolvePathEndpoint,
+	type CitationPathResult,
+} from "./doi-path";
+import { classifyQuery, nonResearchLabel, normalizeDoi, shortId, toPaper, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
-import { toggleStaged, stageKey } from "./staging";
+import { groupStagedBySeed, stageKey, stageSourceLabel, toggleStaged } from "./staging";
+
+export interface GraphAppHandle {
+	destroy(): void;
+	/** Command-palette DOI path search over already-fetched reference lists. */
+	openDoiPathSearch(): void;
+}
 
 export interface AppDeps {
 	getSettings: () => ConnectedPapersSettings;
@@ -62,7 +81,7 @@ const WARNING_TEXT: Record<LoadWarning, string> = {
 };
 
 /** Pane UI shared by the Obsidian view and the browser preview. */
-export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
+export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle {
 	root.classList.add("cpo-root");
 	root.replaceChildren();
 
@@ -394,20 +413,64 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		el(listPanel, "h3", "cpo-kicker", "暂存列表");
 		const items = deps.getSettings().stagedPapers ?? [];
 		if (items.length === 0) { el(listPanel, "p", "cpo-agg-empty", "还没有暂存论文。"); return; }
-		const list = el(listPanel, "ol", "cpo-agg-list");
-		for (const item of items) {
-			const row = el(list, "li", "cpo-agg-item");
-			el(row, "strong", undefined, item.paper.title || item.paper.id);
-			el(row, "p", "cpo-meta", `${item.paper.year ?? "年份不详"} · ${item.source}${item.read ? " · 已读" : ""}`);
-			const open = el(row, "button", "cpo-text-btn", "查看") as HTMLButtonElement;
-			open.type = "button";
-			open.onclick = () => { if (graph?.nodes.some((node) => node.id === item.paper.id)) { activateGraphTab(); showDetail(item.paper); } };
-			const read = el(row, "button", "cpo-text-btn", item.read ? "标为未读" : "标为已读") as HTMLButtonElement;
-			read.type = "button";
-			read.onclick = async () => { item.read = !item.read; await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
-			const remove = el(row, "button", "cpo-text-btn", "移除") as HTMLButtonElement;
-			remove.type = "button";
-			remove.onclick = async () => { deps.getSettings().stagedPapers = items.filter((other) => stageKey(other) !== stageKey(item)); await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
+		const exportRow = el(listPanel, "div", "cpo-tool-row");
+		const copyTable = el(exportRow, "button", "cpo-text-btn", "复制表格") as HTMLButtonElement;
+		copyTable.type = "button";
+		copyTable.onclick = () => {
+			const text = toMarkdownTable(orderedForExport(items.map((item) => item.paper)));
+			chrome?.setExportText(text);
+			void copyPane(text);
+		};
+		const copyBib = el(exportRow, "button", "cpo-text-btn", "复制 BibTeX") as HTMLButtonElement;
+		copyBib.type = "button";
+		copyBib.onclick = () => {
+			const text = toBibTeX(orderedForExport(items.map((item) => item.paper)));
+			chrome?.setExportText(text);
+			void copyPane(text);
+		};
+		if (deps.createNote) {
+			const noteBtn = el(exportRow, "button", "cpo-text-btn", "写入清单笔记") as HTMLButtonElement;
+			noteBtn.type = "button";
+			noteBtn.onclick = () => {
+				const lines = ["# 暂存文献清单", ""];
+				for (const group of groupStagedBySeed(items)) {
+					lines.push(`## 种子 ${group.seedId}`, "");
+					for (const item of group.items) {
+						lines.push(`- ${item.paper.title || item.paper.id}（${item.paper.year ?? "年份不详"}）· ${item.source}${item.read ? " · 已读" : ""}`);
+						if (item.paper.doiUrl) lines.push(`  - DOI: ${item.paper.doiUrl}`);
+						lines.push(`  - ${item.paper.openAlexUrl}`);
+					}
+					lines.push("");
+				}
+				void deps.createNote!("暂存文献清单.md", lines.join("\n")).then(() => {
+					chrome?.setExportText("已写入笔记：暂存文献清单.md");
+				}).catch((error) => {
+					chrome?.setExportText(error instanceof Error ? error.message : "笔记没有写成。");
+				});
+			};
+		}
+		for (const group of groupStagedBySeed(items)) {
+			const seedTitle = graph?.nodes.find((node) => node.id === group.seedId)?.title;
+			el(listPanel, "h4", "cpo-kicker", seedTitle ? `种子 · ${seedTitle}` : `种子 · ${group.seedId}`);
+			const list = el(listPanel, "ol", "cpo-agg-list");
+			for (const item of group.items) {
+				const row = el(list, "li", "cpo-agg-item");
+				el(row, "strong", undefined, item.paper.title || item.paper.id);
+				el(row, "p", "cpo-meta", `${item.paper.year ?? "年份不详"} · ${item.source}${item.read ? " · 已读" : ""}`);
+				const open = el(row, "button", "cpo-text-btn", "查看") as HTMLButtonElement;
+				open.type = "button";
+				open.onclick = () => { if (graph?.nodes.some((node) => node.id === item.paper.id)) { activateGraphTab(); showDetail(item.paper); } };
+				const read = el(row, "button", "cpo-text-btn", item.read ? "标为未读" : "标为已读") as HTMLButtonElement;
+				read.type = "button";
+				read.onclick = async () => { item.read = !item.read; await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
+				const remove = el(row, "button", "cpo-text-btn", "移除") as HTMLButtonElement;
+				remove.type = "button";
+				remove.onclick = async () => {
+					deps.getSettings().stagedPapers = items.filter((other) => stageKey(other) !== stageKey(item));
+					await deps.stagePaper?.(item.paper, item.seedId, item.source);
+					paintStaged();
+				};
+			}
 		}
 	};
 
@@ -597,7 +660,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 				const staged = deps.getSettings().stagedPapers.some((item) => stageKey(item) === `${seedId}\0${paper.id}`);
 				const button = el(detail, "button", "cpo-text-btn", staged ? "从暂存列表移除" : "加入暂存列表") as HTMLButtonElement;
 				button.type = "button";
-				button.onclick = async () => { deps.getSettings().stagedPapers = toggleStaged(deps.getSettings().stagedPapers, paper, seedId, paper.origin); await deps.stagePaper?.(paper, seedId, paper.origin); showDetail(paper); };
+				button.onclick = async () => {
+					const link = findEdge(graph!.edges, paper.id, seedId);
+					const evidence = graph!.citationEvidence?.get(paper.id, seedId) ?? graph!.citationEvidence?.get(seedId, paper.id) ?? null;
+					const source = stageSourceLabel(paper, seedId, link, evidence);
+					deps.getSettings().stagedPapers = toggleStaged(deps.getSettings().stagedPapers, paper, seedId, source);
+					await deps.stagePaper?.(paper, seedId, source);
+					showDetail(paper);
+				};
 			}
 		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
@@ -607,13 +677,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			const to = link ? graph.nodes.find((node) => node.id === link.target) : undefined;
 			const score = graph.seedScore.get(paper.id);
 			if (link && from && to) {
-				paintRelationSection(detail, link, from, to, { sources: edgeSources(link), getEvidence, seedScore: score });
+				paintRelationSection(detail, link, from, to, { sources: edgeSources(link), getEvidence, seedScore: score, semanticScore: graph.semanticScores?.get(paper.id) });
 			} else {
 				const recorded =
 					graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id);
 				if (score !== undefined || !recorded) {
 					const card = el(detail, "section", "cpo-card");
-					if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "含引用与结构信号");
+					if (score !== undefined) paintMeter(card, "图谱综合相似度", score, "结构 + 语义信号");
+					const semantic = graph.semanticScores?.get(paper.id);
+					if (semantic !== undefined) paintMeter(card, "文本相似度", semantic, "标题 / 摘要 / 主题，本地计算", true);
 					if (!recorded) el(card, "p", "cpo-fact-note", `与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`);
 				}
 			}
@@ -667,13 +739,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		const current = graph;
 		const settings = deps.getSettings();
 		if (!current || !settings.s2Reconcile || !deps.postJson) return;
-		const pair = edgeCitationPairs(edge).find(({ citingId, citedId }) => {
-			const existing = getEvidence(citingId, citedId);
-			return !existing?.contexts.length && !existing?.intents.length;
-		});
+		const pair = edgePairNeedingS2Context(edge, getEvidence);
 		if (!pair) return;
-		const citing = current.nodes.find(p => p.id === pair.citingId);
-		const cited = current.nodes.find(p => p.id === pair.citedId);
+		const citing = current.nodes.find((p) => p.id === pair.citingId);
+		const cited = current.nodes.find((p) => p.id === pair.citedId);
 		const citingDoi = normalizeDoi(citing?.doiUrl);
 		const citedDoi = normalizeDoi(cited?.doiUrl);
 		if (!citing || !cited || !citingDoi || !citedDoi) return;
@@ -684,12 +753,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			request.catch(() => s2EvidenceRequests.delete(citingDoi));
 			s2EvidenceRequests.set(citingDoi, request);
 		}
-		for (const citation of await request) {
-			if (normalizeDoi(citation.citedPaper?.externalIds?.DOI) === citedDoi) {
-				current.citationEvidence?.set(evidenceFromSemanticCitation(citing.id, cited.id, citation));
+		let citations;
+		try {
+			citations = await request;
+		} catch {
+			if (edgeDetailStillCurrent(selectedEdge, edge, !disposed && graph === current)) {
+				el(detail, "p", "cpo-fact-note", "Semantic Scholar 引用语境暂时不可用。");
 			}
+			return;
 		}
-		if (!disposed && graph === current && selectedEdge === edge) showEdgeDetail(edge);
+		current.citationEvidence ??= new CitationEvidenceStore();
+		mergeS2CitationsForPair(current.citationEvidence, citing.id, cited.id, citedDoi, citations, normalizeDoi);
+		if (edgeDetailStillCurrent(selectedEdge, edge, !disposed && graph === current)) showEdgeDetail(edge);
 	};
 	map.onEdgeSelect = (edge) => {
 		selectedEdge = edge;
@@ -924,18 +999,104 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		void buildResolved(initial);
 	}
 
-	return () => {
-		disposed = true;
-		generation += 1;
-		chrome?.destroy();
-		sheet.destroy();
-		stopSidebarResize();
-		observer.disconnect();
-		root.removeEventListener("keydown", onKey);
-		window.removeEventListener("research-connected-settings", onSettings);
-		map.destroy();
-		root.replaceChildren();
-		root.classList.remove("cpo-root", "is-narrow");
+	let pathResult: CitationPathResult | null = null;
+	let pathIndex = 0;
+
+	const paperById = (id: string): PaperNode | undefined =>
+		graph?.nodes.find((paper) => paper.id === id) ?? graph?.catalog.find((paper) => paper.id === id);
+
+	const paintDoiPath = (): void => {
+		if (!pathResult) return;
+		selectedPaper = null;
+		selectedEdge = null;
+		detail.replaceChildren();
+		detail.hidden = false;
+		sheet.setExpanded(true);
+		const path = pathResult.paths[pathIndex];
+		sheet.setSummary("DOI 引用路径", path ? `${path.length - 1} 步 · 预算内` : "未找到");
+		el(detail, "p", "cpo-fact-note", "预算内在已抓取引用列表上搜索的结果，不是全局最短路径。");
+		el(
+			detail,
+			"p",
+			"cpo-meta",
+			`方向：${pathResult.direction === "citing-to-cited" ? "施引 → 被引" : "被引 → 施引"} · 检查 ${pathResult.checked}/${pathResult.budget} 个节点${pathResult.exhausted ? " · 预算提前耗尽" : ""}`,
+		);
+		if (!path) {
+			el(detail, "p", "cpo-agg-empty", "当前采样范围内没有连通路径。可加深采样后再试。");
+			return;
+		}
+		if (pathResult.paths.length > 1) {
+			const nav = el(detail, "div", "cpo-tool-row");
+			const label = el(nav, "span", "cpo-meta", `同长路径 ${pathIndex + 1}/${pathResult.paths.length}`);
+			const prev = el(nav, "button", "cpo-text-btn", "上一条") as HTMLButtonElement;
+			prev.type = "button";
+			prev.disabled = pathIndex <= 0;
+			prev.onclick = () => { pathIndex -= 1; paintDoiPath(); };
+			const next = el(nav, "button", "cpo-text-btn", "下一条") as HTMLButtonElement;
+			next.type = "button";
+			next.disabled = pathIndex >= pathResult.paths.length - 1;
+			next.onclick = () => { pathIndex += 1; paintDoiPath(); };
+			void label;
+		}
+		const list = el(detail, "ol", "cpo-agg-list");
+		for (let i = 0; i < path.length; i++) {
+			const id = path[i]!;
+			const paper = paperById(id);
+			const row = el(list, "li", "cpo-agg-item");
+			el(row, "strong", undefined, paper?.title || id);
+			const doi = normalizeDoi(paper?.doiUrl) ?? "无 DOI";
+			el(row, "p", "cpo-meta", `${id} · ${doi}${i < path.length - 1 ? " →" : ""}`);
+			if (paper && graph?.nodes.some((node) => node.id === paper.id)) {
+				const open = el(row, "button", "cpo-text-btn", "查看") as HTMLButtonElement;
+				open.type = "button";
+				open.onclick = () => { activateGraphTab(); showDetail(paper); };
+			}
+		}
+	};
+
+	const openDoiPathSearch = (): void => {
+		if (!graph) {
+			showError("请先构建图谱。DOI 路径只在已抓取的引用列表上搜索。");
+			return;
+		}
+		const raw = window.prompt("起点与终点（DOI 或 OpenAlex ID，用空格或 → 分隔）");
+		if (raw === null) return;
+		const parts = raw.split(/\s*(?:→|->|\s)\s*/).map((part) => part.trim()).filter(Boolean);
+		if (parts.length < 2) {
+			showError("请提供两个端点，例如：10.1/a → 10.2/b");
+			return;
+		}
+		const pool = [...graph.nodes, ...graph.catalog];
+		const start = resolvePathEndpoint(parts[0]!, pool, normalizeDoi, shortId);
+		const end = resolvePathEndpoint(parts[1]!, pool, normalizeDoi, shortId);
+		if (!start || !end) {
+			showError("端点必须是当前图谱已抓取的论文（DOI 或 OpenAlex ID）。");
+			return;
+		}
+		clearError();
+		pathResult = findBudgetedCitationPath(graph.referenceLists, start, end, DEFAULT_PATH_BUDGET);
+		pathIndex = 0;
+		status.textContent = pathResult.paths.length
+			? `预算内找到 ${pathResult.paths.length} 条路径（检查 ${pathResult.checked}/${pathResult.budget}）`
+			: `预算内未找到路径（检查 ${pathResult.checked}/${pathResult.budget}${pathResult.exhausted ? "，提前耗尽" : ""}）`;
+		paintDoiPath();
+	};
+
+	return {
+		openDoiPathSearch,
+		destroy: () => {
+			disposed = true;
+			generation += 1;
+			chrome?.destroy();
+			sheet.destroy();
+			stopSidebarResize();
+			observer.disconnect();
+			root.removeEventListener("keydown", onKey);
+			window.removeEventListener("research-connected-settings", onSettings);
+			map.destroy();
+			root.replaceChildren();
+			root.classList.remove("cpo-root", "is-narrow");
+		},
 	};
 }
 

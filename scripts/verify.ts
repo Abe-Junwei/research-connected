@@ -29,6 +29,7 @@ import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { buildSimilarity, pairScore } from "../src/similarity";
+import { buildSemanticScorer, tokenize } from "../src/text-similarity";
 import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
 import { CrossrefClient } from "../src/citation-sources";
 import type { PaperNode } from "../src/types";
@@ -469,8 +470,51 @@ async function live(): Promise<void> {
 	);
 }
 
+/** 语义通道（proposal-5 Phase A）：分词、BM25 排序、缺失降级。 */
+function semanticChecks(): void {
+	const tokens = tokenize("The Role of Tone in 声调系统 Grammar");
+	assert.ok(tokens.includes("role") && tokens.includes("tone") && tokens.includes("grammar"), "英文词干入词表");
+	assert.ok(tokens.includes("声调") && tokens.includes("系统"), "中文走字 bigram");
+	assert.ok(!tokens.includes("the"), "停用词过滤");
+
+	const seed = {
+		...paper("S", "seed", 100),
+		title: "Evidentiality and epistemic modality",
+		concepts: ["Linguistics"],
+		abstract: "How languages encode information source.",
+	};
+	const near = {
+		...paper("A", "reference", 10),
+		title: "Epistemic modality and evidential markers",
+		concepts: ["Linguistics"],
+		abstract: "Markers of information source in grammar.",
+	};
+	const far = {
+		...paper("B", "reference", 10),
+		title: "Quantum chromodynamics lattice",
+		concepts: ["Physics"],
+		abstract: "Gauge fields on discrete lattices.",
+	};
+	const scorer = buildSemanticScorer(seed, [near, far]);
+	const nearScore = scorer.score(near);
+	const farScore = scorer.score(far);
+	assert.ok(nearScore !== null && farScore !== null);
+	assert.ok(nearScore > farScore, "语义相关论文分数更高");
+	assert.ok(nearScore <= 1 && farScore >= 0);
+
+	const blankSeed = { ...paper("S2", "seed", 1), title: "", concepts: [] };
+	const blankNode = { ...paper("C", "reference", 1), title: "", concepts: [] };
+	assert.equal(buildSemanticScorer(blankSeed, [blankNode]).score(blankNode), null, "无文本无主题时不可用");
+
+	const topicSeed = { ...paper("S3", "seed", 1), title: "", concepts: [], topicTags: [{ id: "T1", name: "Syntax", score: 0.9 }] };
+	const topicNode = { ...paper("D", "reference", 1), title: "", concepts: [], topicTags: [{ id: "T1", name: "Syntax", score: 0.8 }] };
+	const topicScore = buildSemanticScorer(topicSeed, [topicNode]).score(topicNode);
+	assert.ok(topicScore !== null && topicScore > 0.9, "文本缺失时主题余弦兜底");
+}
+
 async function main(): Promise<void> {
 	unit();
+	semanticChecks();
 	await verifyEvidence();
 	verifyUi();
 	await cursorPaging();
