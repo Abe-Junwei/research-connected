@@ -10,7 +10,7 @@ import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
-import { mergeOpenCitation, SOURCE_TEXT } from "./citation-evidence";
+import { edgeCitationPairs, evidenceFromSemanticCitation, mergeOpenCitation, SOURCE_TEXT } from "./citation-evidence";
 import {
 	buildCitationTimeline,
 	LIST_VS_TIMELINE_NOTE,
@@ -25,7 +25,7 @@ import {
 import { drawTimeline } from "./timeline-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
 import { summarizeWithLlmPost } from "./llm";
-import { classifyQuery, nonResearchLabel, toPaper, toSearchHit } from "./paper";
+import { classifyQuery, nonResearchLabel, normalizeDoi, toPaper, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
@@ -198,6 +198,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let chrome: GraphChrome | null = null;
 	let selectedPaper: PaperNode | null = null;
 	let selectedEdge: GraphEdge | null = null;
+	const s2EvidenceRequests = new Map<string, Promise<import("./citation-sources").SemanticCitation[]>>();
 	/** 轨道按钮持有的布局；建图后回灌给画布，保持按钮与实际渲染一致。 */
 	let layoutMode: LayoutMode = "force2d";
 	let timelineMetaGraph: SimilarityGraph | null = null;
@@ -626,6 +627,36 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		paintRelationSection(detail, edge, a, b, { sources: edgeSources(edge), getEvidence });
 		paintJumpStrip(detail, a, (target) => showDetail(target));
 		paintJumpStrip(detail, b, (target) => showDetail(target));
+		void loadSelectedEdgeEvidence(edge, a, b);
+	};
+
+	const loadSelectedEdgeEvidence = async (edge: GraphEdge, a: PaperNode, b: PaperNode): Promise<void> => {
+		const current = graph;
+		const settings = deps.getSettings();
+		if (!current || !settings.s2Reconcile || !deps.postJson) return;
+		const pair = edgeCitationPairs(edge).find(({ citingId, citedId }) => {
+			const existing = getEvidence(citingId, citedId);
+			return !existing?.contexts.length && !existing?.intents.length;
+		});
+		if (!pair) return;
+		const citing = current.nodes.find(p => p.id === pair.citingId);
+		const cited = current.nodes.find(p => p.id === pair.citedId);
+		const citingDoi = normalizeDoi(citing?.doiUrl);
+		const citedDoi = normalizeDoi(cited?.doiUrl);
+		if (!citing || !cited || !citingDoi || !citedDoi) return;
+		let request = s2EvidenceRequests.get(citingDoi);
+		if (!request) {
+			const client = new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey, deps.postJson);
+			request = client.referenceEvidence(citingDoi).then(({ data }) => data);
+			request.catch(() => s2EvidenceRequests.delete(citingDoi));
+			s2EvidenceRequests.set(citingDoi, request);
+		}
+		for (const citation of await request) {
+			if (normalizeDoi(citation.citedPaper?.externalIds?.DOI) === citedDoi) {
+				current.citationEvidence?.set(evidenceFromSemanticCitation(citing.id, cited.id, citation));
+			}
+		}
+		if (!disposed && graph === current && selectedEdge === edge) showEdgeDetail(edge);
 	};
 	map.onEdgeSelect = (edge) => {
 		selectedEdge = edge;
