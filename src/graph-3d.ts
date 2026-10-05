@@ -22,7 +22,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { communityColor, detectCommunities } from "./communities";
-import { buildCommunityRegions, communityTopicLabels } from "./community-regions";
+import { buildCommunityCircles, communityTopicLabels } from "./community-regions";
 import {
 	edgeVisible,
 	evidenceText,
@@ -114,7 +114,7 @@ export function mountGraph3D(
 	const renderer = new WebGLRenderer({ antialias: true, alpha: true });
 	if (!renderer.getContext()) {
 		renderer.dispose();
-		throw new Error("无法创建 WebGL，这段嵌入显示不了三维图谱。");
+		throw new Error("无法创建 WebGL，这段嵌入显示不了图谱。");
 	}
 	renderer.outputColorSpace = SRGBColorSpace;
 	// 背景交给 CSS 径向渐变，对齐图谱面板；画布自身透明。
@@ -139,7 +139,6 @@ export function mountGraph3D(
 	const labelLayer = document.createElement("div");
 	labelLayer.className = "cpo-embed-labels";
 	viewport.append(labelLayer);
-	viewport.classList.toggle("cpo-kumu-view", layoutMode === "kumu");
 
 	const scene = new Scene();
 
@@ -259,10 +258,10 @@ export function mountGraph3D(
 	controls.screenSpacePanning = true;
 
 	const applyPointerMode = (): void => {
-		const flat = layoutMode !== "force3d";
-		controls.mouseButtons.LEFT = flat ? MOUSE.PAN : MOUSE.ROTATE;
+		// 只剩平面布局：左键平移，右键旋转视角，中键缩放。
+		controls.mouseButtons.LEFT = MOUSE.PAN;
 		controls.mouseButtons.MIDDLE = MOUSE.DOLLY;
-		controls.mouseButtons.RIGHT = flat ? MOUSE.ROTATE : MOUSE.PAN;
+		controls.mouseButtons.RIGHT = MOUSE.ROTATE;
 		// One finger scrolls the note (touch-action: pan-y); two fingers zoom/pan.
 		controls.touches.ONE = null;
 		controls.touches.TWO = TOUCH.DOLLY_PAN;
@@ -278,8 +277,7 @@ export function mountGraph3D(
 		}
 		controls.minDistance = Math.max(30, maxReach * 0.25);
 		controls.maxDistance = maxReach * 5;
-		if (layoutMode === "force3d") camera.position.set(maxReach * 0.2, maxReach * 0.35, maxReach * 1.45);
-		else camera.position.set(0, maxReach * 0.08, maxReach * 1.65);
+		camera.position.set(0, maxReach * 0.08, maxReach * 1.65);
 		controls.target.set(0, 0, 0);
 		controls.update();
 		frameDistance = camera.position.distanceTo(controls.target);
@@ -337,7 +335,7 @@ export function mountGraph3D(
 		);
 
 	/** 物理 simmer 只对力导向布局启用；时间/放射布局的位置本身有意义。 */
-	const physicsOn = (): boolean => layoutMode === "force2d" || layoutMode === "kumu";
+	const physicsOn = (): boolean => layoutMode === "force2d";
 
 	/**
 	 * 对齐图谱面板的 Obsidian 式动态：拖动节点时邻居弹性跟随，松手后缓慢
@@ -522,7 +520,7 @@ export function mountGraph3D(
 		const width = viewport.clientWidth;
 		const height = viewport.clientHeight;
 		if (options.labels !== "off") {
-		const gap = layoutMode === "kumu" ? 28 : options.labels === "both" ? 58 : 44;
+		const gap = options.labels === "both" ? 58 : 44;
 		const ranked = [...entries].sort(
 			(a, b) => Number(b.seed) - Number(a.seed) || b.cited - a.cited || a.id.localeCompare(b.id),
 		);
@@ -576,8 +574,9 @@ export function mountGraph3D(
 		communitySvg.setAttribute("height", String(height));
 		communitySvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 		communitySvg.replaceChildren();
-		communitySvg.style.display = layoutMode === "kumu" ? "block" : "none";
-		if (layoutMode !== "kumu") return;
+		// 合并后的平面模式：社区正圆底衬 + 主题词标签。
+		communitySvg.style.display = layoutMode === "force2d" ? "block" : "none";
+		if (layoutMode !== "force2d") return;
 		const projectedPoints = entries.filter((entry) => entry.mesh.visible).map((entry) => {
 			projected.copy(entry.mesh.position).project(camera);
 			return {
@@ -588,29 +587,23 @@ export function mountGraph3D(
 				shown: projected.z <= 1 && projected.x >= -1.2 && projected.x <= 1.2 && projected.y >= -1.2 && projected.y <= 1.2,
 			};
 		});
-		for (const region of buildCommunityRegions(projectedPoints, 22, 3, 10, communityLabels)) {
-			if (region.points.length < 3) continue;
-			const hue = communityColor(region.community).replace("rgb(", "").replace(")", "");
-			const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-			const first = region.points[0]!;
-			const last = region.points[region.points.length - 1]!;
-			let d = `M ${(last.x + first.x) / 2} ${(last.y + first.y) / 2}`;
-			for (let i = 0; i < region.points.length; i++) {
-				const point = region.points[i]!;
-				const next = region.points[(i + 1) % region.points.length]!;
-				d += ` Q ${point.x} ${point.y} ${(point.x + next.x) / 2} ${(point.y + next.y) / 2}`;
-			}
-			path.setAttribute("d", `${d} Z`);
-			path.setAttribute("fill", `rgba(${hue}, 0.04)`);
-			path.setAttribute("stroke", `rgba(${hue}, 0.25)`);
-			path.setAttribute("stroke-width", "1");
-			communitySvg.append(path);
+		for (const circle of buildCommunityCircles(projectedPoints, 22, 3, 10, communityLabels)) {
+			const hue = communityColor(circle.community).replace("rgb(", "").replace(")", "");
+			const disk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+			disk.setAttribute("cx", String(circle.cx));
+			disk.setAttribute("cy", String(circle.cy));
+			disk.setAttribute("r", String(circle.radius));
+			disk.setAttribute("fill", `rgba(${hue}, 0.04)`);
+			disk.setAttribute("stroke", `rgba(${hue}, 0.25)`);
+			disk.setAttribute("stroke-width", "1");
+			communitySvg.append(disk);
 			const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-			label.setAttribute("x", String(Math.max(6, region.left + 7)));
-			label.setAttribute("y", String(Math.max(18, region.top + 16)));
+			label.setAttribute("x", String(Math.max(6, Math.min(width - 6, circle.cx))));
+			label.setAttribute("y", String(Math.max(14, circle.cy - circle.radius - 6)));
 			label.setAttribute("fill", "#9aa0a6");
 			label.setAttribute("font-size", "10");
-			label.textContent = region.label;
+			label.setAttribute("text-anchor", "middle");
+			label.textContent = circle.label;
 			communitySvg.append(label);
 		}
 	};
@@ -702,7 +695,7 @@ export function mountGraph3D(
 		moved = false;
 		// 平面布局里左键按住节点直接拖动（对齐面板/Obsidian）；空白处仍是平移。
 		// 触屏单指留给笔记滚动，不触发节点拖动。
-		if (event.button === 0 && event.pointerType !== "touch" && layoutMode !== "force3d" && setPointer(event)) {
+		if (event.button === 0 && event.pointerType !== "touch" && setPointer(event)) {
 			const hit = pick(event);
 			if (hit.node && hit.node.mesh.visible) {
 				dragNodeId = hit.node.id;
@@ -862,7 +855,6 @@ export function mountGraph3D(
 
 	const applyLayout = (mode: LayoutMode): void => {
 		layoutMode = mode;
-		const kumuStyle = mode === "kumu";
 		simAlpha = 0;
 		if (simFrame !== null) {
 			window.cancelAnimationFrame(simFrame);
@@ -871,7 +863,6 @@ export function mountGraph3D(
 		dragNodeId = null;
 		controls.enabled = true;
 		zoomGoal = null;
-		viewport.classList.toggle("cpo-kumu-view", kumuStyle);
 		placed = placeLayout(mode, graph.nodes, graph.edges, graph.seedScore);
 		const next = new Map(placed.map((node) => [node.id, node]));
 		for (const entry of entries) {

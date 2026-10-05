@@ -1,5 +1,5 @@
 import { communityColor, communityRgba, detectCommunities } from "./communities";
-import { buildCommunityRegions, communityTopicLabels } from "./community-regions";
+import { buildCommunityCircles, communityTopicLabels } from "./community-regions";
 import { focusNodes } from "./graph-filter";
 import { authorYear } from "./labels";
 import type { ColorMode, LayoutMode } from "./layout-modes";
@@ -151,12 +151,11 @@ export class SimilarityMap {
 	}
 
 	setLayout(mode: LayoutMode): void {
-		this.layoutMode = mode === "force3d" ? "force2d" : mode;
+		this.layoutMode = mode;
 		this.simAlpha = 0;
-		this.stage.classList?.toggle("cpo-kumu-view", this.layoutMode === "kumu");
 		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
-		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
-		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#f7f6f3");
+		this.bgStart = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
+		this.bgEnd = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#f7f6f3");
 		this.rebuild(this.nodes, false);
 	}
 
@@ -224,8 +223,8 @@ export class SimilarityMap {
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 		this.fontFamily = getComputedStyle(this.stage).fontFamily || "sans-serif";
 		const canvasStyles = getComputedStyle(this.canvas);
-		this.bgStart = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#ffffff");
-		this.bgEnd = this.layoutMode === "kumu" ? "#ffffff" : themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#f7f6f3");
+		this.bgStart = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-start"), "#ffffff");
+		this.bgEnd = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#f7f6f3");
 		this.graphNode = themeColor(canvasStyles.getPropertyValue("--graph-node"), "#8a7fd8");
 		this.graphNodeFocused = themeColor(canvasStyles.getPropertyValue("--graph-node-focused"), "#4a90d9");
 		this.graphLine = themeColor(canvasStyles.getPropertyValue("--graph-line"), "rgba(90, 96, 106, 0.28)");
@@ -265,9 +264,9 @@ export class SimilarityMap {
 		this.draw();
 	}
 
-	/** Physics simmer only for force layouts; temporal/radial positions carry meaning. */
+	/** Physics simmer only for the force layout; temporal/radial positions carry meaning. */
 	private physicsOn(): boolean {
-		return this.layoutMode === "force2d" || this.layoutMode === "kumu";
+		return this.layoutMode === "force2d";
 	}
 
 	/**
@@ -342,8 +341,14 @@ export class SimilarityMap {
 			const b = nodes[bi]!;
 			const dist = Math.hypot(b.x - a.x, b.y - a.y) || 0.01;
 			const weight = clamp(edge.weight, 0, 1);
-			const rest = 88 + (1 - weight) * 200;
-			const spring = 0.025 + weight * 0.07;
+			let rest = 88 + (1 - weight) * 200;
+			let spring = 0.025 + weight * 0.07;
+			// 与初始布局一致：同社区边更短更紧，保持群落团聚。
+			const communityA = this.communities.get(edge.source);
+			if (communityA !== undefined && communityA === this.communities.get(edge.target)) {
+				rest *= 0.6;
+				spring *= 1.4;
+			}
 			const disp = (dist - rest) * spring * alpha;
 			const dx = ((b.x - a.x) / dist) * disp;
 			const dy = ((b.y - a.y) / dist) * disp;
@@ -748,7 +753,7 @@ export class SimilarityMap {
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
 		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
-		if (this.layoutMode === "kumu") this.drawCommunityRegions(ctx, false);
+		if (this.layoutMode === "force2d") this.drawCommunityRegions(ctx, false);
 
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
@@ -783,7 +788,7 @@ export class SimilarityMap {
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
 		}
-		if (this.layoutMode === "kumu") this.drawCommunityRegions(ctx, true);
+		if (this.layoutMode === "force2d") this.drawCommunityRegions(ctx, true);
 
 		const ordered = [...this.nodes].sort((a, b) => a.radius - b.radius || (a.isSeed ? 1 : 0) - (b.isSeed ? 1 : 0));
 		for (const node of ordered) {
@@ -827,7 +832,7 @@ export class SimilarityMap {
 	}
 
 	private drawCommunityRegions(ctx: CanvasRenderingContext2D, labelsOnly: boolean): void {
-		const regions = buildCommunityRegions(
+		const circles = buildCommunityCircles(
 			this.nodes.map((node) => ({
 				id: node.id,
 				community: this.communities.get(node.id) ?? 0,
@@ -841,36 +846,26 @@ export class SimilarityMap {
 			this.communityLabels,
 		);
 		ctx.save();
-		ctx.textAlign = "left";
-		for (const region of regions) {
-			if (region.points.length < 3) continue;
-			const color = communityRgba(region.community, 1);
+		for (const circle of circles) {
+			const color = communityRgba(circle.community, 1);
 			if (!labelsOnly) {
-				const first = region.points[0]!;
-				const last = region.points[region.points.length - 1]!;
 				ctx.beginPath();
-				ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
-				for (let i = 0; i < region.points.length; i++) {
-					const point = region.points[i]!;
-					const next = region.points[(i + 1) % region.points.length]!;
-					ctx.quadraticCurveTo(point.x, point.y, (point.x + next.x) / 2, (point.y + next.y) / 2);
-				}
-				ctx.closePath();
+				ctx.arc(circle.cx, circle.cy, circle.radius, 0, Math.PI * 2);
 				ctx.fillStyle = color.replace(", 1)", ", 0.04)");
 				ctx.strokeStyle = color.replace(", 1)", ", 0.25)");
 				ctx.lineWidth = 1;
 				ctx.fill();
 				ctx.stroke();
 			}
-
-			const label = region.label;
+			// 标签放在圆圈正上方居中，超出画布时收回画布内。
 			ctx.font = `10px ${this.fontFamily}`;
-			const labelWidth = ctx.measureText(label).width;
-			const x = Math.max(6, Math.min(this.cssWidth - labelWidth - 6, region.left + 6));
-			const y = Math.max(8, Math.min(this.cssHeight - 22, region.top + 8));
+			const labelWidth = ctx.measureText(circle.label).width;
+			const x = Math.max(6 + labelWidth / 2, Math.min(this.cssWidth - labelWidth / 2 - 6, circle.cx));
+			const y = Math.max(16, circle.cy - circle.radius - 8);
 			ctx.fillStyle = "#9aa0a6";
+			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
-			ctx.fillText(label, x, y + 12, labelWidth);
+			ctx.fillText(circle.label, x, y, labelWidth);
 		}
 		ctx.restore();
 	}
@@ -924,8 +919,7 @@ export class SimilarityMap {
 	}
 
 	private rebuild(nodes: readonly PaperNode[], resetView: boolean): void {
-		const mode = this.layoutMode === "force3d" ? "force2d" : this.layoutMode;
-		const placed = new Map(placeLayout(mode, nodes, this.edges, this.seedScore).map((node) => [node.id, node]));
+		const placed = new Map(placeLayout(this.layoutMode, nodes, this.edges, this.seedScore).map((node) => [node.id, node]));
 		this.nodes = nodes.map((node) => {
 			const at = placed.get(node.id);
 			return {
@@ -970,7 +964,6 @@ export class SimilarityMap {
 	}
 
 	private drawLabels(ctx: CanvasRenderingContext2D): void {
-		const kumu = this.layoutMode === "kumu";
 		const ranked = [...this.nodes].sort((a, b) => b.citedByCount - a.citedByCount);
 		const prominent = new Set<string>();
 		const seed = this.nodes.find((node) => node.isSeed);
@@ -981,19 +974,16 @@ export class SimilarityMap {
 
 		ctx.textBaseline = "middle";
 		ctx.font = `11px ${this.fontFamily}`;
-		// Kumu 标签在节点正下方居中，其余布局在右侧。
-		ctx.textAlign = kumu ? "center" : "left";
+		ctx.textAlign = "left";
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
 		const place = (node: DrawNode, maxWidth: number, alpha = 1): void => {
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
-			const x = kumu ? cx : cx + node.radius + 6;
-			const y = kumu ? cy + node.radius + 11 : cy;
+			const x = cx + node.radius + 6;
+			const y = cy;
 			const text = fitText(ctx, authorYear(node), maxWidth);
 			const width = ctx.measureText(text).width;
-			const box = kumu
-				? { x: x - width / 2, y: y - 8, w: width, h: 16 }
-				: { x, y: y - 8, w: width, h: 16 };
+			const box = { x, y: y - 8, w: width, h: 16 };
 			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
 			if (!must && overlaps(box, boxes)) return;
 			boxes.push(box);

@@ -45,6 +45,7 @@ import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
+import { observeResponsiveMode } from "./responsive";
 import { groupStagedBySeed, stageKey, stageSourceLabel, toggleStaged } from "./staging";
 
 export interface GraphAppHandle {
@@ -199,7 +200,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
 	const map = new SimilarityMap(canvas, tooltip, stage);
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, { onResize: () => map.resize() });
-	let mapFilter: GraphFilter = { ...emptyFilter(), kinds: { direct: true, cocitation: true, coupling: true, weak: false } };
+	let mapFilter: GraphFilter = emptyFilter();
 	map.setKinds(mapFilter.kinds);
 	buildLegend(kindLegend, () => mapFilter, (next) => {
 		mapFilter = next;
@@ -567,7 +568,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	chrome = mountGraphChrome(toolsHost, {
-		layouts: ["kumu", "force2d", "temporal", "radial"],
+		layouts: ["force2d", "temporal", "radial"],
 		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
@@ -984,12 +985,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	window.addEventListener("research-connected-settings", onSettings);
 
-	const observer = new ResizeObserver(() => {
-		root.classList.toggle("is-narrow", root.clientWidth < 780);
+	const observer = observeResponsiveMode(root, () => {
 		map.resize();
 		if (!map.hasAdjusted()) map.fit();
 	});
-	observer.observe(root);
 	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
 

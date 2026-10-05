@@ -15,6 +15,52 @@ export interface CommunityRegion {
 	top: number;
 }
 
+export interface CommunityCircle {
+	community: number;
+	members: number;
+	label: string;
+	cx: number;
+	cy: number;
+	radius: number;
+}
+
+/**
+ * 正圆社区轮廓（合并后的平面模式底衬）：圆心取成员质心，半径覆盖最远
+ * 成员再加 padding。比凸包更稳定——力导向布局下成员抖动不会让轮廓变形。
+ */
+export function buildCommunityCircles(
+	points: readonly CommunityPoint[],
+	padding = 24,
+	minimumMembers = 3,
+	maximumRegions = 10,
+	labels: ReadonlyMap<number, string> = new Map(),
+): CommunityCircle[] {
+	const groups = new Map<number, Array<{ x: number; y: number }>>();
+	for (const point of points) {
+		if (!point.shown) continue;
+		const group = groups.get(point.community) ?? [];
+		group.push({ x: point.x, y: point.y });
+		groups.set(point.community, group);
+	}
+	return [...groups.entries()]
+		.filter(([, members]) => members.length >= minimumMembers)
+		.sort((a, b) => b[1].length - a[1].length || a[0] - b[0])
+		.slice(0, maximumRegions)
+		.map(([community, members]) => {
+			const cx = members.reduce((sum, point) => sum + point.x, 0) / members.length;
+			const cy = members.reduce((sum, point) => sum + point.y, 0) / members.length;
+			const farthest = members.reduce((max, point) => Math.max(max, Math.hypot(point.x - cx, point.y - cy)), 0);
+			return {
+				community,
+				members: members.length,
+				label: labels.get(community)?.trim() || `社区 ${community + 1}`,
+				cx,
+				cy,
+				radius: farthest + padding,
+			};
+		});
+}
+
 /** Build gently padded convex regions for the largest visible communities. */
 export function buildCommunityRegions(
 	points: readonly CommunityPoint[],

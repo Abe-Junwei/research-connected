@@ -43,8 +43,9 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * `yearFrom` / `yearTo`: keep papers in that inclusive year range. The seed always stays.
  * `language`, `type`, `concept`: optional preset filters. They apply only when OpenAlex sent that field.
  * `minCoCite` / `minShared`: hide co-citation edges below that co-cite count, and coupling edges below that shared-reference count. Default 1.
- * `layout`: `temporal` (default; year on X), `kumu` / `community` (compact
- * communities), `radial`, `force2d`, or `force3d`.
+ * `layout`: `temporal` (default; year on X), `radial`, or `force2d` (force
+ * layout with community circles). Legacy `kumu` / `community` and `force3d`
+ * values map to `force2d`.
  * `color`: `topic` (default; seed-topic similarity), `graph` (mono accent),
  * `community`, or `year`.
  * `doi`, `openalex` / `id`, or `seed`. A bare DOI or `W…` id also works.
@@ -211,14 +212,14 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "layout") {
 			const parsed = readLayout(value);
-			if (!parsed) return { ok: false, error: "layout 只能是 temporal、kumu、radial、force2d 或 force3d。" };
+			if (!parsed) return { ok: false, error: "layout 只能是 temporal、radial 或 force2d。" };
 			layout = parsed;
 			continue;
 		}
 		if (key === "color") {
 			const parsed = readColor(value);
 			if (!parsed) return { ok: false, error: "color 只能是 topic、graph、community 或 year。" };
-			color = parsed;
+			// 与图谱面板一致：节点颜色固定为与种子的主题相似度；旧笔记的 color: 仍解析但不生效。
 			continue;
 		}
 		const parsed = readInt(value, key === "mincocite" ? "minCoCite" : "minShared");
@@ -290,11 +291,12 @@ function readAlign(value: string): EmbedAlign | null {
 
 function readLayout(value: string): LayoutMode | null {
 	const key = value.trim().toLowerCase().replace(/[\s_]+/g, "");
-	if (key === "kumu" || key === "community") return "kumu";
+	// kumu/community 与 force3d 都是历史值：圈层已并入平面，三维已移除。
+	if (key === "kumu" || key === "community") return "force2d";
 	if (key === "temporal" || key === "time" || key === "year") return "temporal";
 	if (key === "radial") return "radial";
 	if (key === "force2d" || key === "2d" || key === "flat") return "force2d";
-	if (key === "force3d" || key === "3d") return "force3d";
+	if (key === "force3d" || key === "3d") return "force2d";
 	return null;
 }
 

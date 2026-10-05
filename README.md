@@ -104,7 +104,7 @@ depth: 1
 | `yearFrom:` / `yearTo:` | no | Inclusive year range for the other papers. The seed stays. If both are set and reversed, they are swapped. |
 | `language:` / `type:` / `concept:` | no | Preset filters. They apply only when OpenAlex included that field (`language`, `type`, `concepts`). |
 | `minCoCite:` / `minShared:` | no | Hide co-citation edges below that count, and coupling edges below that shared-reference count. Default 1. |
-| `layout:` | no | `temporal` (default; year on X) or `kumu` / `community` (compact community layout). Legacy `radial`, `force2d`, and `force3d` values are accepted as year layout. |
+| `layout:` | no | `temporal` (default; year on X), `radial` (distance from seed = similarity), or `force2d` (force layout with community circles). Legacy `kumu` / `community` and `force3d` values map to `force2d`. |
 | `color:` | legacy | Accepted for old notes but ignored; node color always shows topic similarity to the seed. |
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
@@ -274,10 +274,9 @@ Official sample-plugin shape: `src/main.ts` bundled by esbuild to `main.js`, plu
 - `src/embed-block.ts` — `connected-papers` and `research-connected` Markdown code blocks
 - `src/embed-syntax.ts` — fence parser (`position`, `width`, `align`, `labels`)
 - `src/embed-mount.ts` — embed chrome, cache, optional depth-2 hop
-- `src/graph-3d.ts` — Three.js view (drag to rotate, labels, typed edges)
+- `src/graph-3d.ts` — WebGL embed view (pan/zoom, labels, typed edges, community circles)
 - `src/labels.ts` — author + year labels
 - `src/relation.ts` — edge kind and the Chinese explanation
-- `src/layout-3d.ts` — 3D force layout
 - `src/app.ts` — toolbar, detail sheet, search picker
 - `src/map-canvas.ts` — 2D canvas interaction
 - `src/neighborhood.ts` — sampling and OpenAlex orchestration

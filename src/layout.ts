@@ -14,6 +14,8 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
  * Place the seed at the origin and other papers on a similarity spiral, then
  * relax springs (shorter when the score is higher), repulsion, and collision.
  * The seed stays pinned for the simulation so the map remains centered on it.
+ * When `communities` is given, springs between same-community nodes are
+ * tightened so the detected groups stay visually distinct.
  */
 export function runForceLayout(
 	nodes: ForceNode[],
@@ -21,6 +23,7 @@ export function runForceLayout(
 	seedId: string,
 	seedScore: Map<string, number>,
 	iterations = 320,
+	communities?: ReadonlyMap<string, number>,
 ): void {
 	const index = new Map<string, number>();
 	const others: ForceNode[] = [];
@@ -51,8 +54,16 @@ export function runForceLayout(
 	const springK = new Map<string, number>();
 	for (const edge of edges) {
 		const key = edgeKey(edge.source, edge.target);
-		restLength.set(key, 88 + (1 - clamp(edge.weight, 0, 1)) * 200);
-		springK.set(key, 0.025 + clamp(edge.weight, 0, 1) * 0.07);
+		let rest = 88 + (1 - clamp(edge.weight, 0, 1)) * 200;
+		let k = 0.025 + clamp(edge.weight, 0, 1) * 0.07;
+		// 同社区边更短更紧：让检测出的群落在平面上保持可分辨的团聚。
+		const communityA = communities?.get(edge.source);
+		if (communityA !== undefined && communityA === communities?.get(edge.target)) {
+			rest *= 0.45;
+			k *= 2.2;
+		}
+		restLength.set(key, rest);
+		springK.set(key, k);
 	}
 
 	for (let iter = 0; iter < iterations; iter++) {

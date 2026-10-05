@@ -16,6 +16,7 @@ import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation } from "../src/relation";
 import { layoutTimeline, TIMELINE_MIN_WIDTH, UNKNOWN_LIMIT, ZONE_LIMIT } from "../src/timeline-view";
 import { placeLayout } from "../src/layout-modes";
+import { runForceLayout } from "../src/layout";
 import { clampSidebarWidth } from "../src/sidebar-resize";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { syntheticGraph } from "./perf-fixture";
@@ -155,13 +156,31 @@ function compactCommunityLayout(): void {
 		edge({ source: "C2", target: "C3", weight: 0.8 }),
 		edge({ source: "C3", target: "C1", weight: 0.8 }),
 	];
-	const placed = placeLayout("kumu", nodes, edges, new Map([["S", 1]]));
+	const placed = placeLayout("force2d", nodes, edges, new Map([["S", 1]]));
 	const byId = new Map(placed.map((node) => [node.id, node]));
 	const seed = byId.get("S")!;
-	assert.ok(Math.hypot(seed.x, seed.y) < 1, "种子论文固定在圈层布局中心");
-	const width = Math.max(...placed.map((node) => node.x)) - Math.min(...placed.map((node) => node.x));
-	const height = Math.max(...placed.map((node) => node.y)) - Math.min(...placed.map((node) => node.y));
-	assert.ok(width < 360 && height < 360, "多个社区的默认包围盒保持紧凑");
+	assert.ok(Math.hypot(seed.x, seed.y) < 1, "种子论文固定在平面布局中心");
+	for (const node of placed) {
+		assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y), "平面布局坐标有限");
+	}
+
+	// 同社区边收紧：链式图 A-B-C-D，AB/CD 属社区 0/1，BC 跨社区。
+	const chain = (): Array<{ id: string; x: number; y: number; radius: number }> =>
+		["A", "B", "C", "D"].map((id) => ({ id, x: 0, y: 0, radius: 8 }));
+	const chainEdges = [edge({ source: "A", target: "B", weight: 0.5 }), edge({ source: "B", target: "C", weight: 0.5 }), edge({ source: "C", target: "D", weight: 0.5 })];
+	const dist = (ns: Array<{ id: string; x: number; y: number }>, a: string, b: string): number => {
+		const na = ns.find((n) => n.id === a)!;
+		const nb = ns.find((n) => n.id === b)!;
+		return Math.hypot(na.x - nb.x, na.y - nb.y);
+	};
+	const plain = chain();
+	runForceLayout(plain, chainEdges, "A", new Map());
+	const cohesive = chain();
+	runForceLayout(cohesive, chainEdges, "A", new Map(), 320, new Map([["A", 0], ["B", 0], ["C", 1], ["D", 1]]));
+	assert.ok(
+		dist(cohesive, "C", "D") < dist(plain, "C", "D") - 4,
+		"同社区边收紧后，社区内间距明显小于无凝聚时",
+	);
 }
 
 function evidenceSidebarSizing(): void {

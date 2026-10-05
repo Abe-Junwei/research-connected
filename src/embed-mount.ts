@@ -3,12 +3,12 @@ import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClie
 import { mergeOpenCitation } from "./citation-evidence";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
-import { buildFilters, buildLegend } from "./filter-controls";
+import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
-import type { ColorMode, LayoutMode } from "./layout-modes";
+import type { LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
@@ -18,6 +18,7 @@ import type { ConnectedPapersSettings } from "./settings-model";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { mountSidebarResize } from "./sidebar-resize";
+import { observeResponsiveMode } from "./responsive";
 
 export interface EmbedDeps {
 	source: string;
@@ -150,7 +151,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	drawerTitle.textContent = "筛选 / 图例";
 	const tip = document.createElement("p");
 	tip.className = "cpo-side-tip";
-	tip.textContent = "拖拽平移，⌘/Ctrl+滚动缩放；三维下拖拽旋转、右键平移。点选节点或连线，详情在右侧栏展开。";
+	tip.textContent = "拖拽平移，⌘/Ctrl+滚动缩放。点选节点或连线，详情在右侧栏展开。";
 	const kindLegend = document.createElement("div");
 	kindLegend.className = "cpo-drawer-legend";
 	const legend = document.createElement("div");
@@ -173,11 +174,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const seedHint = document.createElement("span");
 	seedHint.textContent = "双环 = 种子";
 	legend.append(rampWrap, rampHint, grayHint, sizeHint, seedHint);
-	const filters = document.createElement("div");
-	filters.className = "cpo-embed-filters";
 	const tools = document.createElement("div");
 	tools.classList.add("cpo-drawer-tools");
-	drawer.append(drawerTitle, tip, kindLegend, legend, filters, tools);
+	drawer.append(drawerTitle, tip, kindLegend, legend, tools);
 	stage.append(message, tooltip, graphActions, drawer);
 	body.append(rail, stage);
 	const sidebarResize = document.createElement("div");
@@ -238,14 +237,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		graphView?.setFilter(viewFilter);
 		paintLists();
 	});
-	const facetControls = buildFilters(filters, () => viewFilter, (next) => {
+	legend.after(buildPathToggle(() => viewFilter, (next) => {
 		viewFilter = next;
 		graphView?.setFilter(viewFilter);
 		paintLists();
-	});
+	}));
 	let tab: GraphTab = "graph";
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
-	let colorMode: ColorMode = spec.color;
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
@@ -269,14 +267,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(tools, {
-		layouts: ["kumu", "force2d", "temporal", "radial", "force3d"],
+		layouts: ["force2d", "temporal", "radial"],
 		layout: layoutMode,
 		noteButton: Boolean(deps.createNote),
 		actionsHost: actionsBar,
 		layoutHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
-			graphView?.setLayout(mode);
+			graphView?.setLayout(layoutMode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
@@ -325,10 +323,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, {
 		onResize: () => graphView?.resize(),
 	});
-	const narrowObserver = new ResizeObserver(() => {
-		shell.classList.toggle("is-narrow", shell.clientWidth < 780);
-	});
-	narrowObserver.observe(shell);
+	const narrowObserver = observeResponsiveMode(shell);
 	zoomIn.addEventListener("click", () => graphView?.zoomBy(1.2));
 	zoomOut.addEventListener("click", () => graphView?.zoomBy(1 / 1.2));
 	zoomFit.addEventListener("click", () => graphView?.frame());
@@ -473,7 +468,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					labels: spec.labels,
 					filter: viewFilter,
 					layout: layoutMode,
-					colorMode,
+					colorMode: "topic",
 					// GPU 切换/窗口重开导致上下文丢失时，用缓存数据原地重建图谱，
 					// 避免画布黑屏；连续失败两次就提示手动重载，不无限循环。
 					onContextLost: () => {
@@ -490,7 +485,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			);
 			const remembered = viewStates.get(stateKey);
 			if (remembered) graphView.setCamera(remembered.camera);
-			facetControls.fill(graph.nodes);
 			currentGraph = graph;
 			const span = yearSpan(graph.nodes);
 			if (span) chrome?.setYears(...span);
@@ -498,7 +492,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			paintLists();
 		} catch (error) {
 			message.hidden = false;
-			messageText.textContent = error instanceof Error ? error.message : "三维图谱没有建起来。";
+			messageText.textContent = error instanceof Error ? error.message : "图谱没有建起来。";
 			return;
 		}
 		const seed = graph.nodes.find((node) => node.isSeed);

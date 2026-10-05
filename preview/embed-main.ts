@@ -20,9 +20,11 @@ const doi = params.get("doi") || "10.1038/nature14539";
 const position = params.get("position") || "inline";
 const labels = params.get("labels") || "author-year";
 const width = params.get("width");
+const layout = params.get("layout");
 const offline = params.has("fixture");
 const lines = [`doi: ${doi}`, "height: 640", `position: ${position}`, `labels: ${labels}`];
 if (width) lines.push(`width: ${width}`);
+if (layout) lines.push(`layout: ${layout}`);
 
 mountEmbed(root, {
 	source: lines.join("\n"),

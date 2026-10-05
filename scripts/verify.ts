@@ -21,7 +21,6 @@ import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
 import { runForceLayout } from "../src/layout";
-import { runForceLayout3D } from "../src/layout-3d";
 import { loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
 import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../src/paper";
@@ -107,6 +106,8 @@ function unit(): void {
 	assert.ok((topicSimilarity(topicPaper?.topicTags, [{ id: "https://openalex.org/T1", name: "Language", score: 1 }]) ?? 0) > 0);
 	assert.equal(topicSimilarity(undefined, topicPaper?.topicTags), null);
 	assert.notEqual(topicSimilarityColor(1), topicSimilarityColor(0));
+	assert.match(topicSimilarityColor(1), /^rgb\(/, "embed WebGL parser only accepts rgb()");
+	assert.match(topicSimilarityColor(null), /^rgb\(/);
 	const topicGroups = communityTopicLabels([
 		{ id: "a", topicTags: [{ name: "Language", score: 0.8 }, { name: "Syntax", score: 0.5 }] },
 		{ id: "b", topicTags: [{ name: "Language", score: 0.7 }] },
@@ -230,8 +231,11 @@ function unit(): void {
 	const radialA = radial.find((node) => node.id === "A");
 	const radialB = radial.find((node) => node.id === "B");
 	assert.ok(Math.hypot(radialA?.x ?? 0, radialA?.y ?? 0) > Math.hypot(radialB?.x ?? 0, radialB?.y ?? 0));
-	const kumu = placeLayout("kumu", layoutNodes, [weighted("S", "A", 0.7), weighted("A", "B", 0.7)], new Map());
-	assert.ok(kumu.every((node) => node.z === 0 && node.radius <= 8), "Kumu 圈层布局是二维小节点地图");
+	const force = placeLayout("force2d", layoutNodes, [weighted("S", "A", 0.7), weighted("A", "B", 0.7)], new Map([["S", 1]]));
+	assert.ok(force.every((node) => node.z === 0), "平面布局是二维地图");
+	const forceSeed = force.find((node) => node.id === "S");
+	assert.equal(forceSeed?.x, 0, "平面布局种子固定在中心");
+	assert.equal(forceSeed?.y, 0);
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
@@ -371,15 +375,18 @@ function unit(): void {
 	assert.equal(laidOut.ok, true);
 	if (laidOut.ok) {
 		assert.equal(laidOut.spec.layout, "force2d", "force layouts stay distinct");
-		assert.equal(laidOut.spec.color, "year", "color: year selects year coloring");
+		assert.equal(laidOut.spec.color, "topic", "color: is accepted but ignored; nodes use topic similarity");
 	}
+	const legacy3d = parseEmbed("doi: 10.1038/nature14539\nlayout: force3d\n");
+	assert.equal(legacy3d.ok, true);
+	if (legacy3d.ok) assert.equal(legacy3d.spec.layout, "force2d", "force3d maps to force2d");
 	const topicColor = parseEmbed("doi: 10.1038/nature14539\ncolor: topic\n");
 	assert.equal(topicColor.ok, true);
 	if (topicColor.ok) assert.equal(topicColor.spec.color, "topic");
 	assert.equal(parseEmbed("doi: 10.1038/nature14539\nlayout: sidebar\n").ok, false);
 	const kumuEmbed = parseEmbed("doi: 10.1038/nature14539\nlayout: kumu\n");
-	assert.equal(kumuEmbed.ok, true, "笔记内嵌可显式切换到 Kumu 风格社区布局");
-	if (kumuEmbed.ok) assert.equal(kumuEmbed.spec.layout, "kumu");
+	assert.equal(kumuEmbed.ok, true, "历史 kumu 值仍被接受");
+	if (kumuEmbed.ok) assert.equal(kumuEmbed.spec.layout, "force2d", "kumu 映射到合并后的平面布局");
 	const yearNodes = [
 		{ ...paper("Y1", "seed", 1), year: 2000 },
 		{ ...paper("Y2", "reference", 1), year: 2010 },
@@ -399,33 +406,6 @@ function unit(): void {
 	}
 	assert.equal(parseEmbed("deep learning").ok, false);
 	assert.equal(parseEmbed("").ok, false);
-
-	const nodes3 = [
-		{ id: "S", x: 0, y: 0, z: 0, radius: 14 },
-		{ id: "A", x: 0, y: 0, z: 0, radius: 10 },
-		{ id: "B", x: 0, y: 0, z: 0, radius: 8 },
-		{ id: "C", x: 0, y: 0, z: 0, radius: 12 },
-	];
-	runForceLayout3D(
-		nodes3,
-		[weighted("S", "A", 0.8), weighted("S", "B", 0.2), weighted("A", "C", 0.5)],
-		"S",
-		new Map([
-			["S", 1],
-			["A", 0.8],
-			["B", 0.2],
-			["C", 0.4],
-		]),
-	);
-	const seed3 = nodes3.find((node) => node.id === "S");
-	assert.equal(seed3?.x, 0);
-	assert.equal(seed3?.y, 0);
-	assert.equal(seed3?.z, 0);
-	for (const node of nodes3) {
-		assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y) && Number.isFinite(node.z));
-	}
-	const zs = nodes3.map((node) => node.z);
-	assert.ok(Math.max(...zs) - Math.min(...zs) > 20);
 }
 
 const getJson: GetJson = async (url, init) => {
