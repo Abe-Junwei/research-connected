@@ -140,6 +140,48 @@ export function edgeCitationPairs(edge: GraphEdge): Array<{ citingId: string; ci
 	return [];
 }
 
+/**
+ * First directed pair on this edge that still lacks S2 context/intents.
+ * Similarity-only edges (direct === "none") yield null — no S2 fetch.
+ */
+export function edgePairNeedingS2Context(
+	edge: GraphEdge,
+	getEvidence: (citingId: string, citedId: string) => CitationEvidence | null,
+): { citingId: string; citedId: string } | null {
+	for (const pair of edgeCitationPairs(edge)) {
+		const existing = getEvidence(pair.citingId, pair.citedId);
+		if (!existing?.contexts.length && !existing?.intents.length) return pair;
+	}
+	return null;
+}
+
+/** Merge S2 reference rows whose cited DOI matches; returns whether any row applied. */
+export function mergeS2CitationsForPair(
+	store: CitationEvidenceStore,
+	citingId: string,
+	citedId: string,
+	citedDoi: string,
+	citations: readonly SemanticCitation[],
+	doiOf: (raw: string | null | undefined) => string | null,
+): boolean {
+	let matched = false;
+	for (const citation of citations) {
+		if (doiOf(citation.citedPaper?.externalIds?.DOI) !== citedDoi) continue;
+		store.set(evidenceFromSemanticCitation(citingId, citedId, citation));
+		matched = true;
+	}
+	return matched;
+}
+
+/** Stale async guard: only refresh the detail sheet for the still-selected edge. */
+export function edgeDetailStillCurrent(
+	selectedEdge: GraphEdge | null,
+	edge: GraphEdge,
+	alive: boolean,
+): boolean {
+	return alive && selectedEdge === edge;
+}
+
 /** Sources describe this directed citation, never just the paper metadata. */
 export function mergeOpenCitation(graph: SimilarityGraph, citingId: string, citedId: string): void {
 	const a = graph.nodes.find(p => p.id === citingId);

@@ -1,12 +1,29 @@
 import assert from "node:assert/strict";
-import { CitationEvidenceStore, mergeOpenCitation, evidenceFromSemanticCitation } from "../src/citation-evidence";
+import {
+	CitationEvidenceStore,
+	edgeDetailStillCurrent,
+	edgePairNeedingS2Context,
+	evidenceFromSemanticCitation,
+	mergeOpenCitation,
+	mergeS2CitationsForPair,
+} from "../src/citation-evidence";
 import { doisFromOpenCitation, SemanticScholarClient } from "../src/citation-sources";
 import { SimilarityMap } from "../src/map-canvas";
 import { buildNarrativeEvidence, validateNarrative } from "../src/narrative";
 import { summarizeWithLlmPost } from "../src/llm";
 import type { SimilarityGraph } from "../src/neighborhood";
 import type { GraphEdge, PaperNode } from "../src/types";
-import { stageKey, toggleStaged } from "../src/staging";
+import { normalizeDoi } from "../src/paper";
+import {
+	groupStagedBySeed,
+	normalizeStagedList,
+	stageKey,
+	stageSourceLabel,
+	toggleStaged,
+	wrapStagedList,
+} from "../src/staging";
+import { findBudgetedCitationPath, resolvePathEndpoint } from "../src/doi-path";
+import { shortId } from "../src/paper";
 
 export async function verifyEvidence(): Promise<void> {
 	const paper = (id: string, seed = false): PaperNode => ({
@@ -35,10 +52,25 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.influential, false);
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.relation, "method");
 	assert.equal(evidenceFromSemanticCitation("a", "b", {}).influential, undefined);
-	const staged = toggleStaged([], prior, seed.id, "reference");
+	const staged = toggleStaged([], prior, seed.id, "种子引用了它 · OpenAlex");
 	assert.equal(staged.length, 1);
 	assert.equal(stageKey(staged[0]!), "W1\0W2");
-	assert.equal(toggleStaged(staged, prior, seed.id, "reference").length, 0);
+	assert.equal(toggleStaged(staged, prior, seed.id, "种子引用了它 · OpenAlex").length, 0);
+	const wrapped = wrapStagedList(staged);
+	assert.equal(wrapped.version, 1);
+	assert.equal(normalizeStagedList(wrapped).length, 1);
+	assert.equal(normalizeStagedList(staged).length, 1, "legacy bare array still loads");
+	assert.equal(normalizeStagedList(null).length, 0);
+	const otherSeed = toggleStaged(staged, later, "W9", "它引用了种子 · OpenAlex");
+	assert.deepEqual(groupStagedBySeed(otherSeed).map((g) => g.seedId), ["W1", "W9"]);
+	const citeEdge: GraphEdge = {
+		source: "W1", target: "W2", weight: 0.5, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target",
+	};
+	assert.equal(stageSourceLabel(prior, seed.id, citeEdge, null), "种子引用了它 · OpenAlex");
+	assert.equal(
+		stageSourceLabel(prior, seed.id, { ...citeEdge, direct: "none" }, null),
+		"引用了种子 · OpenAlex",
+	);
 	assert.deepEqual(doisFromOpenCitation({ citing: "[index] => omid:1 doi:10.1/ABC; doi:10.2/DEF" }).citing, ["10.1/abc", "10.2/def"]);
 	const evidence = buildNarrativeEvidence(graph, false);
 	assert.equal(evidence.priorWorks[0]!.id, "W2");
@@ -66,6 +98,70 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(result.partial, false); assert.equal(result.data.length, 1);
 	assert.equal(new URL(urls[1]!).searchParams.get("offset"), "1000");
 	await client.referenceEvidence("10.1/fixture"); assert.equal(urls.length, 2, "cache reuses pages");
+
+	// Lazy-load S2 context: directed edges only; reuse by citing DOI; stale selection ignored.
+	const store = new CitationEvidenceStore();
+	const getEv = (citingId: string, citedId: string) => store.get(citingId, citedId);
+	const directed: GraphEdge = {
+		source: "W3", target: "W1", weight: 0.4, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target",
+	};
+	const similar: GraphEdge = { ...directed, direct: "none", sharedRefs: 3, coupling: 0.2 };
+	assert.equal(edgePairNeedingS2Context(similar, getEv), null, "similarity edges must not request S2");
+	assert.deepEqual(edgePairNeedingS2Context(directed, getEv), { citingId: "W3", citedId: "W1" });
+	store.set(evidenceFromSemanticCitation("W3", "W1", { intents: ["method"], contexts: ["uses"] }));
+	assert.equal(edgePairNeedingS2Context(directed, getEv), null, "already-filled pair skips fetch");
+	const fresh = new CitationEvidenceStore();
+	const rows = [
+		{ citedPaper: { externalIds: { DOI: "10.1/OTHER" } }, intents: ["background"], contexts: ["nope"] },
+		{ citedPaper: { externalIds: { DOI: "10.1038/nature14539" } }, intents: ["method"], contexts: ["uses method"] },
+	];
+	assert.equal(
+		mergeS2CitationsForPair(fresh, "W3", "W1", "10.1038/nature14539", rows, normalizeDoi),
+		true,
+	);
+	assert.deepEqual(fresh.get("W3", "W1")?.intents, ["method"]);
+	assert.equal(mergeS2CitationsForPair(fresh, "W3", "W1", "10.9/missing", rows, normalizeDoi), false);
+	assert.equal(edgeDetailStillCurrent(directed, directed, true), true);
+	assert.equal(edgeDetailStillCurrent(similar, directed, true), false, "switching edges must not refresh the old detail");
+	assert.equal(edgeDetailStillCurrent(directed, directed, false), false);
+	const reused = new Map<string, Promise<unknown>>();
+	const citingDoi = "10.1/citer";
+	let fetches = 0;
+	const fetchOnce = () => {
+		let request = reused.get(citingDoi);
+		if (!request) {
+			fetches++;
+			request = Promise.resolve(rows);
+			reused.set(citingDoi, request);
+		}
+		return request;
+	};
+	await fetchOnce();
+	await fetchOnce();
+	assert.equal(fetches, 1, "same citing DOI reuses one in-flight request");
+
+	// Budgeted DOI citation path over sampled reference lists.
+	const lists = new Map<string, string[]>([
+		["W1", ["W2", "W9"]],
+		["W2", ["W3"]],
+		["W4", ["W3"]],
+	]);
+	const path = findBudgetedCitationPath(lists, "W1", "W3", 50);
+	assert.deepEqual(path.paths[0], ["W1", "W2", "W3"]);
+	assert.equal(path.direction, "citing-to-cited");
+	assert.equal(path.exhausted, false);
+	const reverse = findBudgetedCitationPath(lists, "W3", "W1", 50);
+	assert.deepEqual(reverse.paths[0], ["W3", "W2", "W1"]);
+	assert.equal(reverse.direction, "cited-to-citing");
+	const tight = findBudgetedCitationPath(lists, "W1", "W3", 1);
+	assert.equal(tight.paths.length, 0);
+	assert.equal(tight.exhausted, true, "tiny budget must report early exhaustion");
+	assert.equal(
+		resolvePathEndpoint("10.1038/nature14539", [{ id: "W1", doiUrl: "https://doi.org/10.1038/nature14539" }], normalizeDoi, shortId),
+		"W1",
+	);
+	assert.equal(resolvePathEndpoint("W2", [{ id: "W2", doiUrl: null }], normalizeDoi, shortId), "W2");
+	assert.equal(resolvePathEndpoint("10.9/missing", [{ id: "W1", doiUrl: null }], normalizeDoi, shortId), null);
 
 	// updateGraphData (OpenCitations enrichment path) must keep the user's view state.
 	// Headless: getContext returns null so draw/resize are no-ops; window is stubbed for listeners.

@@ -6,6 +6,7 @@ import {
 	DEFAULT_SETTINGS,
 	type ConnectedPapersSettings,
 } from "./settings";
+import { normalizeStagedList, wrapStagedList } from "./staging";
 import { clamp } from "./visual";
 import { ConnectedPapersView } from "./view";
 
@@ -27,6 +28,18 @@ export default class ConnectedPapersPlugin extends Plugin {
 			name: "Open Research Connected",
 			callback: () => {
 				void this.openView();
+			},
+		});
+
+		this.addCommand({
+			id: "find-doi-citation-path",
+			name: "Find DOI citation path (budgeted)",
+			callback: () => {
+				void (async () => {
+					await this.openView();
+					const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+					if (view instanceof ConnectedPapersView) view.openDoiPathSearch();
+				})();
 			},
 		});
 
@@ -52,14 +65,19 @@ export default class ConnectedPapersPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const stored = (await this.loadData()) as Partial<ConnectedPapersSettings> | null;
+		const stored = (await this.loadData()) as (Partial<ConnectedPapersSettings> & { stagedPapers?: unknown }) | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
 		const maxNodes = Number(this.settings.maxNodes);
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
+		this.settings.stagedPapers = normalizeStagedList(stored?.stagedPapers);
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		// Persist staging as `{ version, items }`; runtime settings keep a flat array.
+		await this.saveData({
+			...this.settings,
+			stagedPapers: wrapStagedList(this.settings.stagedPapers),
+		} as unknown as ConnectedPapersSettings);
 		window.dispatchEvent(new Event("research-connected-settings"));
 	}
 

@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
-import { mountGraphApp } from "./app";
+import { mountGraphApp, type GraphAppHandle } from "./app";
 import { VIEW_TYPE } from "./constants";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
@@ -12,7 +12,7 @@ export interface GraphHost {
 }
 
 export class ConnectedPapersView extends ItemView {
-	private destroyApp: (() => void) | null = null;
+	private appHandle: GraphAppHandle | null = null;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -41,13 +41,17 @@ export class ConnectedPapersView extends ItemView {
 
 	/** Rebuild the pane on a new seed, e.g. from a note embed. */
 	openSeed(target: { kind: "doi" | "openalex"; value: string }): void {
-		this.destroyApp?.();
+		this.appHandle?.destroy();
 		this.contentEl.empty();
 		this.mount(target);
 	}
 
+	openDoiPathSearch(): void {
+		this.appHandle?.openDoiPathSearch();
+	}
+
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
-		this.destroyApp = mountGraphApp(this.contentEl, {
+		this.appHandle = mountGraphApp(this.contentEl, {
 			getSettings: () => this.host.getSettings(),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
@@ -59,9 +63,9 @@ export class ConnectedPapersView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
-		this.destroyApp?.();
-		this.destroyApp = null;
+		this.appHandle?.destroy();
+		this.appHandle = null;
 		this.contentEl.empty();
 		this.contentEl.removeClass("cpo-host");
 	}
-};
+}
