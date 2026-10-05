@@ -3,7 +3,7 @@ import { EXAMPLE_DOI } from "./constants";
 import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { edgeSourcesText, paintAbstractCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import type { LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
@@ -284,16 +284,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		const list = document.createElement("ol");
 		list.className = "cpo-agg-list";
 		for (const row of rows) {
-			const item = document.createElement("li");
-			const button = document.createElement("button");
-			button.type = "button";
-			button.className = "cpo-agg-item";
-			button.textContent = `${row.paper.year ?? "—"} · ${row.paper.title} · ${noun} ${row.count} 次`;
-			button.addEventListener("click", () => {
-				if (graph?.nodes.some((node) => node.id === row.paper.id)) showDetail(row.paper);
+			paintAggregateCard(list, row, noun, (paper) => {
+				if (graph?.nodes.some((node) => node.id === paper.id)) showDetail(paper);
 			});
-			item.append(button);
-			list.append(item);
 		}
 		listPanel.append(list);
 	};

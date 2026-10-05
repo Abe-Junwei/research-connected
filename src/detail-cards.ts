@@ -1,4 +1,5 @@
 import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, type CrossCheckLike } from "./citation-evidence";
+import type { RankedWork } from "./aggregates";
 import { relationFacts, strengthTier, TIER_LABEL } from "./graph-filter";
 import { paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
 import { nonResearchLabel } from "./paper";
@@ -34,6 +35,38 @@ export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
 	if (names.length > AUTHOR_CHIP_LIMIT) el(row, "span", "cpo-chip", `等 ${names.length} 位`);
 }
 
+/** 出处行：期刊名/书名 chip，悬停显示全文。元数据卡与聚合卡共用。 */
+export function paintVenueRow(parent: HTMLElement, paper: PaperNode): void {
+	if (!paper.venue) return;
+	const row = el(parent, "div", "cpo-badge-row cpo-venue-row");
+	el(row, "span", "cpo-chip-label", "出处");
+	const venue = el(row, "span", "cpo-chip cpo-chip-venue", paper.venue);
+	venue.title = paper.venue;
+}
+
+/** 聚合列表（先验/衍生）单条：与元数据卡同一体系的迷你卡，整条可点击。 */
+export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: string, onPick: (paper: PaperNode) => void): void {
+	const item = el(parent, "li", "cpo-agg-entry");
+	const card = el(item, "div", "cpo-card cpo-agg-card");
+	card.setAttribute("role", "button");
+	card.tabIndex = 0;
+	const badges = el(card, "div", "cpo-badge-row");
+	el(badges, "span", "cpo-chip cpo-chip-accent", `${noun} ${row.count} 次`);
+	el(badges, "span", "cpo-chip", row.paper.year === null ? "年份不详" : `${row.paper.year} 年`);
+	el(badges, "span", "cpo-chip cpo-chip-muted", `被引 ${formatCount(row.paper.citedByCount)}`);
+	el(card, "h3", "cpo-card-title", row.paper.title || row.paper.id);
+	paintAuthorChips(card, row.paper);
+	paintVenueRow(card, row.paper);
+	const run = () => onPick(row.paper);
+	card.addEventListener("click", run);
+	card.addEventListener("keydown", (event) => {
+		if (event.key === "Enter" || event.key === " ") {
+			event.preventDefault();
+			run();
+		}
+	});
+}
+
 /** 元数据卡：origin/年份/类型/被引徽章行 + 标题 + 作者 chips + 状态徽章与警告 + 主题 chips。 */
 export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: DetailCrossCheck | null | undefined): void {
 	const card = el(parent, "section", "cpo-card");
@@ -44,12 +77,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	el(badges, "span", "cpo-chip cpo-chip-muted", `被引 ${formatCount(paper.citedByCount)}`);
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
 	paintAuthorChips(card, paper);
-	if (paper.venue) {
-		const row = el(card, "div", "cpo-badge-row cpo-venue-row");
-		el(row, "span", "cpo-chip-label", "出处");
-		const venue = el(row, "span", "cpo-chip cpo-chip-venue", paper.venue);
-		venue.title = paper.venue;
-	}
+	paintVenueRow(card, paper);
 	paintPaperStateBadges(card, paper, check);
 	if (paper.concepts.length > 0) {
 		const topics = el(card, "div", "cpo-badge-row");

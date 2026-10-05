@@ -1,7 +1,7 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, paintAbstractCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
+import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { buildFilters, buildLegend } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -850,23 +850,7 @@ function fillAggregate(
 	}
 	const list = document.createElement("ol");
 	list.className = "cpo-agg-list";
-	for (const row of rows) {
-		const item = document.createElement("li");
-		const button = document.createElement("button");
-		button.type = "button";
-		button.className = "cpo-agg-item";
-		const title = document.createElement("span");
-		title.className = "cpo-agg-title";
-		title.textContent = row.paper.title;
-		const meta = document.createElement("span");
-		meta.className = "cpo-agg-meta";
-		const year = row.paper.year === null ? "年份不详" : String(row.paper.year);
-		meta.textContent = `${year} · ${row.paper.authors} · ${noun} ${row.count} 次`;
-		button.append(title, meta);
-		button.addEventListener("click", () => onPick(row.paper));
-		item.append(button);
-		list.append(item);
-	}
+	for (const row of rows) paintAggregateCard(list, row, noun, onPick);
 	host.append(list);
 }
 

@@ -1410,17 +1410,38 @@
 }
 
 .cpo-agg-list {
-	margin: 0;
-	padding-left: 1.2em;
-}
-
-.cpo-agg-item,
-.cpo-agg-list button {
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cpo-agg-entry {
+	margin: 0;
+}
+
+/* 聚合卡与详情元数据卡同一体系；整条可点击。 */
+.cpo-agg-card {
+	cursor: pointer;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.cpo-agg-card:hover {
+	border-color: var(--cpo-accent);
+}
+
+.cpo-agg-card:focus-visible {
+	outline: 2px solid var(--cpo-accent);
+	outline-offset: 1px;
+}
+
+/* 研究脉络里的论文条目按钮（纯文本行）。 */
+button.cpo-agg-item {
+	display: block;
 	width: 100%;
-	margin: 0 0 8px;
+	margin: 0;
 	padding: 0;
 	border: none;
 	background: transparent;
@@ -1428,15 +1449,6 @@
 	font: inherit;
 	text-align: left;
 	cursor: pointer;
-}
-
-.cpo-agg-title {
-	color: #3a3f45;
-}
-
-.cpo-agg-meta {
-	color: #6b7280;
-	font-size: 12px;
 }
 
 .cpo-resize {
@@ -1479,7 +1491,6 @@
 .cpo-root .cpo-score,
 .cpo-root .cpo-kicker,
 .cpo-root .cpo-abstract,
-.cpo-root .cpo-agg-meta,
 .cpo-embed .cpo-embed-detail-meta,
 .cpo-embed .cpo-embed-detail-abstract,
 .cpo-embed .cpo-embed-detail-rel,
@@ -1497,8 +1508,7 @@
 .cpo-embed-bar {
 	border-color: var(--background-modifier-border);
 }
-.cpo-root .cpo-authors,
-.cpo-agg-title {
+.cpo-root .cpo-authors {
 	color: var(--text-normal);
 }
 .cpo-root button.cpo-link,
