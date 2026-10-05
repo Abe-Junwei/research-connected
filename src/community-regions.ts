@@ -152,74 +152,205 @@ export function hitCommunityCircle(
 	return best;
 }
 
-/** Distinctive title token per community: common inside, rare outside, unique on the map. */
+/** Distinctive community name: noun phrases scored by Dunning LLR (CiteSpace-style). */
 const LABEL_STOP = new Set([
-	"always", "never", "often", "usually", "really", "simply", "highly", "recent", "current",
+	"always", "again", "never", "often", "usually", "really", "simply", "highly", "recent", "current",
+	"still", "thus", "hence", "therefore", "however", "moreover", "further", "already", "instead",
+	"rather", "quite", "almost", "perhaps", "indeed", "actually", "especially", "particularly",
 	"general", "special", "important", "different", "various", "several", "certain", "possible",
 	"related", "specific", "other", "another", "about", "like", "just", "only", "more", "most",
 	"some", "any", "all", "very", "same", "both", "many", "much", "what", "how", "why", "who",
 	"will", "would", "could", "should", "been", "being", "does", "did", "done",
-	"notes", "note", "marking", "overview",
+	"notes", "note", "marking", "overview", "revisited", "toward", "towards",
 ]);
+const GENERIC = new Set([
+	...LABEL_STOP,
+	"studies", "study", "research", "language", "languages", "linguistics", "linguistic",
+	"history", "society", "social", "communication", "strategies", "strategy", "variation",
+	"acquisition", "perception", "categorization", "multilingualism",
+	"system", "systems", "type", "types", "form", "forms", "pattern", "patterns",
+	"issue", "issues", "aspect", "aspects", "feature", "features", "effect", "effects",
+	"factor", "factors", "role", "roles", "view", "views", "account", "accounts",
+	"process", "processes", "theory", "theories", "framework", "perspective", "perspectives",
+]);
+
+interface PhraseStat {
+	name: string;
+	keyword: boolean;
+	abstractOnly: boolean;
+	docs: Set<string>;
+}
 
 export function communityTopicLabels(
 	nodes: readonly { id: string; title?: string; abstract?: string; concepts?: readonly string[] }[],
 	communities: ReadonlyMap<string, number>,
-	maxLabels = 3,
 ): Map<number, string> {
-	const counts = new Map<number, Map<string, { count: number; name: string; keyword: boolean }>>();
+	const members = new Map<number, string[]>();
 	for (const node of nodes) {
 		const community = communities.get(node.id);
 		if (community === undefined) continue;
+		const group = members.get(community) ?? [];
+		group.push(node.id);
+		members.set(community, group);
+	}
+	const phrases = new Map<string, PhraseStat>();
+	const add = (nodeId: string, key: string, name: string, keyword: boolean, fromAbstract: boolean): void => {
+		if (key.length < 4 || LABEL_STOP.has(key) || name.length < 4) return;
+		if (!keyword && !key.includes(" ") && (key.length < 5 || GENERIC.has(key))) return;
+		if (keyword && contentTokens(name).length === 0) return;
+		const stat = phrases.get(key) ?? { name, keyword: false, abstractOnly: true, docs: new Set() };
+		if (name.length < stat.name.length) stat.name = name;
+		if (keyword) stat.keyword = true;
+		if (!fromAbstract) stat.abstractOnly = false;
+		stat.docs.add(nodeId);
+		phrases.set(key, stat);
+	};
+	for (const node of nodes) {
+		if (!communities.has(node.id)) continue;
 		const seen = new Set<string>();
-		const group = counts.get(community) ?? new Map();
-		const add = (token: string, name: string, keyword: boolean): void => {
-			if (seen.has(token) || LABEL_STOP.has(token) || token.length < 4) return;
-			seen.add(token);
-			const value = group.get(token) ?? { count: 0, name, keyword };
-			value.count++;
-			if (keyword) value.keyword = true;
-			group.set(token, value);
+		const push = (raw: string, display: string, keyword: boolean, fromAbstract: boolean): void => {
+			const key = raw.toLowerCase().replace(/\s+/g, " ").trim();
+			if (seen.has(key)) return;
+			seen.add(key);
+			add(node.id, key, display, keyword, fromAbstract);
 		};
 		for (const concept of node.concepts ?? []) {
-			const raw = concept.trim();
-			if (!raw) continue;
-			add(raw.toLowerCase(), raw, true);
+			for (const part of splitKeyword(concept)) push(part, shortenLabel(part) || part, true, false);
 		}
-		for (const token of tokenize(`${node.title ?? ""} ${node.abstract ?? ""}`)) add(token, displayToken(token), false);
-		if (group.size) counts.set(community, group);
+		for (const phrase of ngrams(node.title ?? "")) push(phrase, displayPhrase(phrase), false, false);
+		for (const phrase of ngrams(node.abstract ?? "")) push(phrase, displayPhrase(phrase), false, true);
 	}
-	const df = new Map<string, number>();
-	for (const tokens of counts.values()) {
-		for (const key of tokens.keys()) df.set(key, (df.get(key) ?? 0) + 1);
-	}
-	const used = new Set<string>();
+	const n = [...members.values()].reduce((sum, ids) => sum + ids.length, 0);
+	const inCommunity = (community: number): Set<string> => new Set(members.get(community) ?? []);
+	const scored = (community: number): Array<{ name: string; keyword: boolean; g2: number; a: number }> => {
+		const inside = inCommunity(community);
+		const size = inside.size;
+		const rows: Array<{ name: string; keyword: boolean; g2: number; a: number }> = [];
+		for (const stat of phrases.values()) {
+			let a = 0;
+			for (const id of stat.docs) if (inside.has(id)) a++;
+			if (a === 0) continue;
+			if (stat.abstractOnly && a < 2) continue;
+			const b = stat.docs.size - a;
+			const c0 = size - a;
+			const d = n - size - b;
+			if (a / Math.max(1, size) <= b / Math.max(1, n - size)) continue;
+			rows.push({ name: shortenLabel(stat.name) || stat.name, keyword: stat.keyword, g2: dunningG2(a, b, c0, d), a });
+		}
+		return rows.sort((left, right) =>
+			right.g2 - left.g2
+			|| Number(right.keyword) - Number(left.keyword)
+			|| contentTokens(right.name).length - contentTokens(left.name).length
+			|| specificity(right.name) - specificity(left.name)
+			|| left.name.length - right.name.length
+			|| left.name.localeCompare(right.name),
+		);
+	};
+	const hasRepeated = (community: number): boolean => {
+		const inside = inCommunity(community);
+		for (const stat of phrases.values()) {
+			let a = 0;
+			for (const id of stat.docs) if (inside.has(id)) a++;
+			if (a < 2) continue;
+			if (contentTokens(stat.name).length === 0 && GENERIC.has(stat.name.toLowerCase())) continue;
+			const b = stat.docs.size - a;
+			if (a / Math.max(1, inside.size) > b / Math.max(1, n - inside.size)) return true;
+		}
+		return false;
+	};
+	const used: string[][] = [];
 	const labels = new Map<number, string>();
-	const limit = Math.max(1, maxLabels);
-	const rank = (left: [string, { count: number; name: string; keyword: boolean }], right: [string, { count: number; name: string; keyword: boolean }]): number => {
-		const dfA = df.get(left[0]) ?? 1;
-		const dfB = df.get(right[0]) ?? 1;
-		return Number(right[1].keyword) - Number(left[1].keyword) || right[1].count / dfB - left[1].count / dfA || dfA - dfB || right[1].count - left[1].count || right[1].name.length - left[1].name.length || left[1].name.localeCompare(right[1].name);
-	};
-	const pickFrom = (pool: Array<[string, { count: number; name: string; keyword: boolean }]>, picked: string[], fillHapax: boolean): void => {
-		const unique = pool.filter(([key]) => (df.get(key) ?? 1) === 1);
-		const source = unique.length ? unique : pool;
-		const repeated = source.filter(([, value]) => value.count >= 2);
-		const order = repeated.length ? (fillHapax ? [...repeated, ...source.filter((item) => item[1].count < 2)] : repeated) : source;
-		for (const [key, value] of order) {
-			if (used.has(key) || picked.length >= limit) continue;
-			used.add(key);
-			picked.push(value.name);
-		}
-	};
-	for (const community of [...counts.keys()].sort((a, b) => a - b)) {
-		const ranked = [...(counts.get(community)?.entries() ?? [])].sort(rank);
-		const picked: string[] = [];
-		pickFrom(ranked.filter(([, value]) => value.keyword), picked, true);
-		if (!picked.length) pickFrom(ranked.filter(([, value]) => !value.keyword), picked, false);
-		if (picked.length) labels.set(community, picked.join(" · "));
+	const order = [...members.entries()].sort((a, b) => b[1].length - a[1].length || a[0] - b[0]);
+	for (const [community] of order) {
+		const repeated = hasRepeated(community);
+		const pick = scored(community).find((row) => {
+			if (!row.keyword && repeated && row.a < 2) return false;
+			const tokens = contentTokens(row.name);
+			const key = tokens.length ? tokens : [row.name.toLowerCase()];
+			if (tokens.length === 0 && GENERIC.has(row.name.toLowerCase())) return false;
+			return !used.some((seen) => overlapsTokens(seen, key));
+		});
+		if (!pick) continue;
+		const tokens = contentTokens(pick.name);
+		used.push(tokens.length ? tokens : [pick.name.toLowerCase()]);
+		labels.set(community, clipLabel(pick.name));
+	}
+	for (const community of [...members.keys()].sort((a, b) => a - b)) {
+		if (!labels.has(community)) labels.set(community, `社区 ${community + 1}`);
 	}
 	return labels;
+}
+
+function ngrams(text: string): string[] {
+	const tokens = tokenize(text);
+	const out: string[] = [];
+	for (let n = 1; n <= 3; n++) {
+		for (let i = 0; i + n <= tokens.length; i++) out.push(tokens.slice(i, i + n).join(" "));
+	}
+	return out;
+}
+
+function dunningG2(a: number, b: number, c: number, d: number): number {
+	const n = a + b + c + d;
+	const term = (value: number): number => (value > 0 ? value * Math.log(value) : 0);
+	return 2 * (
+		term(a) + term(b) + term(c) + term(d) + term(n)
+		- term(a + b) - term(c + d) - term(a + c) - term(b + d)
+	);
+}
+
+function splitKeyword(name: string): string[] {
+	return name.split(/[,;·|/]+/).map((part) => part.trim()).filter((part) => part.length >= 4);
+}
+
+function shortenLabel(name: string): string {
+	const trimmed = name.replace(/\s+/g, " ").trim();
+	if (!trimmed) return "";
+	const stripped = trimmed
+		.replace(/\s+\((?:language|linguistic)s?\s+studies\)$/i, "")
+		.replace(/\s+(?:in|and)\s+(?:language|linguistic)s?\s+studies$/i, "")
+		.replace(/\s+research$/i, "")
+		.trim();
+	const source = stripped || trimmed;
+	if (source.length <= 28) return source;
+	const parts = splitKeyword(source);
+	if (parts.length > 1) {
+		const best = [...parts].sort((a, b) => specificity(b) - specificity(a) || a.length - b.length)[0];
+		if (best && best.length <= 28) return best;
+	}
+	const content = contentTokens(source);
+	if (content.length) return clipLabel(content.map((token) => displayToken(token)).join(" "));
+	return clipLabel(source);
+}
+
+function clipLabel(name: string, max = 28): string {
+	if (name.length <= max) return name;
+	const cut = name.slice(0, max + 1);
+	const space = cut.lastIndexOf(" ");
+	return (space >= 12 ? cut.slice(0, space) : name.slice(0, max)).trim();
+}
+
+function contentTokens(name: string): string[] {
+	return tokenize(name).filter((token) => !GENERIC.has(token) && token.length >= 4);
+}
+
+function specificity(name: string): number {
+	const tokens = tokenize(name);
+	const content = contentTokens(name);
+	if (!content.length) return 0;
+	return content.length / Math.max(1, tokens.length);
+}
+
+function overlapsTokens(a: readonly string[], b: readonly string[]): boolean {
+	if (!a.length || !b.length) return false;
+	const other = new Set(b);
+	let inter = 0;
+	for (const token of a) if (other.has(token)) inter++;
+	return inter / Math.min(a.length, b.length) >= 0.6;
+}
+
+function displayPhrase(phrase: string): string {
+	return phrase.replace(/^\S/, (char) => char.toUpperCase());
 }
 
 function displayToken(token: string): string {

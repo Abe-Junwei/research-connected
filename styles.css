@@ -271,6 +271,7 @@
 .cpo-stage canvas {
 	position: absolute;
 	inset: 0;
+	z-index: 0;
 	width: 100%;
 	height: 100%;
 	display: block;
@@ -791,12 +792,46 @@
 	height: auto;
 }
 
+.cpo-embed .cpo-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 10px;
+}
+
 .cpo-embed .cpo-topline {
-	justify-content: space-between;
+	justify-content: flex-end;
+	margin-left: auto;
+	flex: none;
+}
+
+.cpo-embed .cpo-brand {
+	display: none;
 }
 
 .cpo-embed .cpo-status {
-	margin-left: 33px;
+	order: -1;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cpo-embed .cpo-seed-summary {
+	padding: 4px 10px;
+	gap: 8px;
+}
+
+.cpo-embed .cpo-seed-title {
+	font-size: 12px;
+}
+
+.cpo-embed button.cpo-ghost {
+	height: 24px;
+	padding: 0 8px;
+	font-size: 12px;
 }
 
 .cpo-embed .cpo-body {
@@ -1418,15 +1453,15 @@ button.cpo-agg-item {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	background: #f6f5f2;
-	border-left: 1px solid rgba(60, 64, 70, 0.1);
+	background: var(--background-secondary);
+	border-left: 1px solid var(--background-modifier-border);
 }
 
 .cpo-evidence-header {
 	flex: none;
 	padding: 10px 12px 9px;
-	background: #f6f5f2;
-	border-bottom: 1px solid rgba(60, 64, 70, 0.1);
+	background: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .cpo-evidence-header h2,
@@ -1435,14 +1470,14 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-header h2 {
-	color: #8a3b47;
+	color: var(--text-accent, var(--cpo-accent));
 	font-size: 13px;
 	font-weight: 650;
 }
 
 .cpo-evidence-header p {
 	margin-top: 3px;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 10px;
 	line-height: 1.35;
 }
@@ -1497,6 +1532,7 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-sidebar .cpo-sheet-body {
+	position: relative;
 	padding: 10px 12px 14px;
 	overflow: auto;
 }
@@ -1519,8 +1555,8 @@ button.cpo-agg-item {
 .cpo-evidence-sidebar > .cpo-actions-bar {
 	flex: none;
 	padding: 0;
-	background: #f6f5f2;
-	border-top: 1px solid rgba(60, 64, 70, 0.1);
+	background: var(--background-secondary);
+	border-top: 1px solid var(--background-modifier-border);
 }
 
 .cpo-evidence-sidebar .cpo-tab-row {
@@ -1544,14 +1580,20 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-sidebar .cpo-tab-row button.cpo-tool.is-on {
-	background: rgba(166, 124, 46, 0.12);
-	color: #6f5019;
+	background: color-mix(in srgb, var(--cpo-accent) 16%, transparent);
+	color: var(--cpo-accent);
 	font-weight: 600;
 }
 
 .cpo-evidence-sidebar .cpo-agg,
 .cpo-evidence-sidebar .cpo-detail {
+	position: static;
+	inset: auto;
+	z-index: auto;
 	max-width: 100%;
+	overflow: visible;
+	padding: 0;
+	background: transparent;
 }
 
 @media (max-width: 779px) {
@@ -1598,11 +1640,11 @@ button.cpo-agg-item {
 
 /* 详情卡片化：元数据 / 关系证据 / 摘要 / 跳转条。灰底白卡，配色走既有主题变量。 */
 .cpo-evidence-sidebar > .cpo-sheet {
-	background: #f6f5f2;
+	background: var(--background-secondary);
 }
 
 .cpo-evidence-sidebar .cpo-sheet-body {
-	background: #f6f5f2;
+	background: var(--background-secondary);
 }
 
 .cpo-card {
@@ -1943,6 +1985,10 @@ button.cpo-agg-item {
 	--cpo-accent-hover: var(--rc-accent-hover);
 	--cpo-canvas-bg-start: var(--background-primary, var(--rc-surface));
 	--cpo-canvas-bg-end: var(--background-secondary, var(--rc-canvas));
+}
+
+.cpo-embed {
+	--rc-sidebar-width: var(--rc-sidebar-min);
 }
 
 .cpo-root :where(button, input, summary, [tabindex]):focus-visible,

@@ -39,7 +39,7 @@ const STOPWORDS = new Set([
 	"the", "and", "for", "with", "from", "that", "this", "these", "those", "are", "was", "were", "has", "have", "had",
 	"its", "his", "her", "our", "their", "not", "but", "into", "over", "under", "between", "among", "via", "using",
 	"based", "study", "studies", "analysis", "approach", "results", "method", "methods", "model", "models", "data",
-	"paper", "work", "new", "two", "can", "may", "also", "than", "then", "when", "which", "while", "such", "each",
+	"paper", "work", "new", "two", "can", "may", "also", "again", "than", "then", "when", "which", "while", "such", "each",
 	"研究", "基于", "分析", "方法", "结果", "模型", "数据", "本文", "影响", "应用", "问题", "及其", "中的", "下的",
 ]);
 

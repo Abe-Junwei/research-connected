@@ -16,11 +16,31 @@ export function yearColor(year: number | null, minYear: number, maxYear: number)
 	return rgb(sampleStops(t));
 }
 
-export function citationRadius(citedByCount: number, maxCited: number, isSeed: boolean): number {
-	const maxLog = Math.log10(maxCited + 1) || 1;
-	const t = Math.log10(Math.max(0, citedByCount) + 1) / maxLog;
-	const radius = 3.5 + clamp(t, 0, 1) * 5;
-	return isSeed ? Math.max(radius, 9) : radius;
+/** Citations per year of age (VOSviewer-style; no field baseline in this graph). */
+export function yearNormalizedCitations(citedByCount: number, year: number | null, nowYear = new Date().getFullYear()): number {
+	const age = year === null ? 1 : Math.max(1, nowYear - year);
+	return Math.max(0, citedByCount) / age;
+}
+
+/** Area ∝ year-normalized citations on this graph's min–max (D3 scaleSqrt / Gephi ranking). */
+const RADIUS_MIN = 4;
+const RADIUS_MAX = 14;
+
+export function citationRadius(citedByCount: number, minCited: number, maxCited: number, isSeed: boolean): number {
+	const lo = Math.sqrt(Math.max(0, minCited));
+	const hi = Math.sqrt(Math.max(maxCited, minCited, 0));
+	const t = hi - lo < 1e-9 ? 0.5 : clamp((Math.sqrt(Math.max(0, citedByCount)) - lo) / (hi - lo), 0, 1);
+	const radius = RADIUS_MIN + t * (RADIUS_MAX - RADIUS_MIN);
+	return isSeed ? Math.max(radius, RADIUS_MIN + 0.7 * (RADIUS_MAX - RADIUS_MIN)) : radius;
+}
+
+/** 0–1 sine; phase hashed by id. Period ≈ 2.2s. */
+export const CLASSIC_BREATH_MS = 350;
+export function classicBreath(id: string, now = performance.now()): number {
+	let hash = 2166136261;
+	for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+	const phase = ((hash >>> 0) / 4294967296) * Math.PI * 2;
+	return 0.5 + 0.5 * Math.sin(now / CLASSIC_BREATH_MS + phase);
 }
 
 export function formatCount(value: number): string {

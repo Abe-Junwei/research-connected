@@ -1,7 +1,7 @@
-import { runForceLayout, separateCommunities, type ForceNode } from "./layout";
 import { detectCommunities } from "./communities";
+import { runForceLayout, type ForceNode } from "./layout";
 import type { GraphEdge, PaperNode } from "./types";
-import { citationRadius } from "./visual";
+import { citationRadius, yearNormalizedCitations } from "./visual";
 
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force2d" | "temporal" | "radial";
@@ -22,7 +22,7 @@ export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
 	temporal: "横向按年份排列，纵向为对数被引量；未知年份在左侧。",
 	radial: "种子居中，越近越相似；角度仅用于排开节点。",
-	force2d: "平面力导向；节点色为引用结构分组。标签优先用关键词，缺关键词才用标题/摘要里相对其他圈子更独特的词，不代表真实学派。",
+	force2d: "平面力导向：种子居中；同组聚在一起并上色，组和组分开。边越强越近。",
 };
 
 export interface PlacedNode {
@@ -38,14 +38,17 @@ export function placeLayout(
 	nodes: readonly PaperNode[],
 	edges: readonly GraphEdge[],
 	seedScore: ReadonlyMap<string, number>,
+	nowYear = new Date().getFullYear(),
 ): PlacedNode[] {
-	const maxCited = nodes.reduce((max, node) => Math.max(max, node.citedByCount), 1);
-	const placed: PlacedNode[] = nodes.map((node) => ({
+	const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year, nowYear));
+	const minCited = norms.length ? Math.min(...norms) : 0;
+	const maxCited = norms.length ? Math.max(...norms) : 0;
+	const placed: PlacedNode[] = nodes.map((node, i) => ({
 		id: node.id,
 		x: 0,
 		y: 0,
 		z: 0,
-		radius: citationRadius(node.citedByCount, maxCited, node.isSeed),
+		radius: citationRadius(norms[i] ?? 0, minCited, maxCited, node.isSeed),
 	}));
 	const seed = nodes.find((node) => node.isSeed);
 	if (!seed) return placed;
@@ -61,8 +64,14 @@ function placeForce2d(
 	seedScore: ReadonlyMap<string, number>,
 ): PlacedNode[] {
 	const nodes: ForceNode[] = placed.map((node) => ({ id: node.id, x: 0, y: 0, radius: node.radius }));
-	const communities = detectCommunities(nodes.map((node) => node.id), edges);
-	runForceLayout(nodes, edges as GraphEdge[], seedId, new Map(seedScore), 320, communities);
+	runForceLayout(
+		nodes,
+		edges as GraphEdge[],
+		seedId,
+		new Map(seedScore),
+		320,
+		detectCommunities(placed.map((node) => node.id), edges),
+	);
 	const byId = new Map(nodes.map((node) => [node.id, node]));
 	return placed.map((node) => {
 		const at = byId.get(node.id);
@@ -118,5 +127,3 @@ function placeRadial(
 		return { ...node, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: 0 };
 	});
 }
-
-export { separateCommunities };

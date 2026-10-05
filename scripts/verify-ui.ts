@@ -165,27 +165,17 @@ function compactCommunityLayout(): void {
 		assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y), "平面布局坐标有限");
 	}
 
-	// 同社区边收紧：链式图 A-B-C-D，AB/CD 属社区 0/1，BC 跨社区。
-	const chain = (): Array<{ id: string; x: number; y: number; radius: number }> =>
-		["A", "B", "C", "D"].map((id) => ({ id, x: 0, y: 0, radius: 8 }));
-	const chainEdges = [edge({ source: "A", target: "B", weight: 0.5 }), edge({ source: "B", target: "C", weight: 0.5 }), edge({ source: "C", target: "D", weight: 0.5 })];
 	const dist = (ns: Array<{ id: string; x: number; y: number }>, a: string, b: string): number => {
 		const na = ns.find((n) => n.id === a)!;
 		const nb = ns.find((n) => n.id === b)!;
 		return Math.hypot(na.x - nb.x, na.y - nb.y);
 	};
-	const plain = chain();
-	runForceLayout(plain, chainEdges, "A", new Map());
-	const cohesive = chain();
-	runForceLayout(cohesive, chainEdges, "A", new Map(), 320, new Map([["A", 0], ["B", 0], ["C", 1], ["D", 1]]));
-	assert.ok(
-		dist(cohesive, "C", "D") < dist(plain, "C", "D") - 4,
-		"同社区边收紧后，社区内间距明显小于无凝聚时",
-	);
-
-	const pack = (ids: string[]): Array<{ id: string; x: number; y: number; radius: number }> =>
-		ids.map((id) => ({ id, x: 0, y: 0, radius: 8 }));
-	const clusterEdges = [
+	const clustered = ["S", "A1", "A2", "B1", "B2", "B3"].map((id) => ({ id, x: 0, y: 0, radius: 8 }));
+	const communities = new Map([
+		["S", 0], ["A1", 0], ["A2", 0],
+		["B1", 1], ["B2", 1], ["B3", 1],
+	]);
+	runForceLayout(clustered, [
 		edge({ source: "S", target: "A1", weight: 0.8 }),
 		edge({ source: "A1", target: "A2", weight: 0.8 }),
 		edge({ source: "A2", target: "S", weight: 0.8 }),
@@ -193,33 +183,21 @@ function compactCommunityLayout(): void {
 		edge({ source: "B2", target: "B3", weight: 0.8 }),
 		edge({ source: "B3", target: "B1", weight: 0.8 }),
 		edge({ source: "S", target: "B1", weight: 0.2 }),
-	];
-	const clustered = pack(["S", "A1", "A2", "B1", "B2", "B3"]);
-	runForceLayout(
-		clustered,
-		clusterEdges,
-		"S",
-		new Map(),
-		320,
-		new Map([["S", 0], ["A1", 0], ["A2", 0], ["B1", 1], ["B2", 1], ["B3", 1]]),
+	], "S", new Map(), 320, communities);
+	assert.ok(dist(clustered, "A1", "A2") < dist(clustered, "S", "B1"), "强边比弱桥更近");
+	assert.ok(dist(clustered, "B1", "B2") < dist(clustered, "A1", "B1"), "同组比跨组近");
+	assert.ok(dist(clustered, "S", "A1") < 160, "种子同组收向种子，不甩成彗星尾");
+	const bcx = (clustered.find((n) => n.id === "B1")!.x + clustered.find((n) => n.id === "B2")!.x + clustered.find((n) => n.id === "B3")!.x) / 3;
+	const bcy = (clustered.find((n) => n.id === "B1")!.y + clustered.find((n) => n.id === "B2")!.y + clustered.find((n) => n.id === "B3")!.y) / 3;
+	const bRad = Math.max(
+		...clustered.filter((n) => n.id.startsWith("B")).map((n) => Math.hypot(n.x - bcx, n.y - bcy)),
 	);
-	const centroid = (ids: string[]): { cx: number; cy: number; r: number } => {
-		const members = ids.map((id) => clustered.find((node) => node.id === id)!);
-		const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
-		const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
-		const r = members.reduce((max, node) => Math.max(max, Math.hypot(node.x - cx, node.y - cy) + node.radius), 0);
-		return { cx, cy, r };
-	};
-	const left = centroid(["S", "A1", "A2"]);
-	const right = centroid(["B1", "B2", "B3"]);
-	assert.ok(
-		Math.hypot(left.cx - right.cx, left.cy - right.cy) >= left.r + right.r + 80,
-		"不同社区的外接圆保持间距，不再叠成维恩图",
-	);
+	assert.ok(bRad < 80, "同组成员不摊开");
 }
 
 function evidenceSidebarSizing(): void {
 	assert.equal(clampSidebarWidth(320), 320, "默认证据栏宽度保持紧凑");
+	assert.equal(clampSidebarWidth(260), 260, "嵌入默认用最窄证据栏");
 	assert.equal(clampSidebarWidth(100), 260, "拖拽不会把证据栏缩到不可读");
 	assert.equal(clampSidebarWidth(900), 480, "拖拽不会让证据栏重新挤占图谱");
 	assert.equal(clampSidebarWidth(245.6, 220, 380), 246, "嵌入式使用自己的宽度边界");

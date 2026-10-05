@@ -1,16 +1,18 @@
-import { communityColor, communityRgba, detectCommunities } from "./communities";
-import { buildCommunityCircles, communityTopicLabels, type CommunityCircle } from "./community-regions";
+import { classicInfluence } from "./aggregates";
+import { communityColor, detectCommunities } from "./communities";
 import { focusNodes } from "./graph-filter";
 import { authorYear, citationLabelAlpha } from "./labels";
-import { placeLayout, separateCommunities, type ColorMode, type LayoutMode } from "./layout-modes";
+import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
-import { clamp, fitViewScale, yearColor } from "./visual";
+import { clamp, classicBreath, fitViewScale, yearColor } from "./visual";
 
 interface DrawNode extends PaperNode {
 	x: number;
 	y: number;
+	homeX: number;
+	homeY: number;
 	radius: number;
 	color: string;
 	shown: boolean;
@@ -21,10 +23,9 @@ type Drag =
 	| { kind: "node"; id: string; dx: number; dy: number };
 
 /**
- * Canvas similarity map: pan, zoom, drag, hover title, click to select.
- * Layout is computed up front; dragging a node reheats a light physics
- * simmer so neighbors follow and the map settles on release (force layouts
- * only). Wheel zoom eases toward its target; pan and pinch stay immediate.
+ * Canvas similarity map: pan, zoom, drag with a simmer that keeps the layout's
+ * edge lengths and homes, hover title, click to select.
+ * Wheel zoom eases toward its target; pan and pinch stay immediate.
  */
 export class SimilarityMap {
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
@@ -64,16 +65,17 @@ export class SimilarityMap {
 	private scrubYear: number | null = null;
 	private seedScore = new Map<string, number>();
 	private communities = new Map<string, number>();
-	private communityLabels = new Map<number, string>();
-	private communityPick: number | undefined;
+	private classicGlow = new Map<string, number>();
 	private minYear = 0;
 	private maxYear = 0;
-	/** Interactive simmer: reheats on node drag so neighbors follow, cools off after release. */
 	private simAlpha = 0;
 	private simFrame: number | null = null;
+	private edgeRest = new Map<string, number>();
 	/** Wheel zoom eases toward this target (pan and pinch stay immediate). */
 	private zoomAnim: { k: number; tx: number; ty: number } | null = null;
 	private zoomFrame: number | null = null;
+	private pulseFrame: number | null = null;
+	private wheelNeedsModifier = false;
 
 	/** Headless verify stubs have no rAF; a timeout keeps the loops converging. */
 	private raf(callback: () => void): number {
@@ -91,7 +93,9 @@ export class SimilarityMap {
 		private readonly canvas: HTMLCanvasElement,
 		private readonly tooltip: HTMLElement,
 		private readonly stage: HTMLElement,
+		options?: { wheel?: "always" | "modifier" },
 	) {
+		this.wheelNeedsModifier = options?.wheel === "modifier";
 		this.onPointerDown = this.onPointerDown.bind(this);
 		this.onPointerMove = this.onPointerMove.bind(this);
 		this.onPointerUp = this.onPointerUp.bind(this);
@@ -121,7 +125,8 @@ export class SimilarityMap {
 		this.seedScore = seedScore;
 		this.edges = edges;
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
-		this.communityLabels = communityTopicLabels(nodes, this.communities);
+		this.classicGlow = classicInfluence(nodes, edges);
+		this.ensurePulse();
 		// 不重置 layoutMode：布局由应用层（chrome 按钮）持有，建图后回灌。
 		this.scrubYear = null;
 		this.rebuild(nodes, true);
@@ -134,7 +139,8 @@ export class SimilarityMap {
 	updateGraphData(edges: GraphEdge[]): void {
 		this.edges = edges;
 		this.communities = detectCommunities(this.nodes.map((node) => node.id), edges);
-		this.communityLabels = communityTopicLabels(this.nodes, this.communities);
+		this.classicGlow = classicInfluence(this.nodes, edges);
+		this.ensurePulse();
 		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		this.recolor();
 		this.refreshFocus();
@@ -150,7 +156,6 @@ export class SimilarityMap {
 
 	setLayout(mode: LayoutMode): void {
 		this.layoutMode = mode;
-		this.simAlpha = 0;
 		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
 		this.bgStart = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
 		this.bgEnd = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#f7f6f3");
@@ -262,17 +267,10 @@ export class SimilarityMap {
 		return { minX, minY, maxX, maxY };
 	}
 
-	/** Physics simmer only for the force layout; temporal/radial positions carry meaning. */
 	private physicsOn(): boolean {
 		return this.layoutMode === "force2d";
 	}
 
-	/**
-	 * Reheat the interactive simulation (Obsidian-graph style): neighbors
-	 * follow a dragged node elastically and the map settles after release.
-	 * The loop stops when the alpha cools below the threshold, so an idle
-	 * map costs nothing.
-	 */
 	private reheat(alpha: number): void {
 		if (!this.physicsOn() || this.nodes.length > 350) return;
 		this.simAlpha = Math.max(this.simAlpha, alpha);
@@ -281,15 +279,29 @@ export class SimilarityMap {
 			if (!this.alive || this.simAlpha < 0.02) {
 				this.simFrame = null;
 				this.simAlpha = 0;
+				this.captureStructure();
 				return;
 			}
 			this.tick(this.simAlpha);
-			// A held node keeps the sim warm; after release it cools quickly.
-			this.simAlpha *= this.dragging?.kind === "node" ? 0.99 : 0.96;
+			this.simAlpha *= this.dragging?.kind === "node" ? 0.985 : 0.94;
 			this.draw();
 			this.simFrame = this.raf(step);
 		};
 		this.simFrame = this.raf(step);
+	}
+
+	private captureStructure(): void {
+		for (const node of this.nodes) {
+			node.homeX = node.x;
+			node.homeY = node.y;
+		}
+		this.edgeRest.clear();
+		for (const edge of this.edges) {
+			const a = this.nodes.find((node) => node.id === edge.source);
+			const b = this.nodes.find((node) => node.id === edge.target);
+			if (!a || !b) continue;
+			this.edgeRest.set(pairKey(a.id, b.id), Math.max(8, Math.hypot(b.x - a.x, b.y - a.y)));
+		}
 	}
 
 	private tick(alpha: number): void {
@@ -299,37 +311,53 @@ export class SimilarityMap {
 		const vx = new Array<number>(nodes.length).fill(0);
 		const vy = new Array<number>(nodes.length).fill(0);
 		const pinnedId = this.dragging?.kind === "node" ? this.dragging.id : null;
-		const seedId = this.nodes.find((node) => node.isSeed)?.id ?? "";
+		const seed = this.nodes.find((node) => node.isSeed) ?? null;
+		const seedId = seed?.id ?? "";
+		const seedCommunity = seed ? this.communities.get(seed.id) : undefined;
 		const mobile = (id: string): boolean => id !== pinnedId && id !== seedId;
+		const pulled = new Set<string>();
+		if (pinnedId) {
+			for (const edge of this.edges) {
+				if (edge.source === pinnedId) pulled.add(edge.target);
+				if (edge.target === pinnedId) pulled.add(edge.source);
+			}
+		}
+		const centers = new Map<number, { x: number; y: number }>();
+		const sums = new Map<number, { x: number; y: number; n: number }>();
+		for (const node of nodes) {
+			const cid = this.communities.get(node.id);
+			if (cid === undefined) continue;
+			const acc = sums.get(cid) ?? { x: 0, y: 0, n: 0 };
+			acc.x += node.x;
+			acc.y += node.y;
+			acc.n += 1;
+			sums.set(cid, acc);
+		}
+		for (const [cid, acc] of sums) centers.set(cid, { x: acc.x / acc.n, y: acc.y / acc.n });
+		if (seed && seedCommunity !== undefined) centers.set(seedCommunity, { x: seed.x, y: seed.y });
 
-		// Repulsion, same shaping as the upfront layout.
 		for (let i = 0; i < nodes.length; i++) {
 			const a = nodes[i]!;
 			for (let j = i + 1; j < nodes.length; j++) {
 				const b = nodes[j]!;
+				const min = a.radius + b.radius + 10;
 				let dx = b.x - a.x;
 				let dy = b.y - a.y;
-				let dist2 = dx * dx + dy * dy;
-				if (dist2 < 0.01) {
-					dx = 0.15;
-					dy = 0.1;
-					dist2 = dx * dx + dy * dy;
-				}
-				const dist = Math.sqrt(dist2);
-				const force = (alpha * 160 * (a.radius + b.radius)) / dist2;
-				const fx = (dx / dist) * force;
-				const fy = (dy / dist) * force;
+				const dist = Math.hypot(dx, dy) || 0.01;
+				if (dist >= min) continue;
+				dx /= dist;
+				dy /= dist;
+				const push = ((min - dist) / 2) * alpha;
 				if (mobile(a.id)) {
-					vx[i]! -= fx;
-					vy[i]! -= fy;
+					vx[i]! -= dx * push;
+					vy[i]! -= dy * push;
 				}
 				if (mobile(b.id)) {
-					vx[j]! += fx;
-					vy[j]! += fy;
+					vx[j]! += dx * push;
+					vy[j]! += dy * push;
 				}
 			}
 		}
-		// Springs over the visible edges.
 		for (const edge of this.edges) {
 			if (!this.kindVisible[relationKind(edge)]) continue;
 			const ai = index.get(edge.source);
@@ -338,15 +366,9 @@ export class SimilarityMap {
 			const a = nodes[ai]!;
 			const b = nodes[bi]!;
 			const dist = Math.hypot(b.x - a.x, b.y - a.y) || 0.01;
+			const rest = this.edgeRest.get(pairKey(a.id, b.id)) ?? dist;
 			const weight = clamp(edge.weight, 0, 1);
-			let rest = 88 + (1 - weight) * 200;
-			let spring = 0.025 + weight * 0.07;
-			// 与初始布局一致：同社区边更短更紧，保持群落团聚。
-			const communityA = this.communities.get(edge.source);
-			if (communityA !== undefined && communityA === this.communities.get(edge.target)) {
-				rest *= 0.6;
-				spring *= 1.4;
-			}
+			const spring = 0.04 + weight * 0.08;
 			const disp = (dist - rest) * spring * alpha;
 			const dx = ((b.x - a.x) / dist) * disp;
 			const dy = ((b.y - a.y) / dist) * disp;
@@ -359,14 +381,22 @@ export class SimilarityMap {
 				vy[bi]! -= dy;
 			}
 		}
-		// Gentle centering, damping, and a step cap so reheats never explode.
 		for (let i = 0; i < nodes.length; i++) {
 			const node = nodes[i]!;
 			if (!mobile(node.id)) continue;
-			let mx = (vx[i]! - node.x * 0.01 * alpha) * 0.62;
-			let my = (vy[i]! - node.y * 0.01 * alpha) * 0.62;
+			const cid = this.communities.get(node.id);
+			const center = cid === undefined ? undefined : centers.get(cid);
+			const homeK = pulled.has(node.id) ? 0.04 : 0.12;
+			let mx = vx[i]! - node.x * 0.02 * alpha + (node.homeX - node.x) * homeK * alpha;
+			let my = vy[i]! - node.y * 0.02 * alpha + (node.homeY - node.y) * homeK * alpha;
+			if (center) {
+				mx -= (node.x - center.x) * 0.1 * alpha;
+				my -= (node.y - center.y) * 0.1 * alpha;
+			}
+			mx *= 0.62;
+			my *= 0.62;
 			const speed = Math.hypot(mx, my);
-			const cap = 18 * alpha;
+			const cap = 16 * alpha;
 			if (speed > cap && speed > 0) {
 				mx = (mx / speed) * cap;
 				my = (my / speed) * cap;
@@ -374,15 +404,29 @@ export class SimilarityMap {
 			node.x = clamp(node.x + mx, -2400, 2400);
 			node.y = clamp(node.y + my, -2400, 2400);
 		}
-		if (this.communities.size > 1) separateCommunities(nodes, seedId, this.communities);
+	}
+
+	private ensurePulse(): void {
+		if (this.pulseFrame !== null || this.classicGlow.size === 0) return;
+		const step = (): void => {
+			if (!this.alive || this.classicGlow.size === 0) {
+				this.pulseFrame = null;
+				return;
+			}
+			this.draw();
+			this.pulseFrame = this.raf(step);
+		};
+		this.pulseFrame = this.raf(step);
 	}
 
 	destroy(): void {
 		this.alive = false;
 		if (this.simFrame !== null) this.caf(this.simFrame);
 		if (this.zoomFrame !== null) this.caf(this.zoomFrame);
+		if (this.pulseFrame !== null) this.caf(this.pulseFrame);
 		this.simFrame = null;
 		this.zoomFrame = null;
+		this.pulseFrame = null;
 		this.pointers.clear();
 		this.pinch = null;
 		this.canvas.removeEventListener("pointerdown", this.onPointerDown);
@@ -432,6 +476,7 @@ export class SimilarityMap {
 
 	private onWheel(event: WheelEvent): void {
 		if (!this.alive) return;
+		if (this.wheelNeedsModifier && !event.ctrlKey && !event.metaKey) return;
 		event.preventDefault();
 		const local = this.localPoint(event.clientX, event.clientY);
 		const factor = Math.exp(-event.deltaY * 0.0012);
@@ -462,7 +507,7 @@ export class SimilarityMap {
 		this.moved = false;
 		this.downX = event.clientX;
 		this.downY = event.clientY;
-		if (hit) {
+		if (hit && !hit.isSeed) {
 			const world = this.screenToWorld(local.x, local.y);
 			this.dragging = { kind: "node", id: hit.id, dx: hit.x - world.x, dy: hit.y - world.y };
 		} else {
@@ -523,7 +568,7 @@ export class SimilarityMap {
 				this.refreshFocus();
 				this.draw();
 			}
-			this.canvas.style.cursor = hit || this.hitCommunity(local.x, local.y) ? "pointer" : "grab";
+			this.canvas.style.cursor = hit ? "pointer" : "grab";
 			this.placeTooltip(hit, local.x, local.y);
 			return;
 		}
@@ -541,8 +586,7 @@ export class SimilarityMap {
 				const world = this.screenToWorld(local.x, local.y);
 				node.x = world.x + dragging.dx;
 				node.y = world.y + dragging.dy;
-				// Neighbors follow elastically while the node is held.
-				this.reheat(0.5);
+				this.reheat(0.55);
 			}
 			this.canvas.style.cursor = "grabbing";
 		}
@@ -573,22 +617,19 @@ export class SimilarityMap {
 		this.dragging = null;
 		if (!dragging || wasDrag) {
 			this.canvas.style.cursor = "grab";
-			// Release after a drag: simmer so the map settles elastically.
-			if (wasDrag && dragging?.kind === "node") this.reheat(0.35);
+			if (wasDrag && dragging?.kind === "node") this.reheat(0.32);
 			return;
 		}
 		if (dragging.kind === "node") {
 			const node = this.nodes.find((item) => item.id === dragging.id) ?? null;
 			this.selectedId = node?.id ?? null;
-			this.communityPick = undefined;
 			this.onSelect?.(node);
 		} else {
 			const local = this.localPoint(this.downX, this.downY);
-			const region = this.hitCommunity(local.x, local.y);
-			if (region) {
-				this.selectedId = null;
-				this.communityPick = region.community;
-				this.onSelect?.(null);
+			const node = this.hit(local.x, local.y);
+			if (node) {
+				this.selectedId = node.id;
+				this.onSelect?.(node);
 				this.draw();
 				return;
 			}
@@ -605,7 +646,6 @@ export class SimilarityMap {
 			}
 			if (closest && this.onEdgeSelect) { this.onEdgeSelect(closest); return; }
 			this.selectedId = null;
-			this.communityPick = undefined;
 			this.onSelect?.(null);
 		}
 		this.draw();
@@ -762,7 +802,6 @@ export class SimilarityMap {
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
 		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
-		const communityShapes = this.layoutMode === "force2d" ? this.communityDisks() : [];
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
 		ctx.lineCap = "round";
@@ -804,7 +843,6 @@ export class SimilarityMap {
 		for (const node of ordered) {
 			if (node.shown) this.drawNode(ctx, node);
 		}
-		if (communityShapes.length) this.drawCommunityLabels(ctx, communityShapes);
 		this.drawLabels(ctx);
 	}
 
@@ -842,68 +880,6 @@ export class SimilarityMap {
 		ctx.restore();
 	}
 
-	private communityDisks() {
-		return buildCommunityCircles(
-			this.nodes.map((node) => ({
-				id: node.id,
-				community: this.communities.get(node.id) ?? 0,
-				x: node.x * this.k + this.tx,
-				y: node.y * this.k + this.ty,
-				shown: node.shown,
-			})),
-			Math.max(18, Math.min(32, 24 * this.k)),
-			3,
-			10,
-			this.communityLabels,
-		);
-	}
-
-	private hitCommunity(sx: number, sy: number) {
-		if (this.layoutMode !== "force2d") return undefined;
-		let best: CommunityCircle | undefined;
-		for (const circle of this.communityDisks()) {
-			if (Math.hypot(sx - circle.cx, sy - circle.cy) > 28) continue;
-			if (!best || circle.radius < best.radius) best = circle;
-		}
-		return best;
-	}
-
-	private drawCommunityLabels(ctx: CanvasRenderingContext2D, circles: readonly CommunityCircle[]): void {
-		const selected = this.selectedCommunity();
-		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-		ctx.save();
-		ctx.font = `11px ${this.fontFamily}`;
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		const ordered = [...circles].sort((a, b) => Number(b.community === selected) - Number(a.community === selected));
-		for (const circle of ordered) {
-			const active = circle.community === selected;
-			const text = circle.label;
-			const width = ctx.measureText(text).width + 16;
-			const height = 20;
-			const box = { x: circle.cx - width / 2, y: circle.cy - height / 2, w: width, h: height };
-			if (!active && overlaps(box, boxes)) continue;
-			boxes.push(box);
-			const color = communityRgba(circle.community, 1);
-			ctx.beginPath();
-			ctx.rect(box.x, box.y, box.w, box.h);
-			ctx.fillStyle = this.bgStart;
-			ctx.strokeStyle = color.replace(", 1)", active ? ", 0.7)" : ", 0.35)");
-			ctx.lineWidth = active ? 1.6 : 1;
-			ctx.fill();
-			ctx.stroke();
-			ctx.fillStyle = "#5c6570";
-			ctx.fillText(text, circle.cx, circle.cy);
-		}
-		ctx.restore();
-	}
-
-	private selectedCommunity(): number | undefined {
-		if (this.communityPick !== undefined) return this.communityPick;
-		if (!this.selectedId) return undefined;
-		return this.communities.get(this.selectedId);
-	}
-
 	private drawNode(ctx: CanvasRenderingContext2D, node: DrawNode): void {
 		const x = node.x * this.k + this.tx;
 		const y = node.y * this.k + this.ty;
@@ -931,6 +907,21 @@ export class SimilarityMap {
 		ctx.lineWidth = 1;
 		ctx.strokeStyle = shadeColor(node.color, 0.85);
 		ctx.stroke();
+		if (this.classicGlow.has(node.id) && !node.isSeed) {
+			const beat = classicBreath(node.id);
+			const t = this.classicGlow.get(node.id) ?? 0;
+			const halo = (5 + 18 * t) * (0.45 + 0.55 * beat);
+			const rim = radius / (radius + halo);
+			const glow = ctx.createRadialGradient(x, y, 0, x, y, radius + halo);
+			glow.addColorStop(0, `rgba(255, 255, 255, ${0.85 + 0.15 * beat})`);
+			glow.addColorStop(Math.max(0.02, rim * 0.72), `rgba(255, 255, 255, ${0.4 + 0.35 * beat})`);
+			glow.addColorStop(Math.min(0.98, rim), `rgba(255, 255, 255, ${0.25 + 0.4 * beat})`);
+			glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+			ctx.fillStyle = glow;
+			ctx.beginPath();
+			ctx.arc(x, y, radius + halo, 0, Math.PI * 2);
+			ctx.fill();
+		}
 		if (node.isSeed) {
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
@@ -960,15 +951,17 @@ export class SimilarityMap {
 				...node,
 				x: at?.x ?? 0,
 				y: at?.y ?? 0,
+				homeX: at?.x ?? 0,
+				homeY: at?.y ?? 0,
 				radius: at?.radius ?? 8,
 				color: this.colorOf(node),
 				shown: this.isShown(node),
 			};
 		});
 		this.maxWeight = this.edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
+		this.captureStructure();
 		if (resetView) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
-			this.communityPick = undefined;
 			this.hoverId = null;
 			this.refreshFocus();
 			this.adjusted = false;
@@ -1098,6 +1091,10 @@ function strokeArrow(
 	ctx.lineTo(tipX - length * Math.cos(angle + 0.4), tipY - length * Math.sin(angle + 0.4));
 	ctx.closePath();
 	ctx.fill();
+}
+
+function pairKey(a: string, b: string): string {
+	return a < b ? `${a}\0${b}` : `${b}\0${a}`;
 }
 
 function overlaps(

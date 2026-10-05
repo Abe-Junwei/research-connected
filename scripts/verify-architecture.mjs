@@ -14,7 +14,7 @@ const domain = new Set([
 const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "vault-note.ts"]);
 const ui = new Set([
 	"app.ts", "detail-cards.ts", "embed-block.ts", "embed-mount.ts", "filter-controls.ts",
-	"graph-3d.ts", "graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
+	"graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
 	"sidebar-resize.ts", "timeline-view.ts", "view.ts", "visual.ts",
 ]);
 const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts"]);

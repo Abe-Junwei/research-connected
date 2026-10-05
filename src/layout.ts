@@ -1,6 +1,5 @@
 import type { GraphEdge } from "./types";
 import { clamp } from "./visual";
-import { compactPack } from "./community-regions";
 
 export interface ForceNode {
 	id: string;
@@ -10,13 +9,17 @@ export interface ForceNode {
 }
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const COMMUNITY_PAD = 36;
+/** Extra travel past packing before a group is reeled toward the seed (weak ≠ far-off-canvas). */
+const FLY_SLACK = 80;
 
 /**
  * Place the seed at the origin and other papers on a similarity spiral, then
  * relax springs (shorter when the score is higher), repulsion, and collision.
- * The seed stays pinned for the simulation so the map remains centered on it.
- * When `communities` is given, same-community springs tighten and different
- * community packs are pushed apart so their enclosing circles stay separated.
+ * The seed stays pinned. Same-community edges shrink; members also pull
+ * toward their community centroid so a group does not smear. After
+ * relaxation, each community is compacted, overlapping disks are pushed
+ * apart, and groups past packing+slack are pulled inward.
  */
 export function runForceLayout(
 	nodes: ForceNode[],
@@ -57,11 +60,10 @@ export function runForceLayout(
 		const key = edgeKey(edge.source, edge.target);
 		let rest = 88 + (1 - clamp(edge.weight, 0, 1)) * 200;
 		let k = 0.025 + clamp(edge.weight, 0, 1) * 0.07;
-		// 同社区边更短更紧：让检测出的群落在平面上保持可分辨的团聚。
-		const communityA = communities?.get(edge.source);
-		if (communityA !== undefined && communityA === communities?.get(edge.target)) {
-			rest *= 0.45;
-			k *= 2.2;
+		const community = communities?.get(edge.source);
+		if (community !== undefined && community === communities?.get(edge.target)) {
+			rest *= 0.32;
+			k *= 2.8;
 		}
 		restLength.set(key, rest);
 		springK.set(key, k);
@@ -71,6 +73,7 @@ export function runForceLayout(
 		const alpha = 1 - iter / iterations;
 		for (let i = 0; i < nodes.length; i++) velocityX[i] = 0;
 		for (let i = 0; i < nodes.length; i++) velocityY[i] = 0;
+		const centroids = communityCentroids(nodes, communities, seedId);
 
 		for (let i = 0; i < nodes.length; i++) {
 			const a = nodes[i];
@@ -128,9 +131,15 @@ export function runForceLayout(
 		for (let i = 0; i < nodes.length; i++) {
 			const node = nodes[i];
 			if (!node || node.id === seedId) continue;
-			const pull = 0.01 * alpha;
+			const pull = 0.04 * alpha;
 			let vx = (velocityX[i] ?? 0) - node.x * pull;
 			let vy = (velocityY[i] ?? 0) - node.y * pull;
+			const community = communities?.get(node.id);
+			const center = community === undefined ? undefined : centroids.get(community);
+			if (center) {
+				vx -= (node.x - center.x) * 0.14 * alpha;
+				vy -= (node.y - center.y) * 0.14 * alpha;
+			}
 			vx *= 0.62;
 			vy *= 0.62;
 			const speed = Math.hypot(vx, vy);
@@ -143,10 +152,14 @@ export function runForceLayout(
 		}
 
 		separate(nodes, seedId);
-		if (communities && communities.size > 1) separateCommunities(nodes, seedId, communities);
 	}
-	if (communities && communities.size > 1) {
-		for (let n = 0; n < 32; n++) separateCommunities(nodes, seedId, communities);
+	if (communities) {
+		compactCommunities(nodes, seedId, communities);
+		for (let pass = 0; pass < 8; pass++) {
+			reelInCommunities(nodes, seedId, communities);
+			separateCommunities(nodes, seedId, communities);
+			separate(nodes, seedId);
+		}
 	}
 }
 
@@ -177,13 +190,61 @@ function separate(nodes: ForceNode[], seedId: string): void {
 	}
 }
 
-/** 社区外接圆互斥：不同圈子的质心至少相距 r1+r2+gap，对应旧圈层的社区间距。 */
-export function separateCommunities(
+function communityCentroids(
+	nodes: ForceNode[],
+	communities: ReadonlyMap<string, number> | undefined,
+	seedId: string,
+): Map<number, { x: number; y: number }> {
+	const sums = new Map<number, { x: number; y: number; n: number }>();
+	if (!communities) return new Map();
+	let seed: ForceNode | undefined;
+	for (const node of nodes) {
+		if (node.id === seedId) seed = node;
+		const id = communities.get(node.id);
+		if (id === undefined) continue;
+		const acc = sums.get(id) ?? { x: 0, y: 0, n: 0 };
+		acc.x += node.x;
+		acc.y += node.y;
+		acc.n += 1;
+		sums.set(id, acc);
+	}
+	const out = new Map<number, { x: number; y: number }>();
+	for (const [id, acc] of sums) out.set(id, { x: acc.x / acc.n, y: acc.y / acc.n });
+	const seedCommunity = communities.get(seedId);
+	if (seed && seedCommunity !== undefined) out.set(seedCommunity, { x: seed.x, y: seed.y });
+	return out;
+}
+
+function compactCommunities(
 	nodes: ForceNode[],
 	seedId: string,
 	communities: ReadonlyMap<string, number>,
-	gap = 96,
 ): void {
+	for (const pack of communityPacks(nodes, communities)) {
+		const seed = pack.members.find((node) => node.id === seedId);
+		const cx = seed?.x ?? pack.cx;
+		const cy = seed?.y ?? pack.cy;
+		const span = pack.members.reduce(
+			(max, node) => Math.max(max, Math.hypot(node.x - cx, node.y - cy) + node.radius),
+			0,
+		);
+		const target = Math.max(40, Math.sqrt(pack.members.length) * 16);
+		if (span <= target) continue;
+		const s = target / span;
+		for (const node of pack.members) {
+			if (node.id === seedId) continue;
+			node.x = clamp(cx + (node.x - cx) * s, -2400, 2400);
+			node.y = clamp(cy + (node.y - cy) * s, -2400, 2400);
+		}
+	}
+}
+
+function communityPacks(nodes: ForceNode[], communities: ReadonlyMap<string, number>): Array<{
+	members: ForceNode[];
+	cx: number;
+	cy: number;
+	radius: number;
+}> {
 	const groups = new Map<number, ForceNode[]>();
 	for (const node of nodes) {
 		const community = communities.get(node.id);
@@ -192,12 +253,22 @@ export function separateCommunities(
 		group.push(node);
 		groups.set(community, group);
 	}
-	if (groups.size < 2) return;
-	const packs = [...groups.values()].map((members) => {
-		const pack = compactPack(members, 24);
-		const extra = members.reduce((max, node) => Math.max(max, node.radius), 0);
-		return { members, cx: pack.cx, cy: pack.cy, radius: pack.radius + extra, mobile: members.filter((node) => node.id !== seedId) };
-	});
+	return [...groups.values()]
+		.filter((members) => members.length >= 2)
+		.map((members) => {
+			const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
+			const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
+			const radius = members.reduce((max, node) => Math.max(max, Math.hypot(node.x - cx, node.y - cy) + node.radius), 0);
+			return { members, cx, cy, radius: radius + COMMUNITY_PAD };
+		});
+}
+
+function separateCommunities(
+	nodes: ForceNode[],
+	seedId: string,
+	communities: ReadonlyMap<string, number>,
+): void {
+	const packs = communityPacks(nodes, communities);
 	for (let i = 0; i < packs.length; i++) {
 		const a = packs[i]!;
 		for (let j = i + 1; j < packs.length; j++) {
@@ -205,26 +276,44 @@ export function separateCommunities(
 			let dx = b.cx - a.cx;
 			let dy = b.cy - a.cy;
 			const dist = Math.hypot(dx, dy) || 0.01;
-			const min = a.radius + b.radius + gap;
+			const min = a.radius + b.radius;
 			if (dist >= min) continue;
 			dx /= dist;
 			dy /= dist;
-			const overlap = min - dist;
-			const pushA = a.mobile.length ? (b.mobile.length ? overlap / 2 : overlap) : 0;
-			const pushB = b.mobile.length ? (a.mobile.length ? overlap / 2 : overlap) : 0;
-			for (const node of a.mobile) {
-				node.x -= dx * pushA;
-				node.y -= dy * pushA;
-			}
-			for (const node of b.mobile) {
-				node.x += dx * pushB;
-				node.y += dy * pushB;
-			}
-			a.cx -= dx * pushA;
-			a.cy -= dy * pushA;
-			b.cx += dx * pushB;
-			b.cy += dy * pushB;
+			const push = (min - dist) / 2;
+			shiftGroup(a.members, seedId, -dx * push, -dy * push);
+			shiftGroup(b.members, seedId, dx * push, dy * push);
 		}
+	}
+}
+
+/** Pull groups that drifted past packing toward the seed; leave nearer groups alone. */
+function reelInCommunities(
+	nodes: ForceNode[],
+	seedId: string,
+	communities: ReadonlyMap<string, number>,
+): void {
+	const seedCommunity = communities.get(seedId);
+	let core = 48;
+	for (const node of nodes) {
+		if (seedCommunity === undefined || communities.get(node.id) !== seedCommunity) continue;
+		core = Math.max(core, Math.hypot(node.x, node.y) + node.radius);
+	}
+	for (const pack of communityPacks(nodes, communities)) {
+		if (pack.members.some((node) => node.id === seedId)) continue;
+		const dist = Math.hypot(pack.cx, pack.cy) || 0.01;
+		const limit = core + pack.radius + FLY_SLACK;
+		if (dist <= limit) continue;
+		const scale = limit / dist - 1;
+		shiftGroup(pack.members, seedId, pack.cx * scale, pack.cy * scale);
+	}
+}
+
+function shiftGroup(members: readonly ForceNode[], seedId: string, dx: number, dy: number): void {
+	for (const node of members) {
+		if (node.id === seedId) continue;
+		node.x = clamp(node.x + dx, -2400, 2400);
+		node.y = clamp(node.y + dy, -2400, 2400);
 	}
 }
 

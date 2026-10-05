@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
-import { derivativeWorks, priorWorks } from "../src/aggregates";
+import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../src/community-regions";
 import { parseEmbed } from "../src/embed-syntax";
@@ -17,7 +17,7 @@ import {
 } from "../src/graph-filter";
 import { authorYear, citationLabelAlpha, shortAuthor } from "../src/labels";
 import { placeLayout } from "../src/layout-modes";
-import { fitViewScale } from "../src/visual";
+import { citationRadius, classicBreath, CLASSIC_BREATH_MS, fitViewScale, yearNormalizedCitations } from "../src/visual";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
@@ -116,7 +116,7 @@ function unit(): void {
 		{ id: "c", title: "Serial verb constructions" },
 		{ id: "d", title: "Serial predicates in Papuan" },
 	], new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]));
-	assert.equal(topicGroups.get(0), "Language");
+	assert.match(topicGroups.get(0) ?? "", /Amazonia|Contact|Typology/);
 	assert.equal(topicGroups.get(1), "Serial");
 	const shared = communityTopicLabels(
 		[
@@ -135,7 +135,7 @@ function unit(): void {
 		{ id: "b", community: 0, x: 20, y: 0, shown: true },
 		{ id: "c", community: 0, x: 10, y: 20, shown: true },
 	], 10, 3, 10, topicGroups);
-	assert.equal(communityRegions[0]?.label, "Language");
+	assert.match(communityRegions[0]?.label ?? "", /Amazonia|Contact|Typology/);
 	const capped = buildCommunityRegions(
 		[
 			{ id: "a", community: 0, x: 0, y: 0, shown: true },
@@ -186,6 +186,17 @@ function unit(): void {
 	);
 	assert.notEqual(junk.get(0), "Always");
 	assert.equal(junk.get(0), "Evidential");
+	const hapax = communityTopicLabels(
+		[
+			{ id: "a", title: "Case marking again" },
+			{ id: "b", title: "Ergative systems" },
+			{ id: "c", title: "Ergative alignment in the field" },
+		],
+		new Map([["a", 0], ["b", 0], ["c", 0]]),
+	);
+	assert.notEqual(hapax.get(0), "Again");
+	assert.notEqual(hapax.get(0), "Systems");
+	assert.match(hapax.get(0) ?? "", /Ergative/i);
 	const fromFields = communityTopicLabels(
 		[
 			{ id: "a", title: "Notes", abstract: "Tariana evidential marking in discourse", concepts: ["Evidentiality", "Amazonia"] },
@@ -196,7 +207,7 @@ function unit(): void {
 		new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]),
 	);
 	assert.match(fromFields.get(0) ?? "", /Evidentiality/, "关键词优先于标题词");
-	assert.match(fromFields.get(0) ?? "", / · /, "圈名可不限一个");
+	assert.doesNotMatch(fromFields.get(0) ?? "", / · /);
 	assert.match(fromFields.get(1) ?? "", /Serial/i);
 	const keywordFirst = communityTopicLabels(
 		[
@@ -206,7 +217,29 @@ function unit(): void {
 		new Map([["a", 0], ["b", 0]]),
 	);
 	assert.equal(keywordFirst.get(0), "Syntax");
-	assert.notEqual(keywordFirst.get(0), "Look");
+	const umbrella = communityTopicLabels(
+		[
+			{ id: "a", title: "A", concepts: ["Syntax, Semantics, Linguistic Variation", "Language, Discourse, Communication Strategies"] },
+			{ id: "b", title: "B", concepts: ["Syntax, Semantics, Linguistic Variation"] },
+			{ id: "c", title: "C", concepts: ["Discourse Analysis in Language Studies", "Cultural and political discourse analysis"] },
+			{ id: "d", title: "D", concepts: ["Discourse Analysis in Language Studies"] },
+		],
+		new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]),
+	);
+	assert.ok((umbrella.get(0)?.length ?? 99) <= 28, "圈名截短");
+	assert.match(umbrella.get(0) ?? "", /Syntax|Semantics/);
+	assert.match(umbrella.get(1) ?? "", /Discourse/i);
+	assert.notEqual(umbrella.get(0), umbrella.get(1));
+	const abstractOnly = communityTopicLabels(
+		[
+			{ id: "a", title: "Notes", abstract: "Serial verb constructions in the field" },
+			{ id: "b", title: "Notes", abstract: "Serial verb constructions again" },
+		],
+		new Map([["a", 0], ["b", 0]]),
+	);
+	assert.match(abstractOnly.get(0) ?? "", /Serial/i, "摘要重复短语可作圈名");
+	const emptyLabel = communityTopicLabels([{ id: "a" }, { id: "b" }], new Map([["a", 0], ["b", 0]]));
+	assert.equal(emptyLabel.get(0), "社区 1");
 
 	assert.equal(allowedExternalUrl("https://doi.org/10.1038/nature14539")?.startsWith("https://doi.org/"), true);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
@@ -329,6 +362,24 @@ function unit(): void {
 	assert.ok(fitViewScale(400, 300, 4000, 3000) < 0.2, "大平面图能缩小进视口");
 	assert.ok(fitViewScale(400, 300, 460, 300) > 0.5, "时间布局填满视口而不溢出");
 	assert.equal(fitViewScale(400, 300, 40, 30) <= 8, true);
+	const rLow = citationRadius(300, 300, 4000, false);
+	const rHigh = citationRadius(4000, 300, 4000, false);
+	assert.ok(rHigh / rLow > 2, "本页高低引用平方根拉开面积");
+	assert.equal(citationRadius(100, 100, 100, false), citationRadius(200, 200, 200, false), "极差为 0 则同级");
+	const breathA = classicBreath("paper-a", 0);
+	const breathB = classicBreath("paper-b", 0);
+	assert.ok(breathA >= 0 && breathA <= 1 && breathB >= 0 && breathB <= 1);
+	assert.notEqual(breathA, breathB);
+	assert.ok(Math.abs(classicBreath("paper-a", 0) - classicBreath("paper-a", 2 * Math.PI * CLASSIC_BREATH_MS)) < 1e-9);
+	assert.ok(yearNormalizedCitations(3500, 1991, 2026) < yearNormalizedCitations(400, 2023, 2026), "同年等效被引用年归一");
+	assert.equal(yearNormalizedCitations(80, 2026, 2026), 80);
+	assert.equal(yearNormalizedCitations(80, null, 2026), 80);
+	const yearSized = placeLayout("radial", [
+		{ ...paper("S", "seed", 10), year: 2020 },
+		{ ...paper("A", "reference", 3500), year: 1991 },
+		{ ...paper("B", "citation", 400), year: 2023 },
+	], [], new Map([["S", 1]]), 2026);
+	assert.ok((yearSized.find((node) => node.id === "B")?.radius ?? 0) > (yearSized.find((node) => node.id === "A")?.radius ?? 0), "近年高被引年率比老文更大");
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
@@ -368,6 +419,40 @@ function unit(): void {
 	const derivatives = derivativeWorks(rankedGraph, visible);
 	assert.equal(derivatives.find((item) => item.paper.id === "C")?.count, 3);
 	assert.equal(derivatives.some((item) => item.paper.id === "B"), true);
+	const classicNodes = [
+		{ ...paper("S", "seed", 10), year: 2015 },
+		{ ...paper("A", "reference", 100), year: 1991 },
+		{ ...paper("B", "citation", 10), year: 2010 },
+		{ ...paper("C", "citation", 10), year: 2024 },
+	];
+	const classicEdges = [
+		{ ...weighted("B", "A", 0.8), direct: "source-cites-target" as const },
+		{ ...weighted("C", "A", 0.8), direct: "source-cites-target" as const },
+		{ ...weighted("S", "A", 0.8), direct: "source-cites-target" as const },
+		{ ...weighted("S", "C", 0.5), direct: "source-cites-target" as const },
+		{ ...weighted("B", "C", 0.5), direct: "source-cites-target" as const },
+	];
+	const classics = classicNodeIds(classicNodes, classicEdges, 2026);
+	assert.equal(classics.has("A"), true, "图内多次被引的老文是经典");
+	assert.equal(classics.has("C"), false, "近年文即使被引也不标经典");
+	assert.equal(classics.has("S"), false, "种子不标经典辉光");
+	const glow = classicInfluence(
+		[
+			{ ...paper("S", "seed", 10), year: 2015 },
+			{ ...paper("A", "reference", 3500), year: 1991 },
+			{ ...paper("B", "reference", 80), year: 1990 },
+			{ ...paper("C", "citation", 10), year: 2024 },
+		],
+		[
+			{ ...weighted("S", "A", 0.8), direct: "source-cites-target" as const },
+			{ ...weighted("B", "A", 0.8), direct: "source-cites-target" as const },
+			{ ...weighted("S", "B", 0.8), direct: "source-cites-target" as const },
+			{ ...weighted("A", "B", 0.5), direct: "source-cites-target" as const },
+		],
+		2026,
+	);
+	assert.ok((glow.get("A") ?? 0) > (glow.get("B") ?? 1), "年归一被引更高则辉光范围更大");
+	assert.equal(glow.has("C"), false);
 
 	const picked = selectNeighbors(
 		{ ...DEFAULT_SETTINGS, maxNodes: 20, includeRelated: false },

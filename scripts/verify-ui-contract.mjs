@@ -16,6 +16,7 @@ assert.match(responsive, /NARROW_SURFACE_WIDTH = 780/, "one responsive breakpoin
 assert.match(responsive, /NARROW_EMBED_WIDTH = 560/, "embed stays side-by-side in the default note column");
 assert.match(app, /observeResponsiveMode\(root/, "pane must use shared responsive state");
 assert.match(embed, /observeResponsiveMode\(shell/, "embed must use shared responsive state");
+assert.match(embed, /defaultWidth:\s*260/, "embed evidence rail starts at the minimum width");
 assert.match(embed, /semanticScholarApiKey\.trim\(\)/, "embed cache must include S2 key presence");
 assert.match(app, /paintSelectionReasons\(detail, rankInfo, score\)/, "pane wires selection reasons");
 assert.match(embed, /paintSelectionReasons\(detail, rankInfo, graph\.seedScore\.get\(paper\.id\)\)/, "embed wires selection reasons");

@@ -7,8 +7,8 @@ import { buildLegend, buildPathToggle } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
-import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
+import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
@@ -39,9 +39,8 @@ const STAGE_TEXT: Record<LoadStage, string> = {
 
 const cache = new Map<string, SimilarityGraph>();
 
-/** Camera, filter, and layout remembered per block key across remounts. */
+/** Filter and layout remembered per block key across remounts. */
 interface EmbedViewState {
-	camera: GraphCameraState;
 	filter: GraphFilter;
 	layout: LayoutMode;
 }
@@ -235,17 +234,28 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	}
 
 	const spec = parsed.spec;
+	const canvas = document.createElement("canvas");
+	canvas.className = "cpo-embed-canvas";
+	stage.prepend(canvas);
 	const stateKey = cacheKey(spec.target, spec.maxNodes ?? deps.getSettings().maxNodes, spec.depth, deps.getSettings());
 	const saved = viewStates.get(stateKey);
 	let viewFilter = saved?.filter ?? filterFromSpec(spec);
+	openGraphAction.hidden = !deps.openGraph;
+	openGraphAction.onclick = deps.openGraph ? () => deps.openGraph?.(spec.target) : null;
+	const map = new SimilarityMap(canvas, tooltip, stage, { wheel: "modifier" });
+	const applyFilter = (): void => {
+		map.setKinds(viewFilter.kinds);
+		map.setScrubYear(viewFilter.scrubYear);
+		map.setFocusPath(viewFilter.focusPath);
+	};
 	buildLegend(kindLegend, () => viewFilter, (next) => {
 		viewFilter = next;
-		graphView?.setFilter(viewFilter);
+		applyFilter();
 		paintLists();
 	});
 	legend.after(buildPathToggle(() => viewFilter, (next) => {
 		viewFilter = next;
-		graphView?.setFilter(viewFilter);
+		applyFilter();
 		paintLists();
 	}));
 	let tab: GraphTab = "graph";
@@ -254,10 +264,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
-	let contextRecoveries = 0;
-	let graphView: Graph3DHandle | null = null;
 
 	const paintLists = (): void => {
+		detail.hidden = tab !== "graph";
 		if (!currentGraph || tab === "graph") {
 			listPanel.hidden = true;
 			listPanel.replaceChildren();
@@ -281,13 +290,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		layoutHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
-			graphView?.setLayout(layoutMode);
-			graphView?.setColorMode(defaultColorMode(layoutMode));
+			map.setLayout(layoutMode);
+			map.setColorMode(defaultColorMode(layoutMode));
 			paintColorLegend(layoutMode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
-			graphView?.setFilter(viewFilter);
+			applyFilter();
 			paintLists();
 		},
 		onTab: (next) => {
@@ -328,19 +337,20 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const anchor = placementAnchor(root);
 	const clearPlacement = applyPlacement(root, anchor, spec);
-	const stopResize = mountResizeHandle(body, anchor, () => graphView?.resize());
+	const stopResize = mountResizeHandle(body, anchor, () => map.resize());
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, {
-		onResize: () => graphView?.resize(),
+		defaultWidth: 260,
+		onResize: () => map.resize(),
 	});
 	const narrowObserver = observeResponsiveMode(shell);
-	zoomIn.addEventListener("click", () => graphView?.zoomBy(1.2));
-	zoomOut.addEventListener("click", () => graphView?.zoomBy(1 / 1.2));
-	zoomFit.addEventListener("click", () => graphView?.frame());
+	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
+	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
+	zoomFit.addEventListener("click", () => map.fit(true));
 	let wheelHinted = false;
 	stage.addEventListener(
 		"wheel",
 		(event) => {
-			if (wheelHinted || event.ctrlKey || event.metaKey || !graphView) return;
+			if (wheelHinted || event.ctrlKey || event.metaKey) return;
 			wheelHinted = true;
 			status.textContent += " · 按住 ⌘/Ctrl 滚动可缩放";
 		},
@@ -367,7 +377,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		selected = null;
 		openAlexAction.hidden = true;
 		doiAction.hidden = true;
-		openGraphAction.hidden = !deps.openGraph;
 		detail.replaceChildren();
 		const empty = document.createElement("p");
 		empty.className = "cpo-side-tip";
@@ -389,8 +398,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
 		doiAction.hidden = !doi;
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
-		openGraphAction.hidden = !deps.openGraph;
-		openGraphAction.onclick = deps.openGraph ? () => deps.openGraph?.(spec.target) : null;
 		detail.replaceChildren();
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
@@ -460,52 +467,34 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const snapshotView = (): void => {
-		if (!graphView) return;
-		rememberViewState(stateKey, { camera: graphView.getCamera(), filter: viewFilter, layout: layoutMode });
+		rememberViewState(stateKey, { filter: viewFilter, layout: layoutMode });
+	};
+
+	map.onSelect = (paper) => {
+		if (paper && currentGraph) showDetail(paper, currentGraph, null);
+		else placeDetailPlaceholder();
+	};
+	map.onEdgeSelect = (edge) => {
+		if (!currentGraph || !edge) {
+			placeDetailPlaceholder();
+			return;
+		}
+		const from = currentGraph.nodes.find((node) => node.id === edge.source);
+		showDetail(from ?? currentGraph.nodes.find((node) => node.id === edge.target) ?? null, currentGraph, edge);
 	};
 
 	const renderGraph = (graph: SimilarityGraph, depthNote: string): void => {
 		snapshotView();
-		graphView?.destroy();
-		graphView = null;
 		message.hidden = true;
-		try {
-			graphView = mountGraph3D(
-				stage,
-				tooltip,
-				graph,
-				(paper, link) => showDetail(paper, graph, link),
-				{
-					labels: spec.labels,
-					filter: viewFilter,
-					layout: layoutMode,
-					colorMode: layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode),
-					// GPU 切换/窗口重开导致上下文丢失时，用缓存数据原地重建图谱，
-					// 避免画布黑屏；连续失败两次就提示手动重载，不无限循环。
-					onContextLost: () => {
-						if (!alive) return;
-						contextRecoveries += 1;
-						if (contextRecoveries > 2) {
-							message.hidden = false;
-							messageText.textContent = "图形上下文反复丢失，点「重新加载」恢复图谱。";
-							return;
-						}
-						void load(false);
-					},
-				},
-			);
-			const remembered = viewStates.get(stateKey);
-			if (remembered) graphView.setCamera(remembered.camera);
-			currentGraph = graph;
-			const span = yearSpan(graph.nodes);
-			if (span) chrome?.setYears(...span);
-			else chrome?.clearYears();
-			paintLists();
-		} catch (error) {
-			message.hidden = false;
-			messageText.textContent = error instanceof Error ? error.message : "图谱没有建起来。";
-			return;
-		}
+		currentGraph = graph;
+		map.setGraph(graph.nodes, graph.edges, graph.seedScore);
+		map.setLayout(layoutMode);
+		map.setColorMode(layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode));
+		applyFilter();
+		const span = yearSpan(graph.nodes);
+		if (span) chrome?.setYears(...span);
+		else chrome?.clearYears();
+		paintLists();
 		const seed = graph.nodes.find((node) => node.isSeed);
 		if (seed) {
 			seedSummary.hidden = false;
@@ -517,6 +506,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		status.textContent = `${seed?.title ?? "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
 		}`;
+		if (seed) showDetail(seed, graph, null);
 	};
 
 	/** OpenCitations pass: verify and add citation links between visible nodes, then re-render if edges changed. */
@@ -549,15 +539,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (!alive || token !== generation || currentGraph !== graph) return;
 		const added = graph.edges.length - edgesBefore;
 		if (added > 0) {
-			renderGraph(graph, depthNote);
+			map.updateGraphData(graph.edges);
 			status.textContent += ` · OpenCitations 补充 ${added} 条引用`;
 		}
 	};
 
 	const load = async (bypassCache: boolean): Promise<void> => {
 		const token = ++generation;
-		graphView?.destroy();
-		graphView = null;
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
 		seedSummary.hidden = true;
@@ -605,15 +593,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	reload.addEventListener("click", () => {
 		const settings = { ...deps.getSettings() };
-		contextRecoveries = 0;
 		cache.delete(cacheKey(spec.target, spec.maxNodes ?? settings.maxNodes, spec.depth, settings));
 		void load(true);
 	});
 	void load(false);
 
 	const onTheme = (): void => {
-		graphView?.applyTheme();
-		graphView?.resize();
+		map.resize();
 	};
 	window.addEventListener("research-connected-theme", onTheme);
 
@@ -622,7 +608,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		generation += 1;
 		snapshotView();
 		window.removeEventListener("research-connected-theme", onTheme);
-		graphView?.destroy();
+		map.destroy();
 		chrome?.destroy();
 		sheet.destroy();
 		stopResize();

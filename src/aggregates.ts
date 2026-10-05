@@ -1,5 +1,5 @@
 import type { SimilarityGraph } from "./neighborhood";
-import type { PaperNode } from "./types";
+import type { GraphEdge, PaperNode } from "./types";
 
 /** List views. They do not add edge types. */
 export const PRIOR_DEFINITION =
@@ -17,6 +17,8 @@ export interface RankedWork {
 
 const LIST_LIMIT = 15;
 const OFTEN = 2;
+const CLASSIC_AGE = 8;
+const CLASSIC_CAP = 8;
 
 /**
  * Works cited by many papers in the visible subgraph.
@@ -77,4 +79,53 @@ function rank(graph: SimilarityGraph, counts: ReadonlyMap<string, number>, kind:
 
 function graphSeedId(graph: SimilarityGraph): string {
 	return graph.nodes.find((node) => node.isSeed)?.id ?? "";
+}
+
+/** In-graph citation hubs that have had time to become canonical. Seed excluded. */
+export function classicNodeIds(
+	nodes: readonly { id: string; year: number | null; isSeed?: boolean }[],
+	edges: readonly GraphEdge[],
+	nowYear = new Date().getFullYear(),
+): Set<string> {
+	const incoming = new Map<string, number>();
+	const bump = (id: string): void => {
+		incoming.set(id, (incoming.get(id) ?? 0) + 1);
+	};
+	for (const edge of edges) {
+		if (edge.direct === "source-cites-target" || edge.direct === "mutual") bump(edge.target);
+		if (edge.direct === "target-cites-source" || edge.direct === "mutual") bump(edge.source);
+	}
+	return new Set(
+		nodes
+			.filter((node) => !node.isSeed && (incoming.get(node.id) ?? 0) >= OFTEN && node.year !== null && nowYear - node.year >= CLASSIC_AGE)
+			.sort((a, b) => (incoming.get(b.id) ?? 0) - (incoming.get(a.id) ?? 0) || (a.year ?? 0) - (b.year ?? 0) || a.id.localeCompare(b.id))
+			.slice(0, CLASSIC_CAP)
+			.map((node) => node.id),
+	);
+}
+
+/** 0–1 influence among classics: √ of year-normalized citations on this graph. */
+export function classicInfluence(
+	nodes: readonly { id: string; year: number | null; citedByCount: number; isSeed?: boolean }[],
+	edges: readonly GraphEdge[],
+	nowYear = new Date().getFullYear(),
+): Map<string, number> {
+	const ids = classicNodeIds(nodes, edges, nowYear);
+	const out = new Map<string, number>();
+	if (ids.size === 0) return out;
+	const byId = new Map(nodes.map((node) => [node.id, node]));
+	const score = (id: string): number => {
+		const node = byId.get(id);
+		if (!node) return 0;
+		const age = node.year === null ? 1 : Math.max(1, nowYear - node.year);
+		return Math.max(0, node.citedByCount) / age;
+	};
+	const values = [...ids].map(score);
+	const lo = Math.sqrt(Math.min(...values));
+	const hi = Math.sqrt(Math.max(...values));
+	for (const id of ids) {
+		const t = hi - lo < 1e-9 ? 1 : (Math.sqrt(score(id)) - lo) / (hi - lo);
+		out.set(id, t);
+	}
+	return out;
 }
