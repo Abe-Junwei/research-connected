@@ -29,7 +29,9 @@ export interface OpenAlexAuth {
 
 export interface SampledWorks {
 	works: RawWork[];
+	rejected: RawWork[];
 	rawFetched: number;
+	filtered: number;
 	pages: number;
 	exhausted: boolean;
 }
@@ -120,7 +122,9 @@ export class OpenAlexClient {
 		if (maxPages > 1) url.searchParams.set("cursor", "*");
 
 		const works: RawWork[] = [];
+		const rejected: RawWork[] = [];
 		let rawFetched = 0;
+		let filtered = 0;
 		let pages = 0;
 		let nextCursor: string | null = "*";
 		while (pages < Math.max(1, maxPages) && works.length < target && nextCursor) {
@@ -128,11 +132,17 @@ export class OpenAlexClient {
 			const page = await this.getPage(url);
 			pages += 1;
 			rawFetched += page.results.length;
-			works.push(...page.results.filter(accept));
+			for (const work of page.results) {
+				if (accept(work)) works.push(work);
+				else {
+					filtered += 1;
+					rejected.push(work);
+				}
+			}
 			nextCursor = page.nextCursor;
 			if (page.results.length === 0) break;
 		}
-		return { works: works.slice(0, target), rawFetched, pages, exhausted: !nextCursor };
+		return { works: works.slice(0, target), rejected, rawFetched, filtered, pages, exhausted: !nextCursor };
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {

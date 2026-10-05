@@ -646,9 +646,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			next.strategies.related ? "相关作品" : "",
 		].filter(Boolean);
 		const warning = next.warnings.map((item) => WARNING_TEXT[item]).join("；");
+		const sampleNote = next.retrievalStats
+			? ` · 采样 ${samplingText(next.retrievalStats.references, "参考")}/${samplingText(next.retrievalStats.citations, "施引")}/${samplingText(next.retrievalStats.related, "相关")}`
+			: "";
 		status.textContent = `${next.nodes.length} 篇 · ${next.edges.length} 条关系 · ${strategyNames.join("、")}${
 			next.skippedNonResearch ? ` · 滤除书评等非研究记录 ${next.skippedNonResearch} 条` : ""
-		}${warning ? ` · ${warning}` : ""}`;
+		}${sampleNote}${warning ? ` · ${warning}` : ""}`;
 		void enrichOpenCitations(next);
 	};
 
@@ -847,6 +850,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		root.replaceChildren();
 		root.classList.remove("cpo-root", "is-narrow");
 	};
+}
+
+function samplingText(stats: { accepted: number; pages: number; partial: boolean }, label: string): string {
+	return `${label}${stats.accepted}${stats.partial ? `/${stats.pages}页` : ""}`;
 }
 
 async function copyPane(text: string): Promise<void> {

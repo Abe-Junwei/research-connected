@@ -597,6 +597,20 @@ async function cursorPaging(): Promise<void> {
 	const single = await client.referencedBySeed("W0", 80);
 	assert.equal(single.length, 2, "single-page mode ignores cursors");
 	assert.equal(new URL(requested[3] ?? "").searchParams.get("cursor"), null);
+
+	const sampled = await client.sampleWorks(
+		"cites:W0",
+		2,
+		2,
+		"cited_by_count:desc",
+		2,
+		(work) => work.id !== "W1",
+	);
+	assert.deepEqual(sampled.works.map((work) => work.id), ["W2", "W3"]);
+	assert.deepEqual(sampled.rejected.map((work) => work.id), ["W1"]);
+	assert.equal(sampled.rawFetched, 3, "filtered sampling reads the next page");
+	assert.equal(sampled.filtered, 1);
+	assert.equal(sampled.pages, 2);
 }
 
 main().catch((error: unknown) => {

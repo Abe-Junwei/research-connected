@@ -2,6 +2,7 @@ import {
 	OpenAlexClient,
 	OpenAlexError,
 	type RawWork,
+	type SampledWorks,
 } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
@@ -23,8 +24,8 @@ export const SAMPLE_TIERS: Record<
 	SampleDepth,
 	{ references: number; citations: number; related: number; pages: number }
 > = {
-	standard: { references: 80, citations: 40, related: 20, pages: 1 },
-	extended: { references: 200, citations: 200, related: 50, pages: 1 },
+	standard: { references: 80, citations: 40, related: 20, pages: 2 },
+	extended: { references: 200, citations: 200, related: 50, pages: 2 },
 	deep: { references: 200, citations: 200, related: 100, pages: 5 },
 };
 
@@ -158,7 +159,9 @@ export async function loadNeighborhood(
 	const citePapers = researchOnly(citeAll);
 	const relatedPapers = researchOnly(relatedAll);
 	const skippedNonResearch =
-		refAll.length - refPapers.length + (citeAll.length - citePapers.length) + (relatedAll.length - relatedPapers.length);
+		countNonResearch(references.sample.rejected, "reference", seed.id) +
+		countNonResearch(citations.sample.rejected, "citation", seed.id) +
+		countNonResearch(related.sample.rejected, "related", seed.id);
 	const picked = selectNeighbors(
 		settings,
 		{ reference: refPapers, citation: citePapers, related: relatedPapers },
@@ -346,9 +349,9 @@ export async function loadNeighborhood(
 		citationEvidence,
 		skippedNonResearch,
 		retrievalStats: {
-			references: statsFor(references.sample, refAll.length, refPapers.length),
-			citations: statsFor(citations.sample, citeAll.length, citePapers.length),
-			related: statsFor(related.sample, relatedAll.length, relatedPapers.length),
+			references: statsFor(references.sample, refPapers.length, tier.references),
+			citations: statsFor(citations.sample, citePapers.length, tier.citations),
+			related: statsFor(related.sample, relatedPapers.length, tier.related),
 		},
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 	};
@@ -415,30 +418,34 @@ export function selectNeighbors(
 
 async function loadGroup(
 	enabled: boolean,
-	run: () => Promise<import("./openalex").SampledWorks>,
-): Promise<{ works: RawWork[]; sample: import("./openalex").SampledWorks; error?: string }> {
-	if (!enabled) return { works: [], sample: { works: [], rawFetched: 0, pages: 0, exhausted: true } };
+	run: () => Promise<SampledWorks>,
+): Promise<{ works: RawWork[]; sample: SampledWorks; error?: string }> {
+	if (!enabled) return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: true } };
 	try {
 		const sample = await run();
 		return { works: sample.works, sample };
 	} catch (error) {
-		return { works: [], sample: { works: [], rawFetched: 0, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
+		return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
 	}
 }
 
 function statsFor(
-	sample: { rawFetched: number; pages: number; exhausted: boolean },
-	rawCount: number,
+	sample: { rawFetched: number; filtered: number; pages: number; exhausted: boolean },
 	accepted: number,
+	target: number,
 ): RetrievalStats {
 	return {
 		rawFetched: sample.rawFetched,
 		accepted,
-		filtered: Math.max(0, rawCount - accepted),
+		filtered: sample.filtered,
 		pages: sample.pages,
 		exhausted: sample.exhausted,
-		partial: accepted < rawCount,
+		partial: sample.pages > 0 && accepted < target,
 	};
+}
+
+function countNonResearch(works: RawWork[], origin: Origin, seedId: string): number {
+	return asPapers(works, origin, seedId).filter((paper) => Boolean(nonResearchLabel(paper))).length;
 }
 
 function asPapers(works: RawWork[], origin: Origin, seedId: string): PaperNode[] {
