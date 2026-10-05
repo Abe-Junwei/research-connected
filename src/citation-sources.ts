@@ -1,5 +1,5 @@
 import type { GetJson } from "./openalex";
-import { cleanAbstractText } from "./paper";
+import { cleanAbstractText, normalizeDoi } from "./paper";
 
 export interface OpenCitationRow {
 	oci?: string;
@@ -266,9 +266,7 @@ export function doisFromOpenCitation(row: OpenCitationRow): { citing: string[]; 
 
 /** Bare DOI from a paper's https://doi.org/ link, or null when the paper has none. */
 export function doiFromPaper(paper: { doiUrl: string | null }): string | null {
-	if (!paper.doiUrl) return null;
-	const match = paper.doiUrl.match(/^https?:\/\/(?:dx\.)?doi\.org\/(\S+)$/i);
-	return match?.[1] ?? null;
+	return normalizeDoi(paper.doiUrl);
 }
 
 /**

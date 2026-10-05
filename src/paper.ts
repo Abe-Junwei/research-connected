@@ -204,15 +204,23 @@ function formatAuthorNames(names: string[]): string {
 }
 
 function toDoiUrl(doi: string | null | undefined): string | null {
-	if (!doi) return null;
-	const trimmed = doi.trim();
-	if (/^https:\/\/doi\.org\//i.test(trimmed)) return trimmed;
-	if (/^10\.\d{4,9}\/\S+$/.test(trimmed)) return `https://doi.org/${trimmed}`;
-	return null;
+	const normalized = normalizeDoi(doi);
+	return normalized ? `https://doi.org/${normalized}` : null;
 }
 
 function cleanDoi(doi: string): string {
-	return decodeURIComponentSafe(doi).replace(/[)\].,;>]+$/g, "");
+	return normalizeDoi(doi) ?? decodeURIComponentSafe(doi).replace(/[)\].,;>]+$/g, "");
+}
+
+export function normalizeDoi(value: string | null | undefined): string | null {
+	if (!value) return null;
+	let doi = decodeURIComponentSafe(value.trim())
+		.replace(/^doi:\s*/i, "")
+		.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "")
+		.replace(/[)\].,;>]+$/g, "")
+		.trim()
+		.toLowerCase();
+	return /^10\.\d{1,9}\/\S+$/.test(doi) ? doi : null;
 }
 
 function decodeURIComponentSafe(value: string): string {

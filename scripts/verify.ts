@@ -24,7 +24,7 @@ import { runForceLayout } from "../src/layout";
 import { runForceLayout3D } from "../src/layout-3d";
 import { loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
-import { classifyQuery, reconstructAbstract, toPaper } from "../src/paper";
+import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
@@ -76,6 +76,7 @@ function unit(): void {
 		kind: "doi",
 		value: "10.1038/nature14539",
 	});
+	assert.equal(normalizeDoi(" DOI:HTTPS://doi.org/10.1234/ABC). "), "10.1234/abc");
 	assert.deepEqual(classifyQuery("https://doi.org/10.1038/nature14539"), {
 		kind: "doi",
 		value: "10.1038/nature14539",
@@ -282,6 +283,15 @@ function unit(): void {
 	assert.ok(picked.length <= 19);
 	assert.equal(picked.some((item) => item.id === "W4"), false);
 	assert.equal(picked.some((item) => item.origin === "citation"), true);
+	const duplicateReference = toPaper({ id: "W10", display_name: "Duplicate", doi: "10.1234/dup", publication_year: 2020 }, "reference");
+	const duplicateCitation = toPaper({ id: "W11", display_name: "Duplicate", doi: "https://doi.org/10.1234/DUP.", publication_year: 2020 }, "citation");
+	assert.ok(duplicateReference && duplicateCitation);
+	const merged = selectNeighbors(
+		{ ...DEFAULT_SETTINGS, maxNodes: 20, includeRelated: false },
+		{ reference: [duplicateReference], citation: [duplicateCitation], related: [] },
+		"W0",
+	);
+	assert.equal(merged.length, 1, "same DOI is one neighborhood candidate");
 
 	const nodes = [
 		{ id: "S", x: 0, y: 0, radius: 14 },

@@ -164,7 +164,11 @@ export async function loadNeighborhood(
 		countNonResearch(related.sample.rejected, "related", seed.id);
 	const picked = selectNeighbors(
 		settings,
-		{ reference: refPapers, citation: citePapers, related: relatedPapers },
+		{
+			reference: withoutSeedDuplicate(refPapers, seed),
+			citation: withoutSeedDuplicate(citePapers, seed),
+			related: withoutSeedDuplicate(relatedPapers, seed),
+		},
 		seed.id,
 	);
 
@@ -378,12 +382,13 @@ export function selectNeighbors(
 		let got = 0;
 		for (const paper of list) {
 			if (got >= count || chosen.size >= slots) return;
-			const prev = chosen.get(paper.id);
+			const key = identityKey(paper);
+			const prev = chosen.get(key);
 			if (prev) {
-				if (ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) chosen.set(paper.id, paper);
+				if (ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) chosen.set(key, paper);
 				continue;
 			}
-			chosen.set(paper.id, paper);
+			chosen.set(key, paper);
 			got += 1;
 		}
 	};
@@ -448,6 +453,11 @@ function countNonResearch(works: RawWork[], origin: Origin, seedId: string): num
 	return asPapers(works, origin, seedId).filter((paper) => Boolean(nonResearchLabel(paper))).length;
 }
 
+function withoutSeedDuplicate(papers: PaperNode[], seed: PaperNode): PaperNode[] {
+	const seedDoi = doiFromPaper(seed);
+	return papers.filter((paper) => paper.id !== seed.id && (!seedDoi || doiFromPaper(paper) !== seedDoi));
+}
+
 function asPapers(works: RawWork[], origin: Origin, seedId: string): PaperNode[] {
 	const papers: PaperNode[] = [];
 	for (const work of works) {
@@ -465,10 +475,15 @@ function dedupe(list: PaperNode[], seedId: string): PaperNode[] {
 	const map = new Map<string, PaperNode>();
 	for (const paper of list) {
 		if (paper.id === seedId) continue;
-		const prev = map.get(paper.id);
-		if (!prev || ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) map.set(paper.id, paper);
+		const key = identityKey(paper);
+		const prev = map.get(key);
+		if (!prev || ORIGIN_RANK[paper.origin] > ORIGIN_RANK[prev.origin]) map.set(key, paper);
 	}
 	return [...map.values()].sort(byImpact);
+}
+
+function identityKey(paper: PaperNode): string {
+	return doiFromPaper(paper) ?? `openalex:${paper.id}`;
 }
 
 function byImpact(a: PaperNode, b: PaperNode): number {
