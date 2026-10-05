@@ -205,6 +205,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	let timelineMetaLoading = false;
 	let timelineMetaError = "";
 	const timelineExtraMeta = new Map<string, PaperNode>();
+	/** 脉络里被点过的未收录节点，避免同一篇重复单篇补取。 */
+	const timelinePickedMeta = new Set<string>();
 	let generation = 0;
 	let composing = false;
 	let disposed = false;
@@ -308,6 +310,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 			timelineMetaLoading = false;
 			timelineMetaError = "";
 			timelineExtraMeta.clear();
+			timelinePickedMeta.clear();
 		}
 		const timeline = buildCitationTimeline(graph, timelineExtraMeta);
 		const sourceNames = timeline.sources.map((source) => SOURCE_TEXT[source as keyof typeof SOURCE_TEXT] ?? source);
@@ -338,6 +341,25 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 					activateGraphTab();
 					showDetail(paper);
 				});
+				return;
+			}
+			// 未收录节点（超出批量补取上限的参考文献）：点击时单篇补取元数据。
+			if (node.missing && graph && !timelinePickedMeta.has(node.id)) {
+				timelinePickedMeta.add(node.id);
+				const picking = graph;
+				el(selection, "p", "cpo-side-tip", TIMELINE_LOADING_TEXT);
+				void (async () => {
+					try {
+						const works = await client().workSummaries([node.id]);
+						if (disposed || graph !== picking) return;
+						const meta = works.map((raw) => toPaper(raw, "reference")).find((item) => item?.id === node.id);
+						if (meta) timelineExtraMeta.set(meta.id, meta);
+					} catch {
+						timelinePickedMeta.delete(node.id);
+					} finally {
+						if (!disposed && graph === picking && tab === "timeline") paintTimeline();
+					}
+				})();
 			}
 		} });
 		if (!timelineMetaRequested && missingCount > 0) {
@@ -619,6 +641,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		timelineMetaLoading = false;
 		timelineMetaError = "";
 		timelineExtraMeta.clear();
+		timelinePickedMeta.clear();
 		narrative = null;
 		narrativeInput = null;
 		narrativeError = "";
