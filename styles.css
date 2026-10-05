@@ -156,7 +156,8 @@
 	color: var(--text-faint);
 }
 
-.cpo-root button {
+.cpo-root button,
+.cpo-embed button {
 	font: inherit;
 	box-shadow: none;
 	background-image: none;
@@ -180,12 +181,14 @@
 }
 
 .cpo-root button.cpo-primary:disabled,
-.cpo-root button.cpo-ghost:disabled {
+.cpo-root button.cpo-ghost:disabled,
+.cpo-embed button.cpo-ghost:disabled {
 	opacity: 0.55;
 	cursor: progress;
 }
 
-.cpo-root button.cpo-ghost {
+.cpo-root button.cpo-ghost,
+.cpo-embed button.cpo-ghost {
 	flex: none;
 	height: 32px;
 	margin: 0;
@@ -197,7 +200,8 @@
 	cursor: pointer;
 }
 
-.cpo-root button.cpo-ghost:hover {
+.cpo-root button.cpo-ghost:hover,
+.cpo-embed button.cpo-ghost:hover {
 	color: var(--cpo-accent-hover);
 }
 
@@ -401,7 +405,6 @@
 }
 
 .cpo-stage:hover .cpo-graph-actions,
-.cpo-embed-stage:hover .cpo-graph-actions,
 .cpo-graph-actions:hover,
 .cpo-graph-actions:focus-within {
 	opacity: 1;
@@ -451,7 +454,8 @@
 .cpo-root button.cpo-action-link,
 .cpo-embed button.cpo-action-link,
 .cpo-zoom button,
-.cpo-root button.cpo-icon {
+.cpo-root button.cpo-icon,
+.cpo-embed button.cpo-icon {
 	height: 28px;
 	min-width: 28px;
 	padding: 0 6px;
@@ -468,7 +472,8 @@
 .cpo-root button.cpo-action-link:hover,
 .cpo-embed button.cpo-action-link:hover,
 .cpo-zoom button:hover,
-.cpo-root button.cpo-icon:hover {
+.cpo-root button.cpo-icon:hover,
+.cpo-embed button.cpo-icon:hover {
 	background: var(--background-modifier-hover);
 }
 
@@ -647,12 +652,6 @@
 }
 
 .cpo-sheet .cpo-detail,
-.cpo-sheet .cpo-embed-detail {
-	overflow: visible;
-	flex: none;
-	padding: 0;
-}
-
 .cpo-sheet .cpo-agg {
 	position: static;
 	inset: auto;
@@ -662,12 +661,6 @@
 	padding: 0;
 }
 
-/* The expanded embed sheet stacks below the graph, so it can afford room
-   for the abstract and the evidence lines. */
-.cpo-embed .cpo-sheet:not(.is-collapsed) {
-	max-height: 300px;
-}
-
 .cpo-meta {
 	display: flex;
 	flex-direction: column;
@@ -675,8 +668,7 @@
 	border-left: 1px solid rgba(60, 64, 70, 0.1);
 }
 
-.cpo-side-tip,
-.cpo-embed-detail-empty {
+.cpo-side-tip {
 	margin: 0 0 8px;
 	color: #6b7280;
 	font-size: 12px;
@@ -718,7 +710,8 @@
 	line-height: 1.6;
 }
 
-.cpo-root button.cpo-link {
+.cpo-root button.cpo-link,
+.cpo-embed button.cpo-link {
 	display: block;
 	width: 100%;
 	margin: 8px 0 0;
@@ -731,19 +724,22 @@
 	cursor: pointer;
 }
 
-.cpo-root button.cpo-link:hover {
+.cpo-root button.cpo-link:hover,
+.cpo-embed button.cpo-link:hover {
 	background: rgba(60, 64, 70, 0.09);
 }
 
 .cpo-root button.cpo-link:active,
-.cpo-root button.cpo-link:focus-visible {
+.cpo-root button.cpo-link:focus-visible,
+.cpo-embed button.cpo-link:active,
+.cpo-embed button.cpo-link:focus-visible {
 	background: rgba(166, 124, 46, 0.14);
 	outline: 2px solid rgba(166, 124, 46, 0.38);
 	outline-offset: 1px;
 }
 
 .cpo-root.is-narrow .cpo-body,
-.cpo-embed.is-narrow .cpo-embed-body {
+.cpo-embed.is-narrow .cpo-body {
 	flex-direction: column;
 }
 
@@ -818,66 +814,22 @@
 	height: auto;
 }
 
-.cpo-embed-bar {
-	flex: none;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 10px;
-	background: var(--background-secondary);
-	border-bottom: 1px solid var(--background-modifier-border);
+.cpo-embed .cpo-topline {
+	justify-content: space-between;
 }
 
-.cpo-embed-body {
-	position: relative;
-	/* flex: none — the shell is sized by content, so flex-basis 0% would
-	   collapse the graph area to zero height. The inline height rules. */
+.cpo-embed .cpo-status {
+	margin-left: 33px;
+}
+
+.cpo-embed .cpo-body {
+	/* flex: none — the shell is sized by content; inline height rules the graph. */
 	flex: none;
 	min-height: 0;
-	display: flex;
 }
 
-.cpo-embed-status {
-	flex: 1;
-	min-width: 0;
-	margin: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--text-muted);
-	font-size: 13px;
-}
-
-.cpo-embed button.cpo-embed-reload {
-	flex: none;
-	padding: 4px 10px;
-	border: none;
-	border-radius: 6px;
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
-	font: inherit;
-	font-size: 12px;
-	cursor: pointer;
-}
-
-.cpo-embed button.cpo-embed-reload:hover {
-	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
-}
-
-.cpo-embed button.cpo-embed-reload:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-
-.cpo-embed-stage {
-	position: relative;
-	flex: 1;
-	min-height: 0;
-	background: radial-gradient(circle at 50% 50%, var(--cpo-canvas-bg-start, #ffffff) 0%, var(--cpo-canvas-bg-end, #f7f6f3) 78%);
-}
-
-.cpo-embed-stage.cpo-kumu-view {
-	background: #ffffff;
+.cpo-embed .cpo-empty {
+	z-index: 2;
 }
 
 .cpo-embed-canvas {
@@ -907,86 +859,10 @@
 	stroke-linejoin: round;
 }
 
-.cpo-embed-message {
-	position: absolute;
-	inset: 16px;
-	z-index: 2;
-	margin: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	text-align: center;
-	color: var(--text-muted);
-	pointer-events: none;
-}
-
-.cpo-embed-tooltip {
-	position: absolute;
-	z-index: 3;
-	max-width: min(280px, 70%);
-	padding: 6px 8px;
-	border-radius: 6px;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	color: var(--text-normal);
-	font-size: 12px;
-	line-height: 1.4;
-	white-space: normal;
-	pointer-events: none;
-	box-shadow: 0 8px 24px rgba(60, 64, 70, 0.16);
-}
-
-.cpo-embed-detail {
-	position: static;
-	overflow: visible;
-	padding: 0 2px;
-	background: transparent;
-}
-
-.cpo-embed-detail-meta,
-.cpo-embed-detail-abstract {
-	margin: 0 0 6px;
-	color: #6b7280;
-	font-size: 12px;
-}
-
-.cpo-embed-detail-abstract {
-	color: #4b5563;
-	line-height: 1.5;
-}
-
-.cpo-embed button.cpo-embed-link {
-	margin: 4px 8px 0 0;
-	padding: 4px 8px;
-	border: none;
-	border-radius: 6px;
-	background: var(--background-modifier-hover);
-	color: var(--cpo-accent);
-	font: inherit;
-	font-size: 12px;
-	cursor: pointer;
-}
-
-.cpo-embed button.cpo-embed-link:hover {
-	background: var(--background-modifier-hover);
-}
-
-.cpo-embed button.cpo-embed-link:active,
-.cpo-embed button.cpo-embed-link:focus-visible {
-	background: rgba(166, 124, 46, 0.14);
-	outline: 2px solid rgba(166, 124, 46, 0.34);
-	outline-offset: 1px;
-}
-
 .cpo-rail[hidden],
 .cpo-drawer[hidden],
 .cpo-sheet[hidden],
 .cpo-zoom[hidden],
-.cpo-embed-message[hidden],
-.cpo-embed-tooltip[hidden],
-.cpo-embed-detail[hidden],
-.cpo-embed-reload[hidden],
-.cpo-embed-legend[hidden],
 .cpo-embed-label[hidden] {
 	display: none !important;
 }
@@ -1072,7 +948,9 @@
 
 .cpo-embed-label {
 	position: absolute;
-	transform: translate(-50%, calc(-100% - 8px));
+	left: 0;
+	top: 0;
+	transform: translate(8px, -50%);
 	max-width: 140px;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1084,10 +962,19 @@
 	pointer-events: none;
 }
 
+.cpo-embed-label.is-kumu {
+	transform: translate(-50%, 8px);
+	text-align: center;
+}
+
 .cpo-embed-label.is-both {
 	white-space: pre;
-	text-align: center;
+	text-align: left;
 	max-width: 160px;
+}
+
+.cpo-embed-label.is-kumu.is-both {
+	text-align: center;
 }
 
 .cpo-embed-detail-rel {
@@ -1189,45 +1076,6 @@ button.cpo-path-toggle.is-on {
 .cpo-drawer-legend i.cpo-tier-mid { height: 4px; }
 .cpo-embed-legend i.cpo-tier-strong,
 .cpo-drawer-legend i.cpo-tier-strong { height: 7px; }
-
-.cpo-embed-filters {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: 6px;
-	margin: 0 0 8px;
-}
-
-.cpo-embed-filters label {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 6px;
-	color: #6b7280;
-	font-size: 11px;
-}
-
-.cpo-embed-filters input,
-.cpo-embed-filters select {
-	width: auto;
-	max-width: 9em;
-	padding: 2px 4px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	background: var(--background-primary);
-	color: var(--text-normal);
-	font: inherit;
-	font-size: 11px;
-}
-
-.cpo-embed-filters select {
-	width: auto;
-	max-width: 100%;
-}
-
-.cpo-embed-filters[hidden] {
-	display: none !important;
-}
 
 .cpo-root .cpo-evidence {
 	white-space: pre-line;
@@ -1523,28 +1371,22 @@ button.cpo-agg-item {
 
 /* Theme-aware finishing layer for legacy component rules. */
 .cpo-root .cpo-empty p,
+.cpo-embed .cpo-empty p,
 .cpo-root .cpo-legend,
 .cpo-root .cpo-side-tip,
-.cpo-root .cpo-embed-detail-empty,
 .cpo-root .cpo-meta,
 .cpo-root .cpo-score,
 .cpo-root .cpo-kicker,
-.cpo-root .cpo-abstract,
-.cpo-embed .cpo-embed-detail-meta,
-.cpo-embed .cpo-embed-detail-abstract,
-.cpo-embed .cpo-embed-detail-rel,
-.cpo-embed-filters label {
+.cpo-root .cpo-abstract {
 	color: var(--text-muted);
 }
 .cpo-meta,
-.cpo-sheet,
-.cpo-embed-detail {
+.cpo-sheet {
 	background: var(--background-primary);
 }
 .cpo-meta,
 .cpo-sheet,
-.cpo-actions-bar,
-.cpo-embed-bar {
+.cpo-actions-bar {
 	border-color: var(--background-modifier-border);
 }
 .cpo-root .cpo-authors {
@@ -1601,12 +1443,6 @@ button.cpo-agg-item {
 	overflow: hidden;
 	background: #f6f5f2;
 	border-left: 1px solid rgba(60, 64, 70, 0.1);
-}
-
-.cpo-embed .cpo-evidence-sidebar {
-	--cpo-sidebar-width: 280px;
-	min-width: 220px;
-	max-width: min(380px, 46vw);
 }
 
 .cpo-evidence-header {
@@ -1737,19 +1573,18 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-sidebar .cpo-agg,
-.cpo-evidence-sidebar .cpo-detail,
-.cpo-evidence-sidebar .cpo-embed-detail {
+.cpo-evidence-sidebar .cpo-detail {
 	max-width: 100%;
 }
 
 @media (max-width: 779px) {
 	.cpo-root.is-narrow .cpo-body,
-	.cpo-embed.is-narrow .cpo-embed-body {
+	.cpo-embed.is-narrow .cpo-body {
 		flex-direction: column;
 	}
 
 	.cpo-root.is-narrow .cpo-stage,
-	.cpo-embed.is-narrow .cpo-embed-stage {
+	.cpo-embed.is-narrow .cpo-stage {
 		min-height: 220px;
 	}
 
@@ -2065,18 +1900,10 @@ button.cpo-agg-item {
 	font-size: 10.5px;
 }
 
-/* embed 详情里的卡片间距与主面板一致。 */
-.cpo-embed-detail > * + * {
-	margin-top: 8px;
-}
-
 /* 排版修正：压住 Obsidian 主题的 .view-content h3 / p 默认样式，统一卡片内节奏。 */
 .cpo-detail .cpo-card p,
-.cpo-embed-detail .cpo-card p,
 .cpo-detail .cpo-jump-strip p,
-.cpo-embed-detail .cpo-jump-strip p,
-.cpo-detail .cpo-card blockquote,
-.cpo-embed-detail .cpo-card blockquote {
+.cpo-detail .cpo-card blockquote {
 	margin: 0;
 }
 
@@ -2117,3 +1944,98 @@ button.cpo-agg-item {
 	overflow: hidden;
 	line-height: 1.35;
 }
+
+/* Shared Research Connected surface contract. Keep pane/embed values identical. */
+.cpo-root,
+.cpo-embed {
+	--rc-surface: #ffffff;
+	--rc-canvas: #f7f6f3;
+	--rc-surface-muted: #f6f5f2;
+	--rc-ink: #3a3f45;
+	--rc-muted: #6b7280;
+	--rc-border: #e5e2da;
+	--rc-accent: #b38b4d;
+	--rc-accent-hover: #a47a3e;
+	--rc-focus: rgba(166, 124, 46, 0.55);
+	--rc-radius: 8px;
+	--rc-space: 8px;
+	--rc-sidebar-width: 320px;
+	--rc-sidebar-min: 260px;
+	--rc-sidebar-max: min(480px, 46vw);
+	--text-normal: var(--rc-ink);
+	--text-muted: var(--rc-muted);
+	--background-primary: var(--rc-surface);
+	--background-secondary: var(--rc-surface-muted);
+	--background-modifier-border: var(--rc-border);
+	--cpo-accent: var(--rc-accent);
+	--cpo-accent-hover: var(--rc-accent-hover);
+}
+
+.cpo-root :where(button, input, summary, [tabindex]):focus-visible,
+.cpo-embed :where(button, input, summary, [tabindex]):focus-visible {
+	outline: 2px solid var(--rc-focus);
+	outline-offset: 2px;
+}
+
+.cpo-stage,
+.cpo-embed-canvas {
+	touch-action: none;
+}
+
+.cpo-evidence-sidebar {
+	--cpo-sidebar-width: var(--rc-sidebar-width);
+	min-width: var(--rc-sidebar-min);
+	max-width: var(--rc-sidebar-max);
+	background: var(--rc-surface-muted);
+	border-color: var(--rc-border);
+}
+
+/* Actions remain visible at narrow widths instead of hiding behind horizontal scroll. */
+.cpo-actions-bar,
+.cpo-evidence-sidebar .cpo-tab-row {
+	overflow-x: visible;
+}
+
+.cpo-actions-bar .cpo-tool-row,
+.cpo-evidence-sidebar .cpo-tab-row {
+	min-width: 0;
+	flex-wrap: wrap;
+}
+
+@media (max-width: 779px) {
+	.cpo-root.is-narrow .cpo-topline,
+	.cpo-embed.is-narrow .cpo-topline {
+		flex-wrap: wrap;
+	}
+
+	.cpo-root.is-narrow .cpo-evidence-sidebar,
+	.cpo-embed.is-narrow .cpo-evidence-sidebar {
+		flex: 0 0 auto;
+		max-height: min(42%, 330px);
+		min-height: 150px;
+	}
+
+	.cpo-root.is-narrow .cpo-actions-bar .cpo-tool,
+	.cpo-embed.is-narrow .cpo-actions-bar .cpo-tool {
+		flex: 1 1 auto;
+	}
+}
+
+/* 「入选原因」折叠卡（Phase C） */
+.cpo-why > summary {
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+	list-style: none;
+}
+.cpo-why > summary::-webkit-details-marker { display: none; }
+.cpo-why > summary::before {
+	content: "▸";
+	display: inline-block;
+	margin-right: 6px;
+	transition: transform 120ms ease;
+}
+.cpo-why[open] > summary::before { transform: rotate(90deg); }
+.cpo-why > summary:hover { color: var(--text-normal); }
+.cpo-why > .cpo-meter { margin-top: 8px; }

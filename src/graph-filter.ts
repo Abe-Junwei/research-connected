@@ -33,7 +33,7 @@ export interface GraphFilter {
 
 export function emptyFilter(): GraphFilter {
 	return {
-		kinds: { direct: true, cocitation: true, coupling: true, weak: true },
+		kinds: { direct: true, cocitation: true, coupling: true, weak: false },
 		minCoCitedBy: 1,
 		minSharedRefs: 1,
 		yearFrom: null,
@@ -145,35 +145,6 @@ export function shortestPath(adjacent: ReadonlyMap<string, readonly string[]>, s
 		}
 	}
 	return [];
-}
-
-export function facetOptions(nodes: readonly PaperNode[]): {
-	languages: string[];
-	types: string[];
-	concepts: string[];
-} {
-	const languages = new Set<string>();
-	const types = new Set<string>();
-	const conceptCount = new Map<string, { label: string; count: number }>();
-	for (const node of nodes) {
-		if (node.language) languages.add(node.language);
-		if (node.workType) types.add(node.workType);
-		for (const concept of node.concepts) {
-			const key = concept.toLowerCase();
-			const existing = conceptCount.get(key);
-			if (existing) existing.count += 1;
-			else conceptCount.set(key, { label: concept, count: 1 });
-		}
-	}
-	const concepts = [...conceptCount.values()]
-		.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-		.slice(0, 40)
-		.map((item) => item.label);
-	return {
-		languages: [...languages].sort(),
-		types: [...types].sort(),
-		concepts,
-	};
 }
 
 /** Shown whenever a connection rests on similarity signals without a direct citation record. */

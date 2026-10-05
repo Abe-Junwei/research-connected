@@ -21,12 +21,14 @@ export function topicSimilarity(a: readonly TopicScore[] | undefined, b: readonl
 
 /** Perceptually simple low-to-high ramp: unrelated gray-blue → close vivid teal. */
 export function topicSimilarityColor(score: number | null): string {
-	if (score === null || !Number.isFinite(score)) return "#c8cdd2";
+	if (score === null || !Number.isFinite(score)) return "rgb(200, 205, 210)";
 	const t = Math.max(0, Math.min(1, score));
 	const low = [190, 205, 219] as const;
 	const high = [25, 157, 133] as const;
-	const channels = low.map((value, index) => Math.round(value + ((high[index] ?? value) - value) * t));
-	return `#${channels.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+	const r = Math.round(low[0] + (high[0] - low[0]) * t);
+	const g = Math.round(low[1] + (high[1] - low[1]) * t);
+	const b = Math.round(low[2] + (high[2] - low[2]) * t);
+	return `rgb(${r}, ${g}, ${b})`;
 }
 
 function vector(topics: readonly TopicScore[]): Map<string, number> {
