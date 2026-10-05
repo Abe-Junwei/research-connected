@@ -778,7 +778,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		if (disposed || graph !== next || token !== generation) return;
 		map.updateGraphData(next.edges);
-		showDetail(selectedPaper);
+		if (selectedEdge) showEdgeDetail(selectedEdge);
+		else showDetail(selectedPaper);
 		paintLists();
 		status.textContent += ` · OpenCitations 检查 ${completed}/${papers.length} 篇，失败 ${failed}；当前 ${next.edges.length} 条关系`;
 	};

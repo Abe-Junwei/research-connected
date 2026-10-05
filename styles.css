@@ -682,13 +682,6 @@
 	background: transparent;
 }
 
-.cpo-detail-title {
-	margin: 0 28px 8px 0;
-	font-size: 18px;
-	line-height: 1.35;
-	font-weight: 600;
-}
-
 .cpo-meta,
 .cpo-score,
 .cpo-authors {
@@ -938,13 +931,6 @@
 	overflow: visible;
 	padding: 0 2px;
 	background: transparent;
-}
-
-.cpo-embed-detail-title {
-	margin: 0 0 4px;
-	font-size: 14px;
-	font-weight: 600;
-	line-height: 1.35;
 }
 
 .cpo-embed-detail-meta,
@@ -1407,17 +1393,6 @@
 	accent-color: var(--cpo-accent);
 }
 
-.cpo-embed-meta .cpo-agg,
-.cpo-meta .cpo-agg {
-	position: static;
-	inset: auto;
-	z-index: auto;
-	flex: none;
-	overflow: visible;
-	padding: 0 2px 8px;
-	background: transparent;
-}
-
 .cpo-agg {
 	position: absolute;
 	inset: 0;
@@ -1529,9 +1504,7 @@
 	border-color: var(--background-modifier-border);
 }
 .cpo-root .cpo-authors,
-.cpo-detail-title,
-.cpo-agg-title,
-.cpo-embed-detail-title {
+.cpo-agg-title {
 	color: var(--text-normal);
 }
 .cpo-root button.cpo-link,
