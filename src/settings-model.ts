@@ -1,3 +1,4 @@
+import type { StagedPaper } from "./staging";
 export type SampleDepth = "standard" | "extended" | "deep";
 
 export interface ConnectedPapersSettings {
@@ -17,6 +18,7 @@ export interface ConnectedPapersSettings {
 	includeReferences: boolean;
 	includeCitations: boolean;
 	includeRelated: boolean;
+	stagedPapers: StagedPaper[];
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
@@ -35,4 +37,5 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	includeReferences: true,
 	includeCitations: true,
 	includeRelated: true,
+	stagedPapers: [],
 };

@@ -32,6 +32,7 @@ import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
+import { toggleStaged, stageKey } from "./staging";
 
 export interface AppDeps {
 	getSettings: () => ConnectedPapersSettings;
@@ -39,6 +40,7 @@ export interface AppDeps {
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
+	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	initialDoi?: string;
 	/** Seed to build immediately; wins over initialDoi when both are set. */
 	initialTarget?: { kind: "doi" | "openalex"; value: string };
@@ -122,7 +124,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	const drawer = el(stage, "div", "cpo-drawer");
 	drawer.hidden = true;
 	el(drawer, "p", "cpo-drawer-title", "筛选 / 图例");
-	el(drawer, "p", "cpo-side-tip", "拖拽空白处平移，滚轮或右下角按钮缩放。点选节点或引用关系后，题名与证据在右侧栏展开。");
+	el(drawer, "p", "cpo-side-tip", "拖拽平移，滚轮缩放；点选节点或连线，详情在右侧栏展开。");
 	const kindLegend = el(drawer, "div", "cpo-drawer-legend");
 	const legend = el(drawer, "div", "cpo-legend");
 	legend.hidden = true;
@@ -132,8 +134,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 	ramp.classList.add("cpo-topic-ramp");
 	const rampEnd = el(rampWrap, "span", undefined, "较高");
 	el(legend, "span", undefined, "与种子的主题相似度");
-	el(legend, "span", undefined, "圆点略大表示被引更多");
-	el(legend, "span", undefined, "双环是种子");
+	el(legend, "span", undefined, "灰色缺主题数据");
+	el(legend, "span", undefined, "圆点略大 = 被引更多");
+	el(legend, "span", undefined, "双环 = 种子");
 	const toolsHost = el(drawer, "div");
 	toolsHost.classList.add("cpo-drawer-tools");
 	filterButton.addEventListener("click", () => {
@@ -183,7 +186,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		mapFilter = next;
 		map.setKinds(next.kinds);
 	});
-	kindLegend.after(buildPathToggle(() => mapFilter, (next) => {
+	legend.after(buildPathToggle(() => mapFilter, (next) => {
 		mapFilter = next;
 		map.setKinds(next.kinds);
 		map.setFocusPath(next.focusPath);
@@ -256,6 +259,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		}
 		if (tab === "timeline") {
 			paintTimeline();
+			return;
+		}
+		if (tab === "staged") {
+			paintStaged();
 			return;
 		}
 		if (!graph || tab === "graph") {
@@ -378,6 +385,26 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 					}
 				}
 			})();
+		}
+	};
+
+	const paintStaged = (): void => {
+		listPanel.hidden = false;
+		listPanel.replaceChildren();
+		el(listPanel, "h3", "cpo-kicker", "暂存列表");
+		const items = deps.getSettings().stagedPapers ?? [];
+		if (items.length === 0) { el(listPanel, "p", "cpo-agg-empty", "还没有暂存论文。"); return; }
+		const list = el(listPanel, "ol", "cpo-agg-list");
+		for (const item of items) {
+			const row = el(list, "li", "cpo-agg-item");
+			el(row, "strong", undefined, item.paper.title || item.paper.id);
+			el(row, "p", "cpo-meta", `${item.paper.year ?? "年份不详"} · ${item.source}${item.read ? " · 已读" : ""}`);
+			const open = el(row, "button", "cpo-text-btn", "查看") as HTMLButtonElement;
+			open.type = "button";
+			open.onclick = () => { if (graph?.nodes.some((node) => node.id === item.paper.id)) { activateGraphTab(); showDetail(item.paper); } };
+			const remove = el(row, "button", "cpo-text-btn", "移除") as HTMLButtonElement;
+			remove.type = "button";
+			remove.onclick = async () => { deps.getSettings().stagedPapers = items.filter((other) => stageKey(other) !== stageKey(item)); await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); };
 		}
 	};
 
@@ -560,6 +587,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		const year = paper.year === null ? "年份不详" : String(paper.year);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`, { lang: paper.language });
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
+		if (deps.stagePaper && !paper.isSeed) {
+			const seedId = graph.nodes.find((node) => node.isSeed)?.id;
+			if (seedId) {
+				const staged = deps.getSettings().stagedPapers.some((item) => stageKey(item) === `${seedId}\0${paper.id}`);
+				const button = el(detail, "button", "cpo-text-btn", staged ? "从暂存列表移除" : "加入暂存列表") as HTMLButtonElement;
+				button.type = "button";
+				button.onclick = async () => { deps.getSettings().stagedPapers = toggleStaged(deps.getSettings().stagedPapers, paper, seedId, paper.origin); await deps.stagePaper?.(paper, seedId, paper.origin); showDetail(paper); };
+			}
+		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);

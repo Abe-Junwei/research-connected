@@ -19,11 +19,11 @@ export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横向按年份线性排列，间隔与年份差成正比；纵向为对数被引量。未知年份单独放在左侧。",
-	radial: "种子在中心，越近表示和种子越相似；角度只是均匀排开，不代表引用方向。",
+	temporal: "横向按年份排列，纵向为对数被引量；未知年份在左侧。",
+	radial: "种子居中，越近越相似；角度仅用于排开节点。",
 	force2d: "平面力导向，种子固定在中心。",
-	force3d: "三维力导向。拖拽旋转，滚轮缩放。",
-	kumu: "按引用网络结构聚成社区；区域标签汇总成员论文的 OpenAlex 主题词，区域不代表真实学派。",
+	force3d: "三维力导向；拖拽旋转，滚轮缩放。",
+	kumu: "按引用结构聚成社区；区域标签来自成员主题词，不代表真实学派。",
 };
 
 export interface PlacedNode {

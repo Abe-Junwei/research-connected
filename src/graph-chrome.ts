@@ -1,7 +1,7 @@
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "timeline";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "timeline" | "staged";
 
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
@@ -38,6 +38,7 @@ export interface GraphChromeOptions {
 	researchButton?: boolean;
 	/** 引用脉络页签，仅主面板开启。 */
 	timelineButton?: boolean;
+	stagingButton?: boolean;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
 	/** Layout buttons. When set, they leave the control host for the narrow rail. */
@@ -84,7 +85,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	hint.className = "cpo-tool-hint";
 	let layout = options.layout;
 	const updateHint = (): void => {
-		hint.textContent = `${LAYOUT_HINT[layout]} 连线粗细表示文献结构相似度，箭头表示直接引用方向。节点颜色始终表示与种子的 OpenAlex 主题相似度；灰色表示缺少主题数据。`;
+		hint.textContent = `${LAYOUT_HINT[layout]} 连线粗细为结构相似度，箭头为引用方向。`;
 	};
 	updateHint();
 	const readout = document.createElement("span");
@@ -172,6 +173,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", "研究脉络"]);
 	if (options.timelineButton) tabs.push(["timeline", "引用脉络"]);
+	if (options.stagingButton) tabs.push(["staged", "暂存"]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {
 		const button = pressButton(label, tab === "graph", () => {

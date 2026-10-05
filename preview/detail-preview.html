@@ -206,6 +206,42 @@
 		</div>
 	</div>
 	<div>
+		<h3 class="cap">筛选抽屉（图例区 / 操作区分区 + 路径开关 chip）</h3>
+		<div class="panel">
+			<div class="cpo-root" style="display:block">
+				<div class="cpo-drawer" style="position:static; width:auto; box-shadow:none; border-right:none">
+					<p class="cpo-drawer-title">筛选 / 图例</p>
+					<p class="cpo-side-tip">拖拽平移，滚轮缩放；点选节点或连线，详情在右侧栏展开。</p>
+					<div class="cpo-drawer-legend">
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="direct"></i>引用</button>
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="cocitation"></i>共被引</button>
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="coupling"></i>文献耦合</button>
+						<button type="button" class="cpo-legend-kind"><i data-kind="weak"></i>弱连线</button>
+						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-weak"></i>弱</span>
+						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-mid"></i>中</span>
+						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-strong"></i>强</span>
+					</div>
+					<div class="cpo-legend">
+						<span class="cpo-ramp-wrap"><span>较低</span><span class="cpo-ramp cpo-topic-ramp"></span><span>较高</span></span>
+						<span>与种子的主题相似度</span>
+						<span>灰色缺主题数据</span>
+						<span>圆点略大 = 被引更多</span>
+						<span>双环 = 种子</span>
+					</div>
+					<button type="button" class="cpo-path-toggle is-on">到种子的路径</button>
+					<div class="cpo-drawer-tools">
+						<div class="cpo-tool-row cpo-scrub-row">
+							<input type="range" min="1980" max="2025" value="2025">
+							<span class="cpo-scrub-readout">全部年份</span>
+							<button type="button" class="cpo-tool">播放</button>
+						</div>
+						<p class="cpo-tool-hint">横向按年份排列，纵向为对数被引量；未知年份在左侧。 连线粗细为结构相似度，箭头为引用方向。</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div>
 		<h3 class="cap">底部按钮排（应与缩放按钮一致）</h3>
 		<div class="stage cpo-root">
 			<div class="cpo-graph-actions">
