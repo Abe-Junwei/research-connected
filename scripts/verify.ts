@@ -623,6 +623,15 @@ async function cursorPaging(): Promise<void> {
 	assert.equal(sampled.rawFetched, 3, "filtered sampling reads the next page");
 	assert.equal(sampled.filtered, 1);
 	assert.equal(sampled.pages, 2);
+	const partialClient = new OpenAlexClient(async (url) => {
+		const cursor = new URL(url).searchParams.get("cursor");
+		if (cursor === "*") return { results: [{ id: "W4" }], meta: { next_cursor: "failed-page" } };
+		throw new OpenAlexError("page two unavailable");
+	}, { apiKey: "", contactEmail: "" });
+	const partial = await partialClient.sampleWorks("cites:W0", 2, 1, undefined, 2, () => true);
+	assert.deepEqual(partial.works.map((work) => work.id), ["W4"], "keep successful pages if a later page fails");
+	assert.equal(partial.error, "page two unavailable");
+	assert.equal(partial.exhausted, false);
 }
 
 main().catch((error: unknown) => {

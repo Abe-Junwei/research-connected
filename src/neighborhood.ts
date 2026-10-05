@@ -445,7 +445,7 @@ async function loadGroup(
 	if (!enabled) return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: true } };
 	try {
 		const sample = await run();
-		return { works: sample.works, sample };
+		return { works: sample.works, sample, error: sample.error };
 	} catch (error) {
 		return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
 	}

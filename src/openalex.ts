@@ -34,6 +34,7 @@ export interface SampledWorks {
 	filtered: number;
 	pages: number;
 	exhausted: boolean;
+	error?: string;
 }
 
 const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location";
@@ -124,12 +125,19 @@ export class OpenAlexClient {
 		const works: RawWork[] = [];
 		const rejected: RawWork[] = [];
 		let rawFetched = 0;
-		let filtered = 0;
-		let pages = 0;
-		let nextCursor: string | null = "*";
-		while (pages < Math.max(1, maxPages) && works.length < target && nextCursor) {
-			if (pages > 0) url.searchParams.set("cursor", nextCursor);
-			const page = await this.getPage(url);
+	let filtered = 0;
+	let pages = 0;
+	let nextCursor: string | null = "*";
+	let error: string | undefined;
+	while (pages < Math.max(1, maxPages) && works.length < target && nextCursor) {
+		if (pages > 0) url.searchParams.set("cursor", nextCursor);
+		let page: { results: RawWork[]; nextCursor: string | null };
+		try {
+			page = await this.getPage(url);
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : "请求失败";
+			break;
+		}
 			pages += 1;
 			rawFetched += page.results.length;
 			for (const work of page.results) {
@@ -142,7 +150,7 @@ export class OpenAlexClient {
 			nextCursor = page.nextCursor;
 			if (page.results.length === 0) break;
 		}
-		return { works: works.slice(0, target), rejected, rawFetched, filtered, pages, exhausted: !nextCursor };
+		return { works: works.slice(0, target), rejected, rawFetched, filtered, pages, exhausted: !error && !nextCursor, error };
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {
