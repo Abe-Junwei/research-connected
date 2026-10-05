@@ -17,6 +17,7 @@ import { explainRelation } from "../src/relation";
 import { layoutTimeline, TIMELINE_MIN_WIDTH, UNKNOWN_LIMIT, ZONE_LIMIT } from "../src/timeline-view";
 import { placeLayout } from "../src/layout-modes";
 import { runForceLayout } from "../src/layout";
+import { applyResponsiveMode } from "../src/responsive";
 import { clampSidebarWidth } from "../src/sidebar-resize";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { syntheticGraph } from "./perf-fixture";
@@ -181,6 +182,40 @@ function compactCommunityLayout(): void {
 		dist(cohesive, "C", "D") < dist(plain, "C", "D") - 4,
 		"同社区边收紧后，社区内间距明显小于无凝聚时",
 	);
+
+	const pack = (ids: string[]): Array<{ id: string; x: number; y: number; radius: number }> =>
+		ids.map((id) => ({ id, x: 0, y: 0, radius: 8 }));
+	const clusterEdges = [
+		edge({ source: "S", target: "A1", weight: 0.8 }),
+		edge({ source: "A1", target: "A2", weight: 0.8 }),
+		edge({ source: "A2", target: "S", weight: 0.8 }),
+		edge({ source: "B1", target: "B2", weight: 0.8 }),
+		edge({ source: "B2", target: "B3", weight: 0.8 }),
+		edge({ source: "B3", target: "B1", weight: 0.8 }),
+		edge({ source: "S", target: "B1", weight: 0.2 }),
+	];
+	const clustered = pack(["S", "A1", "A2", "B1", "B2", "B3"]);
+	runForceLayout(
+		clustered,
+		clusterEdges,
+		"S",
+		new Map(),
+		320,
+		new Map([["S", 0], ["A1", 0], ["A2", 0], ["B1", 1], ["B2", 1], ["B3", 1]]),
+	);
+	const centroid = (ids: string[]): { cx: number; cy: number; r: number } => {
+		const members = ids.map((id) => clustered.find((node) => node.id === id)!);
+		const cx = members.reduce((sum, node) => sum + node.x, 0) / members.length;
+		const cy = members.reduce((sum, node) => sum + node.y, 0) / members.length;
+		const r = members.reduce((max, node) => Math.max(max, Math.hypot(node.x - cx, node.y - cy) + node.radius), 0);
+		return { cx, cy, r };
+	};
+	const left = centroid(["S", "A1", "A2"]);
+	const right = centroid(["B1", "B2", "B3"]);
+	assert.ok(
+		Math.hypot(left.cx - right.cx, left.cy - right.cy) >= left.r + right.r + 80,
+		"不同社区的外接圆保持间距，不再叠成维恩图",
+	);
 }
 
 function evidenceSidebarSizing(): void {
@@ -188,6 +223,24 @@ function evidenceSidebarSizing(): void {
 	assert.equal(clampSidebarWidth(100), 260, "拖拽不会把证据栏缩到不可读");
 	assert.equal(clampSidebarWidth(900), 480, "拖拽不会让证据栏重新挤占图谱");
 	assert.equal(clampSidebarWidth(245.6, 220, 380), 246, "嵌入式使用自己的宽度边界");
+}
+
+function embedDefaultWidthKeepsStandardLayout(): void {
+	const classes = new Set(["cpo-embed"]);
+	const root = {
+		classList: {
+			contains: (name: string) => classes.has(name),
+			toggle(name: string, on?: boolean) {
+				if (on === false || (on === undefined && classes.has(name))) classes.delete(name);
+				else classes.add(name);
+			},
+		},
+		dataset: {} as Record<string, string>,
+	} as unknown as HTMLElement;
+	assert.equal(applyResponsiveMode(root, 700), false, "默认笔记栏宽度下嵌入保持标准并排");
+	assert.equal(applyResponsiveMode(root, 500), true, "窄于侧栏+图谱时才堆叠");
+	classes.delete("cpo-embed");
+	assert.equal(applyResponsiveMode(root, 700), true, "图谱面板仍在 780 以下走窄屏");
 }
 
 /** Aggregates: exact counts, the >=2 threshold, and the 15-row cap. */
@@ -369,6 +422,7 @@ export function verifyUi(): void {
 	communityRegions();
 	compactCommunityLayout();
 	evidenceSidebarSizing();
+	embedDefaultWidthKeepsStandardLayout();
 	aggregates();
 	timeline();
 	console.log("ui checks passed");

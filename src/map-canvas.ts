@@ -1,13 +1,12 @@
 import { communityColor, communityRgba, detectCommunities } from "./communities";
-import { buildCommunityCircles, communityTopicLabels } from "./community-regions";
+import { buildCommunityCircles, communityTopicLabels, type CommunityCircle } from "./community-regions";
 import { focusNodes } from "./graph-filter";
-import { authorYear } from "./labels";
-import type { ColorMode, LayoutMode } from "./layout-modes";
-import { placeLayout } from "./layout-modes";
+import { authorYear, citationLabelAlpha } from "./labels";
+import { placeLayout, separateCommunities, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
-import { clamp, yearColor } from "./visual";
+import { clamp, fitViewScale, yearColor } from "./visual";
 
 interface DrawNode extends PaperNode {
 	x: number;
@@ -59,14 +58,14 @@ export class SimilarityMap {
 	private bgEnd = "#f7f6f3";
 	private graphNode = "#8a7fd8";
 	private graphNodeFocused = "#4a90d9";
-	private graphLine = "rgba(90, 96, 106, 0.28)";
 	private graphText = "#4b5563";
 	private layoutMode: LayoutMode = "temporal";
-	private colorMode: ColorMode = "topic";
+	private colorMode: ColorMode = "community";
 	private scrubYear: number | null = null;
 	private seedScore = new Map<string, number>();
 	private communities = new Map<string, number>();
 	private communityLabels = new Map<number, string>();
+	private communityPick: number | undefined;
 	private minYear = 0;
 	private maxYear = 0;
 	/** Interactive simmer: reheats on node drag so neighbors follow, cools off after release. */
@@ -125,7 +124,6 @@ export class SimilarityMap {
 		this.communityLabels = communityTopicLabels(nodes, this.communities);
 		// 不重置 layoutMode：布局由应用层（chrome 按钮）持有，建图后回灌。
 		this.scrubYear = null;
-		this.colorMode = "topic";
 		this.rebuild(nodes, true);
 	}
 
@@ -157,6 +155,7 @@ export class SimilarityMap {
 		this.bgStart = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
 		this.bgEnd = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-end") ?? "", "#f7f6f3");
 		this.rebuild(this.nodes, false);
+		this.fit(true);
 	}
 
 	setColorMode(mode: ColorMode): void {
@@ -227,7 +226,6 @@ export class SimilarityMap {
 		this.bgEnd = themeColor(canvasStyles.getPropertyValue("--cpo-canvas-bg-end"), "#f7f6f3");
 		this.graphNode = themeColor(canvasStyles.getPropertyValue("--graph-node"), "#8a7fd8");
 		this.graphNodeFocused = themeColor(canvasStyles.getPropertyValue("--graph-node-focused"), "#4a90d9");
-		this.graphLine = themeColor(canvasStyles.getPropertyValue("--graph-line"), "rgba(90, 96, 106, 0.28)");
 		this.graphText = themeColor(canvasStyles.getPropertyValue("--graph-text"), "#4b5563");
 		this.recolor();
 		this.draw();
@@ -239,29 +237,29 @@ export class SimilarityMap {
 
 	fit(fromUser = false): void {
 		if (fromUser) this.adjusted = false;
-		if (this.nodes.length === 0) return;
+		if (this.nodes.length === 0 || this.cssWidth < 2 || this.cssHeight < 2) return;
 		this.zoomAnim = null;
+		const bounds = this.contentBounds();
+		this.k = fitViewScale(this.cssWidth, this.cssHeight, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+		this.tx = this.cssWidth / 2 - ((bounds.minX + bounds.maxX) / 2) * this.k;
+		this.ty = this.cssHeight / 2 - ((bounds.minY + bounds.maxY) / 2) * this.k;
+		this.draw();
+	}
+
+	private contentBounds(): { minX: number; minY: number; maxX: number; maxY: number } {
 		let minX = Infinity;
 		let minY = Infinity;
 		let maxX = -Infinity;
 		let maxY = -Infinity;
 		for (const node of this.nodes) {
+			if (!node.shown) continue;
 			minX = Math.min(minX, node.x - node.radius);
 			minY = Math.min(minY, node.y - node.radius);
 			maxX = Math.max(maxX, node.x + node.radius);
 			maxY = Math.max(maxY, node.y + node.radius);
 		}
-		const boundsWidth = Math.max(1, maxX - minX);
-		const boundsHeight = Math.max(1, maxY - minY);
-		const padding = 64;
-		this.k = clamp(
-			Math.min((this.cssWidth - padding * 2) / boundsWidth, (this.cssHeight - padding * 2) / boundsHeight),
-			0.2,
-			2.4,
-		);
-		this.tx = this.cssWidth / 2 - ((minX + maxX) / 2) * this.k;
-		this.ty = this.cssHeight / 2 - ((minY + maxY) / 2) * this.k;
-		this.draw();
+		if (!Number.isFinite(minX)) return { minX: -1, minY: -1, maxX: 1, maxY: 1 };
+		return { minX, minY, maxX, maxY };
 	}
 
 	/** Physics simmer only for the force layout; temporal/radial positions carry meaning. */
@@ -373,9 +371,10 @@ export class SimilarityMap {
 				mx = (mx / speed) * cap;
 				my = (my / speed) * cap;
 			}
-			node.x = clamp(node.x + mx, -1400, 1400);
-			node.y = clamp(node.y + my, -1400, 1400);
+			node.x = clamp(node.x + mx, -2400, 2400);
+			node.y = clamp(node.y + my, -2400, 2400);
 		}
+		if (this.communities.size > 1) separateCommunities(nodes, seedId, this.communities);
 	}
 
 	destroy(): void {
@@ -398,7 +397,7 @@ export class SimilarityMap {
 
 	private zoomAt(sx: number, sy: number, factor: number): void {
 		this.adjusted = true;
-		const next = clamp(this.k * factor, 0.25, 4);
+		const next = clamp(this.k * factor, 0.02, 8);
 		const world = this.screenToWorld(sx, sy);
 		// Ease toward the target like the Obsidian graph; rapid wheel ticks just
 		// move the target, and one rAF loop converges on it.
@@ -496,7 +495,7 @@ export class SimilarityMap {
 		const dist = Math.hypot(a.x - b.x, a.y - b.y);
 		if (dist <= 0) return;
 		const mid = this.localPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
-		this.k = clamp(pinch.k * (dist / pinch.startDist), 0.25, 4);
+		this.k = clamp(pinch.k * (dist / pinch.startDist), 0.02, 8);
 		this.tx = mid.x - pinch.wx * this.k;
 		this.ty = mid.y - pinch.wy * this.k;
 		this.moved = true;
@@ -524,7 +523,7 @@ export class SimilarityMap {
 				this.refreshFocus();
 				this.draw();
 			}
-			this.canvas.style.cursor = hit ? "pointer" : "grab";
+			this.canvas.style.cursor = hit || this.hitCommunity(local.x, local.y) ? "pointer" : "grab";
 			this.placeTooltip(hit, local.x, local.y);
 			return;
 		}
@@ -581,9 +580,18 @@ export class SimilarityMap {
 		if (dragging.kind === "node") {
 			const node = this.nodes.find((item) => item.id === dragging.id) ?? null;
 			this.selectedId = node?.id ?? null;
+			this.communityPick = undefined;
 			this.onSelect?.(node);
 		} else {
 			const local = this.localPoint(this.downX, this.downY);
+			const region = this.hitCommunity(local.x, local.y);
+			if (region) {
+				this.selectedId = null;
+				this.communityPick = region.community;
+				this.onSelect?.(null);
+				this.draw();
+				return;
+			}
 			const p = this.screenToWorld(local.x, local.y);
 			let closest: GraphEdge | null = null, distance = 7 / this.k;
 			for (const edge of this.edges) {
@@ -597,6 +605,7 @@ export class SimilarityMap {
 			}
 			if (closest && this.onEdgeSelect) { this.onEdgeSelect(closest); return; }
 			this.selectedId = null;
+			this.communityPick = undefined;
 			this.onSelect?.(null);
 		}
 		this.draw();
@@ -753,8 +762,7 @@ export class SimilarityMap {
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
 		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
-		if (this.layoutMode === "force2d") this.drawCommunityRegions(ctx, false);
-
+		const communityShapes = this.layoutMode === "force2d" ? this.communityDisks() : [];
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
 		ctx.lineCap = "round";
@@ -771,29 +779,32 @@ export class SimilarityMap {
 			const bx = b.x * this.k + this.tx;
 			const by = b.y * this.k + this.ty;
 			// 默认对齐 Obsidian 图谱：细、浅、中性灰；聚焦时才按关系类型着色。
+			const sameCommunity = this.communities.get(edge.source) === this.communities.get(edge.target);
 			const strokeStyle = dimmed
-				? "rgba(90, 96, 106, 0.1)"
+				? "rgba(90, 96, 106, 0.06)"
 				: focused
 					? hexRgba(RELATION_COLOR[kind], 0.85)
-					: this.graphLine;
+					: sameCommunity
+						? "rgba(90, 96, 106, 0.14)"
+						: "rgba(90, 96, 106, 0.07)";
 			ctx.beginPath();
 			ctx.moveTo(ax, ay);
 			ctx.lineTo(bx, by);
 			ctx.strokeStyle = strokeStyle;
 			const relatedness = clamp(edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight, 0, 1);
-			ctx.lineWidth = clamp(0.8 + Math.sqrt(relatedness) * 2.1 + (focused ? 0.35 : 0), 0.8, 3.25);
+			ctx.lineWidth = clamp(0.55 + Math.sqrt(relatedness) * 1.4 + (focused ? 0.35 : 0), 0.55, 2.2);
 			ctx.stroke();
 			if (kind !== "direct") continue;
 			ctx.fillStyle = strokeStyle;
 			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
 			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
 		}
-		if (this.layoutMode === "force2d") this.drawCommunityRegions(ctx, true);
 
 		const ordered = [...this.nodes].sort((a, b) => a.radius - b.radius || (a.isSeed ? 1 : 0) - (b.isSeed ? 1 : 0));
 		for (const node of ordered) {
 			if (node.shown) this.drawNode(ctx, node);
 		}
+		if (communityShapes.length) this.drawCommunityLabels(ctx, communityShapes);
 		this.drawLabels(ctx);
 	}
 
@@ -831,8 +842,8 @@ export class SimilarityMap {
 		ctx.restore();
 	}
 
-	private drawCommunityRegions(ctx: CanvasRenderingContext2D, labelsOnly: boolean): void {
-		const circles = buildCommunityCircles(
+	private communityDisks() {
+		return buildCommunityCircles(
 			this.nodes.map((node) => ({
 				id: node.id,
 				community: this.communities.get(node.id) ?? 0,
@@ -845,29 +856,52 @@ export class SimilarityMap {
 			10,
 			this.communityLabels,
 		);
+	}
+
+	private hitCommunity(sx: number, sy: number) {
+		if (this.layoutMode !== "force2d") return undefined;
+		let best: CommunityCircle | undefined;
+		for (const circle of this.communityDisks()) {
+			if (Math.hypot(sx - circle.cx, sy - circle.cy) > 28) continue;
+			if (!best || circle.radius < best.radius) best = circle;
+		}
+		return best;
+	}
+
+	private drawCommunityLabels(ctx: CanvasRenderingContext2D, circles: readonly CommunityCircle[]): void {
+		const selected = this.selectedCommunity();
+		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
 		ctx.save();
-		for (const circle of circles) {
+		ctx.font = `11px ${this.fontFamily}`;
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		const ordered = [...circles].sort((a, b) => Number(b.community === selected) - Number(a.community === selected));
+		for (const circle of ordered) {
+			const active = circle.community === selected;
+			const text = circle.label;
+			const width = ctx.measureText(text).width + 16;
+			const height = 20;
+			const box = { x: circle.cx - width / 2, y: circle.cy - height / 2, w: width, h: height };
+			if (!active && overlaps(box, boxes)) continue;
+			boxes.push(box);
 			const color = communityRgba(circle.community, 1);
-			if (!labelsOnly) {
-				ctx.beginPath();
-				ctx.arc(circle.cx, circle.cy, circle.radius, 0, Math.PI * 2);
-				ctx.fillStyle = color.replace(", 1)", ", 0.04)");
-				ctx.strokeStyle = color.replace(", 1)", ", 0.25)");
-				ctx.lineWidth = 1;
-				ctx.fill();
-				ctx.stroke();
-			}
-			// 标签放在圆圈正上方居中，超出画布时收回画布内。
-			ctx.font = `10px ${this.fontFamily}`;
-			const labelWidth = ctx.measureText(circle.label).width;
-			const x = Math.max(6 + labelWidth / 2, Math.min(this.cssWidth - labelWidth / 2 - 6, circle.cx));
-			const y = Math.max(16, circle.cy - circle.radius - 8);
-			ctx.fillStyle = "#9aa0a6";
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-			ctx.fillText(circle.label, x, y, labelWidth);
+			ctx.beginPath();
+			ctx.rect(box.x, box.y, box.w, box.h);
+			ctx.fillStyle = this.bgStart;
+			ctx.strokeStyle = color.replace(", 1)", active ? ", 0.7)" : ", 0.35)");
+			ctx.lineWidth = active ? 1.6 : 1;
+			ctx.fill();
+			ctx.stroke();
+			ctx.fillStyle = "#5c6570";
+			ctx.fillText(text, circle.cx, circle.cy);
 		}
 		ctx.restore();
+	}
+
+	private selectedCommunity(): number | undefined {
+		if (this.communityPick !== undefined) return this.communityPick;
+		if (!this.selectedId) return undefined;
+		return this.communities.get(this.selectedId);
 	}
 
 	private drawNode(ctx: CanvasRenderingContext2D, node: DrawNode): void {
@@ -934,6 +968,7 @@ export class SimilarityMap {
 		this.maxWeight = this.edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		if (resetView) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
+			this.communityPick = undefined;
 			this.hoverId = null;
 			this.refreshFocus();
 			this.adjusted = false;
@@ -964,19 +999,14 @@ export class SimilarityMap {
 	}
 
 	private drawLabels(ctx: CanvasRenderingContext2D): void {
-		const ranked = [...this.nodes].sort((a, b) => b.citedByCount - a.citedByCount);
-		const prominent = new Set<string>();
-		const seed = this.nodes.find((node) => node.isSeed);
-		if (seed) prominent.add(seed.id);
-		if (this.selectedId) prominent.add(this.selectedId);
-		if (this.hoverId) prominent.add(this.hoverId);
-		for (const node of ranked.slice(0, 5)) prominent.add(node.id);
+		const ranked = [...this.nodes].sort((a, b) => b.citedByCount - a.citedByCount || a.id.localeCompare(b.id));
+		const rankOf = new Map(ranked.map((node, index) => [node.id, index]));
 
 		ctx.textBaseline = "middle";
 		ctx.font = `11px ${this.fontFamily}`;
 		ctx.textAlign = "left";
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-		const place = (node: DrawNode, maxWidth: number, alpha = 1): void => {
+		const place = (node: DrawNode, maxWidth: number, alpha: number): void => {
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
 			const x = cx + node.radius + 6;
@@ -989,8 +1019,8 @@ export class SimilarityMap {
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
 			ctx.globalAlpha = dimmed ? 0.35 * alpha : alpha;
-			ctx.lineWidth = 2;
-			ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+			ctx.lineWidth = 3;
+			ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
 			ctx.strokeText(text, x, y);
 			ctx.fillStyle = this.graphText;
 			ctx.fillText(text, x, y);
@@ -998,14 +1028,11 @@ export class SimilarityMap {
 		};
 
 		for (const node of this.nodes) {
-			if (node.shown && prominent.has(node.id)) place(node, 168);
-		}
-		// Full labels fade in across a zoom band instead of a hard cutoff.
-		const labelAlpha = clamp((this.k - 1.1) / 0.5, 0, 1);
-		if (labelAlpha > 0) {
-			for (const node of this.nodes) {
-				if (node.shown && !prominent.has(node.id)) place(node, 140, labelAlpha);
-			}
+			if (!node.shown) continue;
+			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
+			const alpha = must ? 1 : citationLabelAlpha(rankOf.get(node.id) ?? 99, this.k);
+			if (alpha <= 0.02) continue;
+			place(node, must || (rankOf.get(node.id) ?? 99) <= 7 ? 168 : 140, alpha);
 		}
 	}
 }

@@ -8,9 +8,17 @@
 		<style>
 			body {
 				margin: 0;
-				background: #f6f5f2;
-				color: #3a3f45;
+				background: var(--background-secondary, #f6f5f2);
+				color: var(--text-normal, #3a3f45);
 				font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+				--background-primary: #ffffff;
+				--background-secondary: #f6f5f2;
+				--text-normal: #3a3f45;
+				--text-muted: #6b7280;
+				--background-modifier-border: #e5e2da;
+				--background-modifier-hover: rgba(60, 64, 70, 0.08);
+				--interactive-accent: #b38b4d;
+				--interactive-accent-hover: #a47a3e;
 			}
 			article {
 				max-width: 1120px;

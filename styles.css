@@ -9,29 +9,6 @@
 	padding: 0;
 }
 
-/* 淡色外观：在插件根作用域局部重定义 Obsidian 主题变量，
-   深色/褐色主题下插件也保持固定的浅色画布与控件配色。 */
-.cpo-root,
-.cpo-embed {
-	--text-normal: #3a3f45;
-	--text-muted: #6b7280;
-	--text-faint: #9aa0a6;
-	--background-primary: #ffffff;
-	--background-secondary: #f6f5f2;
-	--background-modifier-border: #e5e2da;
-	--background-modifier-hover: rgba(60, 64, 70, 0.08);
-	--background-modifier-active-hover: rgba(60, 64, 70, 0.12);
-	--background-modifier-box-shadow: rgba(60, 64, 70, 0.14);
-	--cpo-canvas-bg-start: #ffffff;
-	--cpo-canvas-bg-end: #f7f6f3;
-	--cpo-accent: #b38b4d;
-	--cpo-accent-hover: #a47a3e;
-	--graph-node: #8a7fd8;
-	--graph-node-focused: #4a90d9;
-	--graph-line: rgba(90, 96, 106, 0.28);
-	--graph-text: #4b5563;
-}
-
 .cpo-root {
 	height: 100%;
 	min-height: 0;
@@ -288,7 +265,7 @@
 	flex: 1;
 	min-width: 0;
 	min-height: 0;
-	background: #ffffff;
+	background: var(--background-primary);
 }
 
 .cpo-stage canvas {
@@ -302,7 +279,7 @@
 }
 
 .cpo-stage canvas:focus-visible {
-	outline: 2px solid rgba(166, 124, 46, 0.45);
+	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
 }
 
@@ -459,14 +436,14 @@
 	height: 28px;
 	min-width: 28px;
 	padding: 0 6px;
-	border: 1px solid rgba(60, 64, 70, 0.12);
+	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
-	background: rgba(255, 255, 255, 0.94);
-	color: #3a3f45;
+	background: var(--background-primary);
+	color: var(--text-normal);
 	font: inherit;
 	font-size: 12px;
 	cursor: pointer;
-	box-shadow: 0 1px 4px rgba(60, 64, 70, 0.12);
+	box-shadow: 0 1px 4px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.12));
 }
 
 .cpo-root button.cpo-action-link:hover,
@@ -955,10 +932,10 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: var(--graph-text, #4b5563);
+	color: var(--graph-text, var(--text-muted));
 	font-size: 11px;
 	line-height: 1.25;
-	text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9), 0 0 6px rgba(255, 255, 255, 0.9);
+	text-shadow: 0 1px 2px var(--background-primary), 0 0 6px var(--background-primary);
 	pointer-events: none;
 }
 
@@ -1281,7 +1258,7 @@ button.cpo-path-toggle.is-on {
 	z-index: 2;
 	overflow: auto;
 	padding: 12px 14px 20px;
-	background: #ffffff;
+	background: var(--background-primary);
 }
 
 .cpo-agg[hidden] {
@@ -1508,7 +1485,7 @@ button.cpo-agg-item {
 	flex: 1 1 auto;
 	max-height: none;
 	min-height: 0;
-	background: #ffffff;
+	background: var(--background-primary);
 	border-top: none;
 }
 
@@ -1527,8 +1504,8 @@ button.cpo-agg-item {
 .cpo-evidence-sidebar .cpo-sheet-toggle {
 	height: 38px;
 	padding: 0 12px;
-	background: #ffffff;
-	border-bottom: 1px solid rgba(60, 64, 70, 0.08);
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .cpo-evidence-sidebar .cpo-sheet-title {
@@ -1945,30 +1922,27 @@ button.cpo-agg-item {
 	line-height: 1.35;
 }
 
-/* Shared Research Connected surface contract. Keep pane/embed values identical. */
+/* Shared Research Connected surface contract. Inherit Obsidian tokens; hex is preview fallback only. */
 .cpo-root,
 .cpo-embed {
-	--rc-surface: #ffffff;
-	--rc-canvas: #f7f6f3;
-	--rc-surface-muted: #f6f5f2;
-	--rc-ink: #3a3f45;
-	--rc-muted: #6b7280;
-	--rc-border: #e5e2da;
-	--rc-accent: #b38b4d;
-	--rc-accent-hover: #a47a3e;
-	--rc-focus: rgba(166, 124, 46, 0.55);
+	--rc-surface: var(--background-primary, #ffffff);
+	--rc-canvas: var(--background-secondary, #f7f6f3);
+	--rc-surface-muted: var(--background-secondary, #f6f5f2);
+	--rc-ink: var(--text-normal, #3a3f45);
+	--rc-muted: var(--text-muted, #6b7280);
+	--rc-border: var(--background-modifier-border, #e5e2da);
+	--rc-accent: var(--interactive-accent, #b38b4d);
+	--rc-accent-hover: var(--interactive-accent-hover, var(--interactive-accent, #a47a3e));
+	--rc-focus: var(--background-modifier-border-focus, var(--interactive-accent, #b38b4d));
 	--rc-radius: 8px;
 	--rc-space: 8px;
 	--rc-sidebar-width: 320px;
 	--rc-sidebar-min: 260px;
 	--rc-sidebar-max: min(480px, 46vw);
-	--text-normal: var(--rc-ink);
-	--text-muted: var(--rc-muted);
-	--background-primary: var(--rc-surface);
-	--background-secondary: var(--rc-surface-muted);
-	--background-modifier-border: var(--rc-border);
 	--cpo-accent: var(--rc-accent);
 	--cpo-accent-hover: var(--rc-accent-hover);
+	--cpo-canvas-bg-start: var(--background-primary, var(--rc-surface));
+	--cpo-canvas-bg-end: var(--background-secondary, var(--rc-canvas));
 }
 
 .cpo-root :where(button, input, summary, [tabindex]):focus-visible,

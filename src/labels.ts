@@ -18,6 +18,15 @@ export function authorYear(paper: Pick<PaperNode, "authors" | "year">): string {
 	return `${shortAuthor(paper.authors)} ${year}`;
 }
 
+/** 被引名次 × 缩放：Top 3 恒显，其后随放大分档淡入。rank 0 为最高被引。 */
+export function citationLabelAlpha(rank: number, zoom: number): number {
+	const fade = (from: number): number => Math.min(1, Math.max(0, (zoom - from) / 0.4));
+	if (rank <= 2) return 1;
+	if (rank <= 7) return fade(0.75);
+	if (rank <= 15) return fade(1.1);
+	return fade(1.5);
+}
+
 export function abbreviateTitle(title: string, max = 32): string {
 	const clean = title.replace(/\s+/g, " ").trim();
 	if (clean.length <= max) return clean;

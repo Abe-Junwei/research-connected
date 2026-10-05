@@ -5,7 +5,7 @@ import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
-import type { LayoutMode } from "./layout-modes";
+import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -153,10 +153,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const ramp = el(rampWrap, "span", "cpo-ramp");
 	ramp.classList.add("cpo-topic-ramp");
 	const rampEnd = el(rampWrap, "span", undefined, "较高");
-	el(legend, "span", undefined, "与种子的主题相似度");
-	el(legend, "span", undefined, "灰色缺主题数据");
+	const rampHint = el(legend, "span", undefined, "节点色为引用结构分组");
+	const grayHint = el(legend, "span", undefined, "同色 = 同一引用团");
 	el(legend, "span", undefined, "圆点略大 = 被引更多");
 	el(legend, "span", undefined, "双环 = 种子");
+	const paintColorLegend = (mode: LayoutMode): void => {
+		const grouped = mode === "force2d";
+		rampWrap.hidden = grouped;
+		rampHint.textContent = grouped ? "节点色为引用结构分组" : "与种子的主题相似度";
+		grayHint.textContent = grouped ? "同色 = 同一引用团" : "灰色缺主题数据";
+	};
 	const toolsHost = el(drawer, "div");
 	toolsHost.classList.add("cpo-drawer-tools");
 	filterButton.addEventListener("click", () => {
@@ -579,6 +585,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(mode);
+			map.setColorMode(defaultColorMode(mode));
+			paintColorLegend(mode);
 		},
 		onScrub: (year) => {
 			scrubYear = year;
@@ -800,6 +808,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		map.setGraph(next.nodes, next.edges, next.seedScore);
 		// setGraph 不再重置布局；把轨道按钮当前选中的布局回灌给画布。
 		map.setLayout(layoutMode);
+		map.setColorMode(defaultColorMode(layoutMode));
+		paintColorLegend(layoutMode);
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years));
 		else chrome?.clearYears();
@@ -986,6 +996,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		paintLists();
 	};
 	window.addEventListener("research-connected-settings", onSettings);
+	const onTheme = (): void => {
+		map.resize();
+	};
+	window.addEventListener("research-connected-theme", onTheme);
 
 	const observer = observeResponsiveMode(root, () => {
 		map.resize();
@@ -1094,6 +1108,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			observer.disconnect();
 			root.removeEventListener("keydown", onKey);
 			window.removeEventListener("research-connected-settings", onSettings);
+			window.removeEventListener("research-connected-theme", onTheme);
 			map.destroy();
 			root.replaceChildren();
 			root.classList.remove("cpo-root", "is-narrow");

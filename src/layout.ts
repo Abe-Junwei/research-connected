@@ -1,5 +1,6 @@
 import type { GraphEdge } from "./types";
 import { clamp } from "./visual";
+import { compactPack } from "./community-regions";
 
 export interface ForceNode {
 	id: string;
@@ -14,8 +15,8 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
  * Place the seed at the origin and other papers on a similarity spiral, then
  * relax springs (shorter when the score is higher), repulsion, and collision.
  * The seed stays pinned for the simulation so the map remains centered on it.
- * When `communities` is given, springs between same-community nodes are
- * tightened so the detected groups stay visually distinct.
+ * When `communities` is given, same-community springs tighten and different
+ * community packs are pushed apart so their enclosing circles stay separated.
  */
 export function runForceLayout(
 	nodes: ForceNode[],
@@ -137,11 +138,15 @@ export function runForceLayout(
 				vx = (vx / speed) * 36;
 				vy = (vy / speed) * 36;
 			}
-			node.x = clamp(node.x + vx, -1400, 1400);
-			node.y = clamp(node.y + vy, -1400, 1400);
+			node.x = clamp(node.x + vx, -2400, 2400);
+			node.y = clamp(node.y + vy, -2400, 2400);
 		}
 
 		separate(nodes, seedId);
+		if (communities && communities.size > 1) separateCommunities(nodes, seedId, communities);
+	}
+	if (communities && communities.size > 1) {
+		for (let n = 0; n < 32; n++) separateCommunities(nodes, seedId, communities);
 	}
 }
 
@@ -168,6 +173,57 @@ function separate(nodes: ForceNode[], seedId: string): void {
 				b.x += dx * (a.id === seedId ? push * 2 : push);
 				b.y += dy * (a.id === seedId ? push * 2 : push);
 			}
+		}
+	}
+}
+
+/** 社区外接圆互斥：不同圈子的质心至少相距 r1+r2+gap，对应旧圈层的社区间距。 */
+export function separateCommunities(
+	nodes: ForceNode[],
+	seedId: string,
+	communities: ReadonlyMap<string, number>,
+	gap = 96,
+): void {
+	const groups = new Map<number, ForceNode[]>();
+	for (const node of nodes) {
+		const community = communities.get(node.id);
+		if (community === undefined) continue;
+		const group = groups.get(community) ?? [];
+		group.push(node);
+		groups.set(community, group);
+	}
+	if (groups.size < 2) return;
+	const packs = [...groups.values()].map((members) => {
+		const pack = compactPack(members, 24);
+		const extra = members.reduce((max, node) => Math.max(max, node.radius), 0);
+		return { members, cx: pack.cx, cy: pack.cy, radius: pack.radius + extra, mobile: members.filter((node) => node.id !== seedId) };
+	});
+	for (let i = 0; i < packs.length; i++) {
+		const a = packs[i]!;
+		for (let j = i + 1; j < packs.length; j++) {
+			const b = packs[j]!;
+			let dx = b.cx - a.cx;
+			let dy = b.cy - a.cy;
+			const dist = Math.hypot(dx, dy) || 0.01;
+			const min = a.radius + b.radius + gap;
+			if (dist >= min) continue;
+			dx /= dist;
+			dy /= dist;
+			const overlap = min - dist;
+			const pushA = a.mobile.length ? (b.mobile.length ? overlap / 2 : overlap) : 0;
+			const pushB = b.mobile.length ? (a.mobile.length ? overlap / 2 : overlap) : 0;
+			for (const node of a.mobile) {
+				node.x -= dx * pushA;
+				node.y -= dy * pushA;
+			}
+			for (const node of b.mobile) {
+				node.x += dx * pushB;
+				node.y += dy * pushB;
+			}
+			a.cx -= dx * pushA;
+			a.cy -= dy * pushA;
+			b.cx += dx * pushB;
+			b.cy += dy * pushB;
 		}
 	}
 }

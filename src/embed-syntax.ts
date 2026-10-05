@@ -1,5 +1,5 @@
 import type { LabelMode } from "./labels";
-import type { ColorMode, LayoutMode } from "./layout-modes";
+import { defaultColorMode, type ColorMode, type LayoutMode } from "./layout-modes";
 import { classifyQuery, type SeedQuery } from "./paper";
 
 /**
@@ -44,10 +44,10 @@ import { classifyQuery, type SeedQuery } from "./paper";
  * `language`, `type`, `concept`: optional preset filters. They apply only when OpenAlex sent that field.
  * `minCoCite` / `minShared`: hide co-citation edges below that co-cite count, and coupling edges below that shared-reference count. Default 1.
  * `layout`: `temporal` (default; year on X), `radial`, or `force2d` (force
- * layout with community circles). Legacy `kumu` / `community` and `force3d`
+ * layout with community hulls). Legacy `kumu` / `community` and `force3d`
  * values map to `force2d`.
- * `color`: `topic` (default; seed-topic similarity), `graph` (mono accent),
- * `community`, or `year`.
+ * `color`: default follows layout (`community` on force2d, `topic` otherwise).
+ * `topic`, `graph`, `community`, or `year` override that.
  * `doi`, `openalex` / `id`, or `seed`. A bare DOI or `W…` id also works.
  */
 export type EmbedPosition = "inline" | "float-left" | "float-right" | "full";
@@ -118,7 +118,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 	let minCoCite = 1;
 	let minShared = 1;
 	let layout: LayoutMode = "temporal";
-	let color: ColorMode = "topic";
+	let color: ColorMode | null = null;
 
 	for (const rawLine of source.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -219,7 +219,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		if (key === "color") {
 			const parsed = readColor(value);
 			if (!parsed) return { ok: false, error: "color 只能是 topic、graph、community 或 year。" };
-			// 与图谱面板一致：节点颜色固定为与种子的主题相似度；旧笔记的 color: 仍解析但不生效。
+			color = parsed;
 			continue;
 		}
 		const parsed = readInt(value, key === "mincocite" ? "minCoCite" : "minShared");
@@ -255,7 +255,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 			minCoCite,
 			minShared,
 			layout,
-			color,
+			color: color ?? defaultColorMode(layout),
 		},
 	};
 }

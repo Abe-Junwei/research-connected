@@ -3,7 +3,7 @@ import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
-import { buildCommunityRegions, communityTopicLabels } from "../src/community-regions";
+import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../src/community-regions";
 import { parseEmbed } from "../src/embed-syntax";
 import {
 	edgeVisible,
@@ -15,8 +15,9 @@ import {
 	strengthTier,
 	type GraphFilter,
 } from "../src/graph-filter";
-import { authorYear, shortAuthor } from "../src/labels";
+import { authorYear, citationLabelAlpha, shortAuthor } from "../src/labels";
 import { placeLayout } from "../src/layout-modes";
+import { fitViewScale } from "../src/visual";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
@@ -110,18 +111,102 @@ function unit(): void {
 	assert.match(topicSimilarityColor(1), /^rgb\(/, "embed WebGL parser only accepts rgb()");
 	assert.match(topicSimilarityColor(null), /^rgb\(/);
 	const topicGroups = communityTopicLabels([
-		{ id: "a", topicTags: [{ name: "Language", score: 0.8 }, { name: "Syntax", score: 0.5 }] },
-		{ id: "b", topicTags: [{ name: "Language", score: 0.7 }] },
-		{ id: "c", topicTags: [{ name: "Syntax", score: 0.9 }] },
-	], new Map([["a", 0], ["b", 0], ["c", 1]]));
-	assert.equal(topicGroups.get(0), "Language · Syntax");
-	assert.equal(topicGroups.get(1), "Syntax");
+		{ id: "a", title: "Language contact in Amazonia" },
+		{ id: "b", title: "Language typology of classifiers" },
+		{ id: "c", title: "Serial verb constructions" },
+		{ id: "d", title: "Serial predicates in Papuan" },
+	], new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]));
+	assert.equal(topicGroups.get(0), "Language");
+	assert.equal(topicGroups.get(1), "Serial");
+	const shared = communityTopicLabels(
+		[
+			{ id: "a", title: "Language phonology of tone" },
+			{ id: "b", title: "Language phonology overview" },
+			{ id: "c", title: "Language morphology of verbs" },
+			{ id: "d", title: "Language morphology notes" },
+		],
+		new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]),
+	);
+	assert.equal(shared.get(0), "Phonology", "共用标题词不拿来当圈名");
+	assert.equal(shared.get(1), "Morphology");
+	assert.notEqual(shared.get(0), shared.get(1));
 	const communityRegions = buildCommunityRegions([
 		{ id: "a", community: 0, x: 0, y: 0, shown: true },
 		{ id: "b", community: 0, x: 20, y: 0, shown: true },
 		{ id: "c", community: 0, x: 10, y: 20, shown: true },
 	], 10, 3, 10, topicGroups);
-	assert.equal(communityRegions[0]?.label, "Language · Syntax");
+	assert.equal(communityRegions[0]?.label, "Language");
+	const capped = buildCommunityRegions(
+		[
+			{ id: "a", community: 0, x: 0, y: 0, shown: true },
+			{ id: "b", community: 0, x: 10, y: 0, shown: true },
+			{ id: "c", community: 0, x: 0, y: 10, shown: true },
+			{ id: "d", community: 1, x: 40, y: 0, shown: true },
+			{ id: "e", community: 1, x: 50, y: 0, shown: true },
+			{ id: "f", community: 1, x: 40, y: 10, shown: true },
+			{ id: "g", community: 2, x: 80, y: 0, shown: true },
+			{ id: "h", community: 2, x: 90, y: 0, shown: true },
+			{ id: "i", community: 2, x: 80, y: 10, shown: true },
+		],
+		8,
+		3,
+		2,
+	);
+	assert.equal(capped.length, 2, "maximumRegions 截断生效");
+	const triangle = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }];
+	assert.equal(hitCommunityRegion(2, 2, [{ community: 0, members: 3, label: "A", points: triangle, cx: 3, cy: 3, left: 0, top: 0 }])?.community, 0);
+	assert.equal(hitCommunityRegion(9, 9, [{ community: 0, members: 3, label: "A", points: triangle, cx: 3, cy: 3, left: 0, top: 0 }]), undefined);
+	const disks = buildCommunityCircles(
+		[
+			{ id: "a", community: 0, x: 0, y: 0, shown: true },
+			{ id: "b", community: 0, x: 10, y: 0, shown: true },
+			{ id: "c", community: 0, x: 0, y: 10, shown: true },
+		],
+		4,
+	);
+	assert.equal(hitCommunityCircle(disks[0]!.cx, disks[0]!.cy, disks)?.community, 0);
+	assert.equal(hitCommunityCircle(disks[0]!.cx + disks[0]!.radius + 2, disks[0]!.cy, disks), undefined);
+	const outlier = buildCommunityCircles(
+		[
+			{ id: "a", community: 0, x: 0, y: 0, shown: true },
+			{ id: "b", community: 0, x: 10, y: 0, shown: true },
+			{ id: "c", community: 0, x: 0, y: 10, shown: true },
+			{ id: "d", community: 0, x: 10, y: 10, shown: true },
+			{ id: "far", community: 0, x: 400, y: 0, shown: true },
+		],
+		0,
+	);
+	assert.ok((outlier[0]?.radius ?? 0) < 80, "离群点不把社区圆撑成覆盖全图");
+	const junk = communityTopicLabels(
+		[
+			{ id: "a", title: "Always evidential marking" },
+			{ id: "b", title: "Always evidential morphology" },
+		],
+		new Map([["a", 0], ["b", 0]]),
+	);
+	assert.notEqual(junk.get(0), "Always");
+	assert.equal(junk.get(0), "Evidential");
+	const fromFields = communityTopicLabels(
+		[
+			{ id: "a", title: "Notes", abstract: "Tariana evidential marking in discourse", concepts: ["Evidentiality", "Amazonia"] },
+			{ id: "b", title: "Notes", abstract: "evidential morphology of verbs", concepts: ["Evidentiality"] },
+			{ id: "c", title: "Notes", abstract: "serial verb constructions", concepts: ["Serial verbs"] },
+			{ id: "d", title: "Notes", abstract: "serial predicates in Papuan", concepts: ["Serial verbs"] },
+		],
+		new Map([["a", 0], ["b", 0], ["c", 1], ["d", 1]]),
+	);
+	assert.match(fromFields.get(0) ?? "", /Evidentiality/, "关键词优先于标题词");
+	assert.match(fromFields.get(0) ?? "", / · /, "圈名可不限一个");
+	assert.match(fromFields.get(1) ?? "", /Serial/i);
+	const keywordFirst = communityTopicLabels(
+		[
+			{ id: "a", title: "Look at element fronting", concepts: ["Syntax"] },
+			{ id: "b", title: "Look ahead and fronting", concepts: ["Syntax"] },
+		],
+		new Map([["a", 0], ["b", 0]]),
+	);
+	assert.equal(keywordFirst.get(0), "Syntax");
+	assert.notEqual(keywordFirst.get(0), "Look");
 
 	assert.equal(allowedExternalUrl("https://doi.org/10.1038/nature14539")?.startsWith("https://doi.org/"), true);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
@@ -179,6 +264,10 @@ function unit(): void {
 	assert.equal(shortAuthor("Yann LeCun, Yoshua Bengio, Geoffrey E. Hinton"), "LeCun");
 	assert.equal(shortAuthor("作者不详"), "佚名");
 	assert.equal(authorYear({ authors: "Yann LeCun, Yoshua Bengio", year: 2015 }), "LeCun 2015");
+	assert.equal(citationLabelAlpha(0, 0.5), 1, "最高被引恒显");
+	assert.equal(citationLabelAlpha(3, 0.5), 0, "次档低缩放不显示");
+	assert.ok(citationLabelAlpha(3, 1.0) > 0.5, "次档随放大淡入");
+	assert.equal(citationLabelAlpha(20, 1.0), 0, "长尾需更近才出现");
 
 	const weakEdge = weighted("S", "Q", 0.04);
 	assert.equal(strengthTier(weakEdge), "weak");
@@ -237,6 +326,9 @@ function unit(): void {
 	const forceSeed = force.find((node) => node.id === "S");
 	assert.equal(forceSeed?.x, 0, "平面布局种子固定在中心");
 	assert.equal(forceSeed?.y, 0);
+	assert.ok(fitViewScale(400, 300, 4000, 3000) < 0.2, "大平面图能缩小进视口");
+	assert.ok(fitViewScale(400, 300, 460, 300) > 0.5, "时间布局填满视口而不溢出");
+	assert.equal(fitViewScale(400, 300, 40, 30) <= 8, true);
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
@@ -376,8 +468,11 @@ function unit(): void {
 	assert.equal(laidOut.ok, true);
 	if (laidOut.ok) {
 		assert.equal(laidOut.spec.layout, "force2d", "force layouts stay distinct");
-		assert.equal(laidOut.spec.color, "topic", "color: is accepted but ignored; nodes use topic similarity");
+		assert.equal(laidOut.spec.color, "year", "color: year is honored");
 	}
+	const forceDefault = parseEmbed("doi: 10.1038/nature14539\nlayout: force2d\n");
+	assert.equal(forceDefault.ok, true);
+	if (forceDefault.ok) assert.equal(forceDefault.spec.color, "community", "plane layout defaults to community color");
 	const legacy3d = parseEmbed("doi: 10.1038/nature14539\nlayout: force3d\n");
 	assert.equal(legacy3d.ok, true);
 	if (legacy3d.ok) assert.equal(legacy3d.spec.layout, "force2d", "force3d maps to force2d");

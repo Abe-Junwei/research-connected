@@ -1,4 +1,4 @@
-import { runForceLayout, type ForceNode } from "./layout";
+import { runForceLayout, separateCommunities, type ForceNode } from "./layout";
 import { detectCommunities } from "./communities";
 import type { GraphEdge, PaperNode } from "./types";
 import { citationRadius } from "./visual";
@@ -6,8 +6,12 @@ import { citationRadius } from "./visual";
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force2d" | "temporal" | "radial";
 
-/** Node color always represents seed-relative topic similarity. */
 export type ColorMode = "year" | "community" | "graph" | "topic";
+
+/** 平面按引用团着色；时间/放射仍用相对种子的主题相似度。 */
+export function defaultColorMode(layout: LayoutMode): ColorMode {
+	return layout === "force2d" ? "community" : "topic";
+}
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: "时间",
@@ -18,7 +22,7 @@ export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
 	temporal: "横向按年份排列，纵向为对数被引量；未知年份在左侧。",
 	radial: "种子居中，越近越相似；角度仅用于排开节点。",
-	force2d: "平面力导向；圆圈为引用结构社区，标签来自成员主题词，不代表真实学派。",
+	force2d: "平面力导向；节点色为引用结构分组。标签优先用关键词，缺关键词才用标题/摘要里相对其他圈子更独特的词，不代表真实学派。",
 };
 
 export interface PlacedNode {
@@ -114,3 +118,5 @@ function placeRadial(
 		return { ...node, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: 0 };
 	});
 }
+
+export { separateCommunities };

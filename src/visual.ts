@@ -27,6 +27,14 @@ export function formatCount(value: number): string {
 	return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+/** Scale that maps content bounds into the view with a short margin. */
+export function fitViewScale(viewW: number, viewH: number, contentW: number, contentH: number): number {
+	const pad = Math.max(16, Math.min(viewW, viewH) * 0.08);
+	const innerW = Math.max(1, viewW - pad * 2);
+	const innerH = Math.max(1, viewH - pad * 2);
+	return clamp(Math.min(innerW / Math.max(1, contentW), innerH / Math.max(1, contentH)), 0.02, 8);
+}
+
 export function snippet(text: string, max = 480): string {
 	const clean = text.replace(/\s+/g, " ").trim();
 	if (clean.length <= max) return clean;

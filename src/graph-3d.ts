@@ -22,7 +22,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { communityColor, detectCommunities } from "./communities";
-import { buildCommunityCircles, communityTopicLabels } from "./community-regions";
+import { buildCommunityCircles, communityTopicLabels, type CommunityCircle } from "./community-regions";
 import {
 	edgeVisible,
 	evidenceText,
@@ -31,8 +31,8 @@ import {
 	type GraphFilter,
 } from "./graph-filter";
 import type { LabelMode } from "./labels";
-import { nodeLabel } from "./labels";
-import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
+import { citationLabelAlpha, nodeLabel } from "./labels";
+import { placeLayout, separateCommunities, type ColorMode, type LayoutMode } from "./layout-modes";
 import type { SimilarityGraph } from "./neighborhood";
 import { RELATION_COLOR, relationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
@@ -53,6 +53,7 @@ export interface Graph3DHandle {
 	setFilter(next: GraphFilter): void;
 	setLayout(next: LayoutMode): void;
 	setColorMode(next: ColorMode): void;
+	applyTheme(): void;
 	getCamera(): GraphCameraState;
 	setCamera(state: GraphCameraState): void;
 }
@@ -154,8 +155,8 @@ export function mountGraph3D(
 	const viewStyles = getComputedStyle(viewport);
 	const readVar = (name: string, fallback: string): string =>
 		viewStyles.getPropertyValue(name).trim() || fallback;
-	const graphNodeColor = readVar("--graph-node", "rgb(138, 127, 216)");
-	const graphNodeFocused = colorToHex(readVar("--graph-node-focused", "rgb(74, 144, 217)"));
+	let graphNodeColor = readVar("--graph-node", "rgb(138, 127, 216)");
+	let graphNodeFocused = colorToHex(readVar("--graph-node-focused", "rgb(74, 144, 217)"));
 	const seedPaper = graph.nodes.find((node) => node.isSeed);
 	const nodeColor = (node: PaperNode): string => {
 		if (colorMode === "community") return communityColor(communities.get(node.id) ?? 0);
@@ -246,7 +247,7 @@ export function mountGraph3D(
 		});
 	}
 
-	const drawn = drawEdges(graph, byId, scene, geometries, materials);
+	const drawn = drawEdges(graph, byId, scene, geometries, materials, communities);
 	drawn.setKumuStyle();
 
 	const camera = new PerspectiveCamera(45, 1, 0.1, 4000);
@@ -269,20 +270,48 @@ export function mountGraph3D(
 	applyPointerMode();
 
 	let frameDistance = 1;
+	let viewAdjusted = false;
 	const frameCamera = (): void => {
-		let maxReach = 80;
+		viewAdjusted = false;
+		let minX = Infinity;
+		let minY = Infinity;
+		let maxX = -Infinity;
+		let maxY = -Infinity;
 		for (const entry of entries) {
+			if (!entry.mesh.visible) continue;
 			const at = entry.mesh.position;
-			maxReach = Math.max(maxReach, Math.hypot(at.x, at.y, at.z) + 24);
+			const pad = entry.radius + 8;
+			minX = Math.min(minX, at.x - pad);
+			minY = Math.min(minY, at.y - pad);
+			maxX = Math.max(maxX, at.x + pad);
+			maxY = Math.max(maxY, at.y + pad);
 		}
-		controls.minDistance = Math.max(30, maxReach * 0.25);
-		controls.maxDistance = maxReach * 5;
-		camera.position.set(0, maxReach * 0.08, maxReach * 1.65);
-		controls.target.set(0, 0, 0);
+		if (!Number.isFinite(minX)) {
+			minX = -80;
+			minY = -80;
+			maxX = 80;
+			maxY = 80;
+		}
+		const cx = (minX + maxX) / 2;
+		const cy = (minY + maxY) / 2;
+		const halfW = Math.max(40, (maxX - minX) / 2);
+		const halfH = Math.max(40, (maxY - minY) / 2);
+		const aspect = Math.max(0.2, camera.aspect || 1);
+		const fov = (camera.fov * Math.PI) / 180;
+		const dist = Math.max(halfH / Math.tan(fov / 2), halfW / (Math.tan(fov / 2) * aspect)) * 1.1;
+		camera.near = Math.max(0.1, dist / 200);
+		camera.far = Math.max(4000, dist * 20);
+		camera.updateProjectionMatrix();
+		camera.position.set(cx, cy, dist);
+		controls.target.set(cx, cy, 0);
+		controls.minDistance = Math.max(20, dist * 0.15);
+		controls.maxDistance = dist * 8;
 		controls.update();
-		frameDistance = camera.position.distanceTo(controls.target);
+		frameDistance = dist;
 	};
-	frameCamera();
+	controls.addEventListener("start", () => {
+		viewAdjusted = true;
+	});
 
 	const raycaster = new Raycaster();
 	const pointer = new Vector2();
@@ -294,6 +323,8 @@ export function mountGraph3D(
 	let raf = 0;
 	let running = false;
 	let selectedId: string | null = graph.nodes.find((node) => node.isSeed)?.id ?? null;
+	let communityPick: number | undefined;
+	let communityDisks: CommunityCircle[] = [];
 	let hoverId: string | null = null;
 	let downX = 0;
 	let downY = 0;
@@ -435,11 +466,27 @@ export function mountGraph3D(
 				mx = (mx / speed) * cap;
 				my = (my / speed) * cap;
 			}
-			const nx = Math.min(1400, Math.max(-1400, at.x + mx));
-			const ny = Math.min(1400, Math.max(-1400, at.y + my));
+			const nx = Math.min(2400, Math.max(-2400, at.x + mx));
+			const ny = Math.min(2400, Math.max(-2400, at.y + my));
 			if (nx !== at.x || ny !== at.y) changed = true;
 			at.x = nx;
 			at.y = ny;
+		}
+		if (communities.size > 1) {
+			const forceNodes = entries.map((entry) => ({
+				id: entry.id,
+				x: entry.mesh.position.x,
+				y: entry.mesh.position.y,
+				radius: entry.radius,
+			}));
+			separateCommunities(forceNodes, seedPaper?.id ?? "", communities);
+			for (const node of forceNodes) {
+				const entry = entries.find((item) => item.id === node.id);
+				if (!entry) continue;
+				if (entry.mesh.position.x !== node.x || entry.mesh.position.y !== node.y) changed = true;
+				entry.mesh.position.x = node.x;
+				entry.mesh.position.y = node.y;
+			}
 		}
 		if (changed) drawn.relayout(currentPlacements());
 	};
@@ -451,6 +498,7 @@ export function mountGraph3D(
 		renderer.setSize(width, height, false);
 		camera.aspect = width / Math.max(1, height);
 		camera.updateProjectionMatrix();
+		if (!viewAdjusted) frameCamera();
 		schedule();
 	};
 
@@ -516,29 +564,34 @@ export function mountGraph3D(
 		return { node, edge: null };
 	};
 
+	const communityAt = (event: PointerEvent): CommunityCircle | undefined => {
+		if (layoutMode !== "force2d") return undefined;
+		const rect = canvas.getBoundingClientRect();
+		const x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+		let best: CommunityCircle | undefined;
+		for (const circle of communityDisks) {
+			if (Math.hypot(x - circle.cx, y - circle.cy) > 28) continue;
+			if (!best || circle.radius < best.radius) best = circle;
+		}
+		return best;
+	};
+
 	const placeLabels = (): void => {
 		const width = viewport.clientWidth;
 		const height = viewport.clientHeight;
 		if (options.labels !== "off") {
 		const gap = options.labels === "both" ? 58 : 44;
-		const ranked = [...entries].sort(
-			(a, b) => Number(b.seed) - Number(a.seed) || b.cited - a.cited || a.id.localeCompare(b.id),
-		);
+		const byCite = [...entries].sort((a, b) => b.cited - a.cited || a.id.localeCompare(b.id));
+		const rankOf = new Map(byCite.map((entry, index) => [entry.id, index]));
 		const kept: Array<{ x: number; y: number }> = [];
-		let shown = 0;
-		// 对齐面板：普通标签随放大淡入（缩放 1.1–1.6 区间），种子/选中/悬停恒显。
 		const zoom = frameDistance / Math.max(1, camera.position.distanceTo(controls.target));
-		const labelAlpha = Math.min(1, Math.max(0, (zoom - 1.1) / 0.5));
-		for (const entry of ranked) {
+		for (const entry of byCite) {
 			const el = entry.label;
 			if (!el) continue;
 			projected.copy(entry.mesh.position).project(camera);
 			const force = entry.id === selectedId || entry.id === hoverId || entry.seed;
-			// 对齐 Obsidian 图谱：默认只给最高被引的一小撮节点出标签。
-			if (!force && shown >= 24) {
-				el.hidden = true;
-				continue;
-			}
+			const alpha = force ? 1 : citationLabelAlpha(rankOf.get(entry.id) ?? 99, zoom);
 			if (projected.z > 1) {
 				el.hidden = true;
 				continue;
@@ -550,20 +603,15 @@ export function mountGraph3D(
 				el.hidden = true;
 				continue;
 			}
-			if (!force && (crowded || x < -20 || y < -20 || x > width + 20 || y > height + 20)) {
-				el.hidden = true;
-				continue;
-			}
-			if (!force && labelAlpha <= 0.02) {
+			if (!force && (alpha <= 0.02 || crowded || x < -20 || y < -20 || x > width + 20 || y > height + 20)) {
 				el.hidden = true;
 				continue;
 			}
 			el.hidden = false;
-			el.style.opacity = force ? "1" : labelAlpha.toFixed(2);
+			el.style.opacity = alpha.toFixed(2);
 			el.style.left = `${x}px`;
 			el.style.top = `${y}px`;
 			kept.push({ x, y });
-			if (!force) shown += 1;
 		}
 		}
 		placeCommunityOverlay(width, height);
@@ -574,9 +622,11 @@ export function mountGraph3D(
 		communitySvg.setAttribute("height", String(height));
 		communitySvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
 		communitySvg.replaceChildren();
-		// 合并后的平面模式：社区正圆底衬 + 主题词标签。
 		communitySvg.style.display = layoutMode === "force2d" ? "block" : "none";
-		if (layoutMode !== "force2d") return;
+		if (layoutMode !== "force2d") {
+			communityDisks = [];
+			return;
+		}
 		const projectedPoints = entries.filter((entry) => entry.mesh.visible).map((entry) => {
 			projected.copy(entry.mesh.position).project(camera);
 			return {
@@ -587,24 +637,41 @@ export function mountGraph3D(
 				shown: projected.z <= 1 && projected.x >= -1.2 && projected.x <= 1.2 && projected.y >= -1.2 && projected.y <= 1.2,
 			};
 		});
-		for (const circle of buildCommunityCircles(projectedPoints, 22, 3, 10, communityLabels)) {
+		const circles = buildCommunityCircles(projectedPoints, 22, 3, 10, communityLabels);
+		communityDisks = circles;
+		const selectedCommunity = communityPick ?? (selectedId ? communities.get(selectedId) : undefined);
+		const occupied: Array<{ x: number; y: number; w: number; h: number }> = [];
+		const labeled = [...circles].sort((a, b) => Number(b.community === selectedCommunity) - Number(a.community === selectedCommunity));
+		for (const circle of labeled) {
 			const hue = communityColor(circle.community).replace("rgb(", "").replace(")", "");
-			const disk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-			disk.setAttribute("cx", String(circle.cx));
-			disk.setAttribute("cy", String(circle.cy));
-			disk.setAttribute("r", String(circle.radius));
-			disk.setAttribute("fill", `rgba(${hue}, 0.04)`);
-			disk.setAttribute("stroke", `rgba(${hue}, 0.25)`);
-			disk.setAttribute("stroke-width", "1");
-			communitySvg.append(disk);
+			const active = circle.community === selectedCommunity;
 			const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-			label.setAttribute("x", String(Math.max(6, Math.min(width - 6, circle.cx))));
-			label.setAttribute("y", String(Math.max(14, circle.cy - circle.radius - 6)));
-			label.setAttribute("fill", "#9aa0a6");
-			label.setAttribute("font-size", "10");
+			label.setAttribute("x", String(circle.cx));
+			label.setAttribute("y", String(circle.cy + 1));
+			label.setAttribute("fill", "#5c6570");
+			label.setAttribute("font-size", "11");
 			label.setAttribute("text-anchor", "middle");
+			label.setAttribute("dominant-baseline", "middle");
 			label.textContent = circle.label;
 			communitySvg.append(label);
+			const widthPx = Math.max(24, label.getComputedTextLength()) + 16;
+			const heightPx = 20;
+			const box = { x: circle.cx - widthPx / 2, y: circle.cy - heightPx / 2, w: widthPx, h: heightPx };
+			if (!active && occupied.some((other) => !(box.x + box.w < other.x || other.x + other.w < box.x || box.y + box.h < other.y || other.y + other.h < box.y))) {
+				label.remove();
+				continue;
+			}
+			occupied.push(box);
+			const plate = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+			plate.setAttribute("x", String(box.x));
+			plate.setAttribute("y", String(box.y));
+			plate.setAttribute("width", String(box.w));
+			plate.setAttribute("height", String(box.h));
+			const surface = getComputedStyle(viewport).getPropertyValue("--background-primary").trim() || "#ffffff";
+			plate.setAttribute("fill", surface);
+			plate.setAttribute("stroke", `rgba(${hue}, ${active ? 0.7 : 0.35})`);
+			plate.setAttribute("stroke-width", active ? "1.6" : "1");
+			communitySvg.insertBefore(plate, label);
 		}
 	};
 
@@ -745,7 +812,7 @@ export function mountGraph3D(
 			hoverId = next;
 			paint();
 		}
-		canvas.style.cursor = hit.node || hit.edge ? "pointer" : "grab";
+		canvas.style.cursor = hit.node || hit.edge || communityAt(event) ? "pointer" : "grab";
 		if (hit.node) {
 			placeTooltipAtNode(hit.node);
 			return;
@@ -780,6 +847,7 @@ export function mountGraph3D(
 			}
 			const paper = papers.get(released) ?? null;
 			selectedId = paper?.id ?? null;
+			communityPick = undefined;
 			onSelect(paper, null);
 			syncView();
 			return;
@@ -792,15 +860,32 @@ export function mountGraph3D(
 		if (hit.edge && !hit.node) {
 			const paper = endpoint(hit.edge.edge);
 			selectedId = paper?.id ?? null;
+			communityPick = undefined;
 			hoverId = selectedId;
 			paint();
 			onSelect(paper, hit.edge.edge);
 			syncView();
 			return;
 		}
-		selectedId = hit.node?.id ?? null;
-		const paper = hit.node ? papers.get(hit.node.id) ?? null : null;
-		onSelect(paper, null);
+		if (hit.node) {
+			selectedId = hit.node.id;
+			communityPick = undefined;
+			const paper = papers.get(hit.node.id) ?? null;
+			onSelect(paper, null);
+			syncView();
+			return;
+		}
+		const region = communityAt(event);
+		if (region) {
+			selectedId = null;
+			communityPick = region.community;
+			onSelect(null, null);
+			syncView();
+			return;
+		}
+		selectedId = null;
+		communityPick = undefined;
+		onSelect(null, null);
 		syncView();
 	};
 	const onPointerLeave = (): void => {
@@ -880,6 +965,7 @@ export function mountGraph3D(
 
 	const zoomBy = (factor: number): void => {
 		if (!Number.isFinite(factor) || factor <= 0) return;
+		viewAdjusted = true;
 		const offset = camera.position.clone().sub(controls.target);
 		const distance = offset.length();
 		if (distance < 1e-3) return;
@@ -901,6 +987,13 @@ export function mountGraph3D(
 		},
 		setColorMode(next: ColorMode): void {
 			colorMode = next;
+			applyColors();
+		},
+		applyTheme(): void {
+			const styles = getComputedStyle(viewport);
+			graphNodeColor = styles.getPropertyValue("--graph-node").trim() || "rgb(138, 127, 216)";
+			graphNodeFocused = colorToHex(styles.getPropertyValue("--graph-node-focused").trim() || "rgb(74, 144, 217)");
+			selectionRingMat.color.set(graphNodeFocused);
 			applyColors();
 		},
 		getCamera(): GraphCameraState {
@@ -947,6 +1040,7 @@ function drawEdges(
 	scene: Scene,
 	geometries: Array<CircleGeometry | CylinderGeometry | TorusGeometry | ConeGeometry>,
 	materials: Material[],
+	communities: ReadonlyMap<string, number>,
 ): {
 	edges: DrawnEdge[];
 	hitMesh: InstancedMesh | null;
@@ -990,8 +1084,9 @@ function drawEdges(
 	const direction = new Vector3();
 	const up = new Vector3(0, 1, 0);
 	// 颜色按面板 --graph-line 在白底上的合成值预调：默认 rgba(90,96,106,0.28)，淡化 0.1。
-	const edgeGray = new Color(0xd1d3d5);
-	const edgeFaint = new Color(0xedeef0);
+	const edgeGray = new Color(0xe6e7e8);
+	const edgeCross = new Color(0xf2f3f4);
+	const edgeFaint = new Color(0xf6f6f7);
 
 	const hide = (): void => {
 		dummy.position.set(0, -100000, 0);
@@ -1050,7 +1145,8 @@ function drawEdges(
 			const radius = 0.35 + Math.sqrt(relatedness) * 0.85 + (focused ? 0.15 : 0);
 			placeShaft(i, item, radius);
 			const kind = relationKind(item.edge);
-			visibleMesh.setColorAt(i, focused ? new Color(RELATION_COLOR[kind]) : emphasized ? edgeGray : edgeFaint);
+			const sameCommunity = communities.get(item.edge.source) === communities.get(item.edge.target);
+			visibleMesh.setColorAt(i, focused ? new Color(RELATION_COLOR[kind]) : emphasized ? (sameCommunity ? edgeGray : edgeCross) : edgeFaint);
 			dummy.scale.set(Math.max(radius, 1.8), dummy.scale.y, Math.max(radius, 1.8));
 			dummy.updateMatrix();
 			hitMesh.setMatrixAt(i, dummy.matrix);

@@ -8,7 +8,7 @@ import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } 
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { mountGraph3D, type Graph3DHandle, type GraphCameraState } from "./graph-3d";
-import type { LayoutMode } from "./layout-modes";
+import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
@@ -174,6 +174,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const seedHint = document.createElement("span");
 	seedHint.textContent = "双环 = 种子";
 	legend.append(rampWrap, rampHint, grayHint, sizeHint, seedHint);
+	const paintColorLegend = (mode: LayoutMode): void => {
+		const grouped = mode === "force2d";
+		rampWrap.hidden = grouped;
+		rampHint.textContent = grouped ? "节点色为引用结构分组" : "与种子的主题相似度";
+		grayHint.textContent = grouped ? "同色 = 同一引用团" : "灰色缺主题数据";
+	};
 	const tools = document.createElement("div");
 	tools.classList.add("cpo-drawer-tools");
 	drawer.append(drawerTitle, tip, kindLegend, legend, tools);
@@ -244,6 +250,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	}));
 	let tab: GraphTab = "graph";
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
+	paintColorLegend(layoutMode);
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
@@ -275,6 +282,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		onLayout: (mode) => {
 			layoutMode = mode;
 			graphView?.setLayout(layoutMode);
+			graphView?.setColorMode(defaultColorMode(layoutMode));
+			paintColorLegend(layoutMode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
@@ -470,7 +479,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					labels: spec.labels,
 					filter: viewFilter,
 					layout: layoutMode,
-					colorMode: "topic",
+					colorMode: layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode),
 					// GPU 切换/窗口重开导致上下文丢失时，用缓存数据原地重建图谱，
 					// 避免画布黑屏；连续失败两次就提示手动重载，不无限循环。
 					onContextLost: () => {
@@ -602,10 +611,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	});
 	void load(false);
 
+	const onTheme = (): void => {
+		graphView?.applyTheme();
+		graphView?.resize();
+	};
+	window.addEventListener("research-connected-theme", onTheme);
+
 	return () => {
 		alive = false;
 		generation += 1;
 		snapshotView();
+		window.removeEventListener("research-connected-theme", onTheme);
 		graphView?.destroy();
 		chrome?.destroy();
 		sheet.destroy();

@@ -43,6 +43,9 @@ export default class ConnectedPapersPlugin extends Plugin {
 			},
 		});
 
+		this.registerEvent(this.app.workspace.on("css-change", () => {
+			window.dispatchEvent(new Event("research-connected-theme"));
+		}));
 		this.addSettingTab(new ConnectedPapersSettingTab(this.app, this, this));
 		registerConnectedPapersEmbed(this);
 	}
