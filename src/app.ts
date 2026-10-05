@@ -505,6 +505,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): () => void {
 		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
+		stagingButton: Boolean(deps.stagePaper),
 		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,

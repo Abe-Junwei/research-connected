@@ -6,6 +6,7 @@ import { buildNarrativeEvidence, validateNarrative } from "../src/narrative";
 import { summarizeWithLlmPost } from "../src/llm";
 import type { SimilarityGraph } from "../src/neighborhood";
 import type { GraphEdge, PaperNode } from "../src/types";
+import { stageKey, toggleStaged } from "../src/staging";
 
 export async function verifyEvidence(): Promise<void> {
 	const paper = (id: string, seed = false): PaperNode => ({
@@ -34,6 +35,10 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.influential, false);
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.relation, "method");
 	assert.equal(evidenceFromSemanticCitation("a", "b", {}).influential, undefined);
+	const staged = toggleStaged([], prior, seed.id, "reference");
+	assert.equal(staged.length, 1);
+	assert.equal(stageKey(staged[0]!), "W1\0W2");
+	assert.equal(toggleStaged(staged, prior, seed.id, "reference").length, 0);
 	assert.deepEqual(doisFromOpenCitation({ citing: "[index] => omid:1 doi:10.1/ABC; doi:10.2/DEF" }).citing, ["10.1/abc", "10.2/def"]);
 	const evidence = buildNarrativeEvidence(graph, false);
 	assert.equal(evidence.priorWorks[0]!.id, "W2");

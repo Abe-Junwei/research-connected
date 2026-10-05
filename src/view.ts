@@ -8,6 +8,7 @@ import type { ConnectedPapersSettings } from "./settings";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
+	saveSettings(): Promise<void>;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -52,6 +53,7 @@ export class ConnectedPapersView extends ItemView {
 			postJson: obsidianPostJson,
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
+			stagePaper: async () => { await this.host.saveSettings(); },
 			initialTarget,
 		});
 	}
