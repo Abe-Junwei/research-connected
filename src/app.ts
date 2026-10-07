@@ -223,15 +223,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	body.insertBefore(sidebarResize, sidebar);
 	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
 	el(evidenceHeader, "h2", undefined, "论文与关系证据");
-	el(evidenceHeader, "p", undefined, "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。");
+	const evidenceTools = el(evidenceHeader, "div", "cpo-evidence-tools");
 	const diagnoseButton = el(evidenceHeader, "button", "cpo-text-btn cpo-diagnose", "诊断候选") as HTMLButtonElement;
 	diagnoseButton.type = "button";
 	diagnoseButton.disabled = true;
+	evidenceTools.append(diagnoseButton, sourceActions);
 	const sheetHost = el(sidebar, "section");
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
 	const detail = el(sheet.body, "div", "cpo-detail");
-	detail.append(sourceActions);
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
 	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
@@ -555,11 +555,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedEdge = null;
 		map.setSelected(null);
 		detail.replaceChildren();
-		detail.append(sourceActions);
+		openAlexAction.hidden = true;
+		doiAction.hidden = true;
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary("候选诊断", "当前图谱的采样记录");
-		el(detail, "p", "cpo-side-tip", "输入 DOI 或 OpenAlex ID，查看它在本轮采样中的状态。" );
 		const form = el(detail, "form", "cpo-diagnose-form");
 		const query = el(form, "input") as HTMLInputElement;
 		query.type = "text";
@@ -626,7 +626,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedPaper = paper;
 		selectedEdge = null;
 		detail.replaceChildren();
-		detail.append(sourceActions);
 		if (!paper || !graph) {
 			map.setSelected(null);
 			sheet.setSummary("点选节点查看论文", "");
@@ -755,7 +754,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!a || !b) return;
 		openAlexAction.hidden = true;
 		doiAction.hidden = true;
-		detail.replaceChildren(); detail.append(sourceActions); detail.hidden = false; sheet.setExpanded(true);
+		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
 		paintRelationSection(detail, edge, a, b, { sources: edgeSources(edge), getEvidence });
 		paintJumpStrip(detail, a, (target) => showDetail(target));
@@ -1372,7 +1371,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedPaper = null;
 		selectedEdge = null;
 		detail.replaceChildren();
-		detail.append(sourceActions);
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		const path = pathResult.paths[pathIndex];

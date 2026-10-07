@@ -2139,8 +2139,7 @@ button.cpo-agg-item {
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.cpo-evidence-header h2,
-.cpo-evidence-header p {
+.cpo-evidence-header h2 {
 	margin: 0;
 }
 
@@ -2150,11 +2149,32 @@ button.cpo-agg-item {
 	font-weight: 650;
 }
 
-.cpo-evidence-header p {
-	margin-top: 3px;
-	color: var(--text-muted);
-	font-size: 10px;
-	line-height: 1.35;
+.cpo-evidence-tools {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+}
+.cpo-evidence-tools .cpo-diagnose {
+	flex: none;
+	margin: 0;
+	min-height: 28px;
+	padding: 0 10px;
+	font-size: 11px;
+}
+.cpo-evidence-tools .cpo-source-actions {
+	gap: 6px;
+}
+.cpo-evidence-tools .cpo-source-actions:not(:has(button:not([hidden]))) {
+	display: none;
+}
+.cpo-evidence-tools .cpo-action-link {
+	height: 28px;
+	min-width: 0;
+	padding: 0 9px;
+	border-radius: 7px;
+	box-shadow: none;
 }
 
 .cpo-sidebar-resizer {

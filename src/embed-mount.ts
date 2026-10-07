@@ -153,15 +153,15 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	evidenceHeader.className = "cpo-evidence-header";
 	const evidenceTitle = document.createElement("h2");
 	evidenceTitle.textContent = "论文与关系证据";
-	const evidenceHint = document.createElement("p");
-	evidenceHint.textContent = "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。";
-	evidenceHeader.append(evidenceTitle, evidenceHint);
+	const evidenceTools = document.createElement("div");
+	evidenceTools.className = "cpo-evidence-tools";
 	const diagnoseButton = document.createElement("button");
 	diagnoseButton.type = "button";
 	diagnoseButton.className = "cpo-text-btn cpo-diagnose";
 	diagnoseButton.textContent = "诊断候选";
 	diagnoseButton.disabled = true;
-	evidenceHeader.append(diagnoseButton);
+	evidenceTools.append(diagnoseButton, sourceActions);
+	evidenceHeader.append(evidenceTitle, evidenceTools);
 	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
 	sidebar.append(sheetHost);
@@ -169,7 +169,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sheet.setExpanded(true);
 	const detail = document.createElement("div");
 	detail.className = "cpo-detail";
-	detail.append(sourceActions);
 	const listPanel = document.createElement("div");
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
@@ -355,7 +354,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		openAlexAction.hidden = true;
 		doiAction.hidden = true;
 		detail.replaceChildren();
-		detail.append(sourceActions);
 		const empty = document.createElement("p");
 		empty.className = "cpo-side-tip";
 		empty.textContent = "点选节点查看题名、年份、作者和证据。";
@@ -377,7 +375,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		doiAction.hidden = !doi;
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 		detail.replaceChildren();
-		detail.append(sourceActions);
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -452,13 +449,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintLists();
 		selected = null;
 		map.setSelected(null);
-		detail.replaceChildren(sourceActions);
+		detail.replaceChildren();
+		openAlexAction.hidden = true;
+		doiAction.hidden = true;
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary("候选诊断", "当前图谱的采样记录");
-		const tip = document.createElement("p");
-		tip.className = "cpo-side-tip";
-		tip.textContent = "输入 DOI 或 OpenAlex ID，查看它在本轮采样中的状态。";
 		const form = document.createElement("form");
 		form.className = "cpo-diagnose-form";
 		const query = document.createElement("input");
@@ -471,7 +467,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		form.append(query, submit);
 		const result = document.createElement("div");
 		result.className = "cpo-diagnose-result";
-		detail.append(tip, form, result);
+		detail.append(form, result);
 		form.addEventListener("submit", (event) => {
 			event.preventDefault();
 			if (!currentGraph) return;
