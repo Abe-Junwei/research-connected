@@ -85,17 +85,22 @@
       "referenceIds": [],
       "contextFiles": [
         ".superdesign/design-system.md",
-        "src/app.ts:90:197",
-        "styles.css:1:220",
-        "styles.css:370:580",
-        "styles.css:868:976",
-        "styles.css:1116:1160",
-        "styles.css:2014:2190"
+        "src/app.ts:90:220",
+        "src/graph-chrome.ts",
+        "src/filter-controls.ts",
+        "styles.css:40:120",
+        "styles.css:267:285",
+        "styles.css:913:1015",
+        "styles.css:1690:1808",
+        "styles.css:2051:2210",
+        "styles.css:2778:2855"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
-        "src/app.ts": "7139298260ecee246969fef0fe2c57f920e3d9613385362464ac5ddc90da8fa1",
-        "styles.css": "22f767b063a15bce2491c2d9eaf6c44e26edae2784262eba9d922dcee4b090c2"
+        "src/app.ts": "d1c64d7970945a40469e6a7d5ff73bd98b3c780642505dc3c3ab7f97cec1ed2c",
+        "src/filter-controls.ts": "e3c47198047acef2e516037b0c1146ee5fd976f74fa0faceeecebbc54eabe6e2",
+        "src/graph-chrome.ts": "b1ef9af2c6dfd2c6736b20fa2513e224cc4178b264c96df49d2894d5beb4bf9f",
+        "styles.css": "fb4f0bcb6844b287efcfb19c24529cf35291fe0f69864d68f4fd790351a9b4b2"
       },
       "drafts": {
         "5c76acec-2d83-4a4b-8d06-201fa4d0e571": {
@@ -104,13 +109,13 @@
           "currentVersion": 1
         },
         "ebce02fb-3731-4c9f-8d2c-aeeff41730c6": {
-          "title": "Research Connected Refined Workspace",
-          "visualDirection": "collapsed left rail and calmer top and evidence panel",
+          "title": "Research Connected Expanded Rail Fidelity",
+          "visualDirection": "flat labeled left rail and grouped workspace actions",
           "parentDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
-          "currentVersion": 2
+          "currentVersion": 5
         }
       },
-      "updatedAt": "2026-10-07T04:35:00Z"
+      "updatedAt": "2026-10-07T08:08:26Z"
     }
   }
 }
