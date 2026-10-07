@@ -88,8 +88,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 		author.title = authorNames.join(", ");
 	}
 	if (paper.year !== null) {
-		if (authorNames.length) el(authors, "span", "cpo-paper-separator", "·");
-		el(authors, "span", "cpo-paper-year", String(paper.year));
+		el(authors, "span", authorNames.length ? "cpo-paper-author-year" : "cpo-paper-year", authorNames.length ? `· ${paper.year}` : String(paper.year));
 	}
 	const publication = [
 		paper.venue,

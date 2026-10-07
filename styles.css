@@ -2455,7 +2455,13 @@ button.cpo-agg-item {
 	background: transparent;
 }
 .cpo-paper-identity .cpo-card-title { font-size: 14px; line-height: 1.45; }
-.cpo-paper-authors,
+.cpo-paper-authors {
+	display: block;
+	min-width: 0;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.45;
+}
 .cpo-paper-publication {
 	display: flex;
 	min-width: 0;
@@ -2467,6 +2473,11 @@ button.cpo-agg-item {
 	line-height: 1.45;
 }
 .cpo-paper-year { font-variant-numeric: tabular-nums; }
+.cpo-paper-author-year {
+	margin-left: 5px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
 .cpo-paper-separator { color: var(--text-faint, var(--text-muted)); }
 .cpo-paper-publication > span:not(.cpo-paper-separator):first-child {
 	color: var(--text-normal);
@@ -2533,26 +2544,8 @@ button.cpo-agg-item {
 	box-shadow: none;
 	white-space: nowrap;
 }
-.cpo-root .cpo-detail button.cpo-paper-stage,
-.cpo-embed .cpo-detail button.cpo-paper-stage {
-	flex: 0 0 116px;
-	width: 116px;
-	max-width: 116px;
-	min-width: 116px;
-	height: 30px;
-	padding: 0 7px;
-	border: 1px solid color-mix(in srgb, #a67c2e 30%, var(--background-modifier-border));
-	background: color-mix(in srgb, #a67c2e 8%, var(--background-primary));
-	color: #a67c2e;
-	font-size: 12px;
-}
 .cpo-root .cpo-detail button.cpo-paper-action:hover,
 .cpo-embed .cpo-detail button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-.cpo-root .cpo-detail button.cpo-paper-stage:hover,
-.cpo-embed .cpo-detail button.cpo-paper-stage:hover {
-	background: color-mix(in srgb, #a67c2e 12%, var(--background-primary));
-	color: #a67c2e;
-}
 .cpo-paper-action .cpo-icon-glyph { width: 13px; height: 13px; flex: none; }
 .cpo-paper-action-error { flex-basis: 100%; color: var(--text-error, #b42318); font-size: 11px; }
 .cpo-diagnose-back {
