@@ -13,7 +13,7 @@ import { diagnoseCandidate, loadNeighborhood, type LoadStage, type SimilarityGra
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
-import { allowedExternalUrl } from "./safe-url";
+import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
@@ -26,6 +26,7 @@ export interface EmbedDeps {
 	getJson: GetJson;
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
+	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
 	/** Open the full graph pane on this seed, when the host supports it. */
 	openGraph?: (target: { kind: "doi" | "openalex"; value: string }) => void;
@@ -116,22 +117,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	zoom.append(zoomIn, zoomOut, zoomFit);
 	const graphActions = document.createElement("div");
 	graphActions.className = "cpo-graph-actions";
-	const sourceActions = document.createElement("div");
-	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
-	const openAlexAction = document.createElement("button");
-	openAlexAction.className = "cpo-action-link";
-	openAlexAction.append(createChromeIcon("external"), document.createTextNode("OpenAlex"));
-	const doiAction = document.createElement("button");
-	doiAction.className = "cpo-action-link";
-	doiAction.append(createChromeIcon("external"), document.createTextNode("DOI"));
 	const openGraphAction = document.createElement("button");
 	openGraphAction.className = "cpo-action-link";
 	openGraphAction.textContent = "在图谱中打开";
-	for (const button of [openAlexAction, doiAction, openGraphAction]) {
+	for (const button of [openGraphAction]) {
 		button.type = "button";
 		button.hidden = true;
 	}
-	sourceActions.append(openAlexAction, doiAction);
 	const graphActionSpacer = document.createElement("span");
 	graphActionSpacer.className = "cpo-graph-action-spacer";
 	graphActions.append(graphActionSpacer, openGraphAction);
@@ -162,7 +154,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	diagnoseButton.className = "cpo-text-btn cpo-diagnose";
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.disabled = true;
-	evidenceTools.append(diagnoseButton, sourceActions);
+	evidenceTools.append(diagnoseButton);
 	evidenceHeader.append(evidenceTitle, evidenceTools);
 	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
@@ -237,6 +229,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let tab: GraphTab = "graph";
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
+	let selectedLink: GraphEdge | null = null;
 	let chrome: GraphChrome | null = null;
 
 	const paintLists = (): void => {
@@ -353,8 +346,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const placeDetailPlaceholder = (): void => {
 		selected = null;
-		openAlexAction.hidden = true;
-		doiAction.hidden = true;
+		selectedLink = null;
 		detail.replaceChildren();
 		const empty = document.createElement("p");
 		empty.className = "cpo-side-tip";
@@ -370,17 +362,20 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			return;
 		}
 		selected = paper;
-		const openAlex = allowedExternalUrl(paper.openAlexUrl);
-		openAlexAction.hidden = !openAlex;
-		openAlexAction.onclick = openAlex ? () => deps.openExternal(openAlex) : null;
-		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
-		doiAction.hidden = !doi;
-		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
+		selectedLink = link;
 		detail.replaceChildren();
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
+		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
+		const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
+		paintPaperActions(detail, paper, seed?.id ?? null, stageEdge, stageEvidence, {
+			getStaged: () => deps.getSettings().stagedPapers,
+			setStaged: (items) => { deps.getSettings().stagedPapers = items; },
+			persist: deps.stagePaper && seed ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
+			openExternal: deps.openExternal,
+		});
 		if (!paper.isSeed && seed) {
 			const toSeed = findEdge(graph.edges, paper.id, seed.id);
 			if (toSeed) {
@@ -446,17 +441,22 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	diagnoseButton.addEventListener("click", () => {
 		if (!currentGraph) return;
+		const returnPaper = selected;
+		const returnLink = selectedLink;
 		tab = "graph";
 		chrome?.setTab("graph");
 		paintLists();
-		selected = null;
-		map.setSelected(null);
 		detail.replaceChildren();
-		openAlexAction.hidden = true;
-		doiAction.hidden = true;
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary("候选诊断", "当前图谱的采样记录");
+		const back = document.createElement("button");
+		back.type = "button";
+		back.className = "cpo-diagnose-back";
+		back.textContent = "‹ 返回论文";
+		back.disabled = !returnPaper;
+		back.onclick = () => currentGraph && showDetail(returnPaper, currentGraph, returnLink);
+		detail.append(back);
 		const form = document.createElement("form");
 		form.className = "cpo-diagnose-form";
 		const query = document.createElement("input");

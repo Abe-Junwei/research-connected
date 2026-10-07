@@ -15,6 +15,7 @@ export interface RawWork {
 	concepts?: Array<{ display_name?: string | null; score?: number | null } | null> | null;
 	topics?: Array<{ id?: string | null; display_name?: string | null; score?: number | null } | null> | null;
 	primary_location?: { source?: { display_name?: string | null } | null } | null;
+	biblio?: { volume?: string | null; issue?: string | null; first_page?: string | null; last_page?: string | null } | null;
 }
 
 export type GetJson = (
@@ -39,7 +40,7 @@ export interface SampledWorks {
 	error?: string;
 }
 
-const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location";
+const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location,biblio";
 const WORK_SELECT = `${LIST_SELECT},abstract_inverted_index,referenced_works,related_works`;
 const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
 

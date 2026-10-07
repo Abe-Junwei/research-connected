@@ -79,19 +79,56 @@ export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: s
 
 /** 元数据卡：origin/年份/类型/被引徽章行 + 标题 + 作者 chips + 状态徽章与警告 + 主题 chips。 */
 export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: DetailCrossCheck | null | undefined): void {
-	const card = el(parent, "section", "cpo-card");
-	const badges = el(card, "div", "cpo-badge-row");
-	el(badges, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
-	if (paper.year !== null) el(badges, "span", "cpo-chip", `${paper.year} 年`);
-	if (paper.workType) el(badges, "span", "cpo-chip", paper.workType);
-	el(badges, "span", "cpo-chip cpo-chip-muted", `被引 ${formatCount(paper.citedByCount)}`);
+	const card = el(parent, "section", "cpo-card cpo-paper-identity");
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
-	paintAuthorChips(card, paper);
-	paintVenueRow(card, paper);
+	const authors = el(card, "div", "cpo-paper-authors");
+	const authorNames = paper.authorList.length ? paper.authorList : paper.authors ? [paper.authors] : [];
+	if (authorNames[0]) {
+		const authorText = authorNames.length > 1 ? `${authorNames[0]} 等 ${authorNames.length} 位` : authorNames[0];
+		const author = el(authors, "span", undefined, authorText);
+		author.title = authorNames.join(", ");
+	}
+	if (paper.year !== null) el(authors, "span", "cpo-paper-year", String(paper.year));
+	const publication = [
+		paper.venue,
+		paper.bibliography?.volume ? `${paper.bibliography.volume}${paper.bibliography.issue ? `(${paper.bibliography.issue})` : ""}` : null,
+		paper.bibliography?.firstPage ? `${paper.bibliography.firstPage}${paper.bibliography.lastPage ? `–${paper.bibliography.lastPage}` : ""}` : null,
+	].filter(Boolean);
+	if (publication.length) {
+		const row = el(card, "div", "cpo-paper-publication");
+		row.setAttribute("aria-label", "出处与页码");
+		publication.forEach((part, index) => {
+			if (index) el(row, "span", "cpo-paper-separator", "·");
+			el(row, "span", undefined, part!);
+		});
+	}
 	paintPaperStateBadges(card, paper, check);
 	if (paper.concepts.length > 0) {
-		const topics = el(card, "div", "cpo-badge-row");
-		for (const name of paper.concepts.slice(0, 3)) el(topics, "span", "cpo-chip cpo-chip-topic", name);
+		const topics = el(card, "div", "cpo-paper-topics");
+		topics.setAttribute("aria-label", "论文主题");
+		for (const name of paper.concepts.slice(0, 3)) el(topics, "span", "cpo-paper-topic", name);
+		if (paper.concepts.length > 3) {
+			const more = el(topics, "button", "cpo-paper-topic-more", `+${paper.concepts.length - 3}`) as HTMLButtonElement;
+			more.type = "button";
+			more.setAttribute("aria-expanded", "false");
+			more.setAttribute("aria-label", `显示其余 ${paper.concepts.length - 3} 个主题`);
+			more.onclick = () => {
+				const expanded = more.getAttribute("aria-expanded") !== "true";
+				more.setAttribute("aria-expanded", String(expanded));
+				if (expanded) {
+					for (const name of paper.concepts.slice(3)) {
+						const chip = document.createElement("span");
+						chip.className = "cpo-paper-topic cpo-paper-topic-extra";
+						chip.textContent = name;
+						more.before(chip);
+					}
+					more.textContent = "收起";
+				} else {
+					topics.querySelectorAll(".cpo-paper-topic-extra").forEach((chip) => chip.remove());
+					more.textContent = `+${paper.concepts.length - 3}`;
+				}
+			};
+		}
 	}
 	if (paper.retracted) {
 		el(card, "p", "cpo-side-tip", "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。");

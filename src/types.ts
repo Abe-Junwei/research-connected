@@ -19,6 +19,8 @@ export interface PaperNode {
 	workType: string | null;
 	/** Host venue name (journal or book title) from the primary location, when present. */
 	venue: string | null;
+	/** Issue details returned with OpenAlex work lists; optional for older saved graphs. */
+	bibliography?: { volume?: string | null; issue?: string | null; firstPage?: string | null; lastPage?: string | null };
 	/** Topic/concept display names OpenAlex attached to the work. Empty when absent. */
 	concepts: string[];
 	/** Current OpenAlex topic classifications, with IDs and per-work scores. */

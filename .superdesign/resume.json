@@ -97,18 +97,21 @@
         "src/layout-modes.ts",
         "styles.css:1:130",
         "styles.css:930:1030",
-        "styles.css:2700:2940"
+        "styles.css:2700:2940",
+        "src/app.ts:195:255",
+        "src/app.ts:630:674",
+        "styles.css:2135:2230"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
         ".superdesign/init/components.md": "c26ddd228c0a323f4046fe17daf063f68cbffb778aca8cca9d35a6a78cc9d506",
         ".superdesign/init/layouts.md": "d03ad3a0b2c6198d7cb8289af06c615f32515b0f27372218624b80826350f9c8",
-        "src/app.ts": "f4597cf721e20bbd84afdb8488e719ffe5b327cb94090780c789865077c95130",
-        "src/embed-mount.ts": "560b3b7afd7093822a5d02cbb29c30cca4efdfaa237243e5d366f1336bcc709e",
-        "src/graph-chrome.ts": "a86573d7c526457a97b3af7a7c37843eded8259f1c5b68df275c4d1af6f0db99",
+        "src/app.ts": "ba681cd7da9bfd47a2970dae03772f64612749c389d6642d97f429d7298b6888",
+        "src/embed-mount.ts": "0d81c0be613917dd3057e4931b74885d522309fdeaa1c40b200fa65b1a8aaa1b",
+        "src/graph-chrome.ts": "e9474abb7d366ac216f29cb2658b75ee63084ffdfd13d47b183e0301f1d90046",
         "src/filter-controls.ts": "e3c47198047acef2e516037b0c1146ee5fd976f74fa0faceeecebbc54eabe6e2",
         "src/layout-modes.ts": "a696514131e3787b2c582dad230a23b5372f97f5b78c5f661c5fd6b767f015dc",
-        "styles.css": "527079e345d8b586c334b1e81ffeb7964b57ed660d195c1bca2b92c2e9cfb95b"
+        "styles.css": "6a36d9a8fb5cdeb55c693194064c1f72d3a1ff70db9a585faedf176dd70553d0"
       },
       "drafts": {
         "5c76acec-2d83-4a4b-8d06-201fa4d0e571": {
@@ -117,13 +120,13 @@
           "currentVersion": 1
         },
         "ebce02fb-3731-4c9f-8d2c-aeeff41730c6": {
-          "title": "Research Connected Refined Workspace",
-          "visualDirection": "compact warm-paper controls with aligned line icons",
+          "title": "Research Connected Workspace - Refined Evidence Sidebar",
+          "visualDirection": "publication metadata, unlabeled compact topic tags before paper actions",
           "parentDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
-          "currentVersion": 7
+          "currentVersion": 13
         }
       },
-      "updatedAt": "2026-10-07T08:37:09.992Z"
+      "updatedAt": "2026-10-07T09:09:02.380168+00:00"
     }
   }
 }

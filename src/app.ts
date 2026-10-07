@@ -3,6 +3,7 @@ import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
+import { paintPaperActions } from "./paper-actions";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import {
 	EXPAND_CAP,
@@ -42,13 +43,12 @@ import {
 } from "./doi-path";
 import { classifyQuery, nonResearchLabel, normalizeDoi, shortId, toPaper, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
-import { allowedExternalUrl } from "./safe-url";
 import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
-import { groupStagedBySeed, stageKey, stageSourceLabel, toggleStaged } from "./staging";
+import { groupStagedBySeed, stageKey } from "./staging";
 import { restoreGraphSnapshot, saveGraphSnapshot, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
@@ -197,12 +197,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		item.setAttribute("role", "menuitem");
 	}
 
-	const sourceActions = document.createElement("div");
-	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
-	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
-	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
-	openAlexAction.replaceChildren(createChromeIcon("external"), document.createTextNode("OpenAlex"));
-	doiAction.replaceChildren(createChromeIcon("external"), document.createTextNode("DOI"));
 	const zoom = el(stage, "div", "cpo-zoom");
 	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
 	const zoomOut = el(zoom, "button", "cpo-icon", "−") as HTMLButtonElement;
@@ -211,10 +205,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	zoomIn.setAttribute("aria-label", "放大");
 	zoomOut.setAttribute("aria-label", "缩小");
 	fit.setAttribute("aria-label", "适应窗口");
-	for (const button of [openAlexAction, doiAction]) {
-		button.type = "button";
-		button.hidden = true;
-	}
 
 	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
 	const sidebarToggle = el(sidebar, "button", "cpo-panel-toggle is-right", "›") as HTMLButtonElement;
@@ -232,7 +222,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.type = "button";
 	diagnoseButton.disabled = true;
-	evidenceTools.append(sourceActions);
 	const sheetHost = el(sidebar, "section");
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
@@ -555,16 +544,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	diagnoseButton.addEventListener("click", () => {
 		if (!graph) return;
+		const returnPaper = selectedPaper;
+		const returnEdge = selectedEdge;
 		activateGraphTab();
-		selectedPaper = null;
-		selectedEdge = null;
-		map.setSelected(null);
 		detail.replaceChildren();
-		openAlexAction.hidden = true;
-		doiAction.hidden = true;
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary("候选诊断", "当前图谱的采样记录");
+		const back = el(detail, "button", "cpo-diagnose-back", "‹ 返回论文") as HTMLButtonElement;
+		back.type = "button";
+		back.disabled = !returnPaper;
+		back.onclick = () => returnEdge ? showEdgeDetail(returnEdge) : showDetail(returnPaper);
 		const form = el(detail, "form", "cpo-diagnose-form");
 		const query = el(form, "input") as HTMLInputElement;
 		query.type = "text";
@@ -634,8 +624,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!paper || !graph) {
 			map.setSelected(null);
 			sheet.setSummary("点选节点查看论文", "");
-			openAlexAction.hidden = true;
-			doiAction.hidden = true;
 			el(detail, "p", "cpo-side-tip", "点选节点查看题名、年份、作者和证据。");
 			return;
 		}
@@ -643,23 +631,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const year = paper.year === null ? "年份不详" : String(paper.year);
 		sheet.setSummary(paper.title, `${year} · 被引 ${formatCount(paper.citedByCount)}`, { lang: paper.language });
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
-		if (deps.stagePaper && !paper.isSeed) {
-			const seedId = graph.nodes.find((node) => node.isSeed)?.id;
-			if (seedId) {
-				const staged = deps.getSettings().stagedPapers.some((item) => stageKey(item) === `${seedId}\0${paper.id}`);
-				const button = el(detail, "button", "cpo-text-btn", staged ? "从暂存列表移除" : "加入暂存列表") as HTMLButtonElement;
-				button.type = "button";
-				button.onclick = async () => {
-					const link = findEdge(graph!.edges, paper.id, seedId);
-					const evidence = graph!.citationEvidence?.get(paper.id, seedId) ?? graph!.citationEvidence?.get(seedId, paper.id) ?? null;
-					const source = stageSourceLabel(paper, seedId, link, evidence);
-					deps.getSettings().stagedPapers = toggleStaged(deps.getSettings().stagedPapers, paper, seedId, source);
-					await deps.stagePaper?.(paper, seedId, source);
-					showDetail(paper);
-				};
-			}
-		}
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
+		const stageEdge = seedNode && !paper.isSeed ? findEdge(graph.edges, paper.id, seedNode.id) : null;
+		const stageEvidence = seedNode && !paper.isSeed ? graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id) ?? null : null;
+		paintPaperActions(detail, paper, seedNode?.id ?? null, stageEdge, stageEvidence, {
+			getStaged: () => deps.getSettings().stagedPapers,
+			setStaged: (items) => { deps.getSettings().stagedPapers = items; },
+			persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seedNode!.id, source) : undefined,
+			openExternal: deps.openExternal,
+		});
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
 			const from = link ? graph.nodes.find((node) => node.id === link.source) : undefined;
@@ -703,12 +683,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				if (selectedPaper === paper && tab === "graph") showDetail(paper);
 			});
 		}
-		const openAlex = allowedExternalUrl(paper.openAlexUrl);
-		openAlexAction.hidden = !openAlex;
-		openAlexAction.onclick = openAlex ? () => deps.openExternal(openAlex) : null;
-		const doi = paper.doiUrl ? allowedExternalUrl(paper.doiUrl) : null;
-		doiAction.hidden = !doi;
-		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 	};
 
 	map.onSelect = (paper) => { showDetail(paper); scheduleProjectSave(); };
@@ -757,8 +731,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!graph) return;
 		const a = graph.nodes.find(p => p.id === edge.source), b = graph.nodes.find(p => p.id === edge.target);
 		if (!a || !b) return;
-		openAlexAction.hidden = true;
-		doiAction.hidden = true;
 		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
 		paintRelationSection(detail, edge, a, b, { sources: edgeSources(edge), getEvidence });

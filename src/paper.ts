@@ -98,6 +98,12 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		language: cleanToken(raw.language),
 		workType: cleanToken(raw.type),
 		venue: cleanName(raw.primary_location?.source?.display_name),
+		bibliography: raw.biblio ? {
+			volume: cleanToken(raw.biblio.volume),
+			issue: cleanToken(raw.biblio.issue),
+			firstPage: cleanToken(raw.biblio.first_page),
+			lastPage: cleanToken(raw.biblio.last_page),
+		} : undefined,
 		retracted: raw.is_retracted === true,
 		concepts: conceptNames(raw.topics, raw.concepts),
 		topicTags: topicTags(raw.topics, raw.concepts),

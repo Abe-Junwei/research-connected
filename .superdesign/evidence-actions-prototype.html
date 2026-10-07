@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --rc-surface: #f6f5f2;
+      --rc-canvas: #ffffff;
+      --rc-ink: #3a3f45;
+      --rc-muted: #6b7280;
+      --rc-quiet: #9aa0a6;
+      --rc-border: rgba(60,64,70,.12);
+      --rc-accent: #a67c2e;
+      --rc-accent-soft: rgba(166,124,46,.12);
+      --rc-radius-sm: 6px;
+      --rc-radius-md: 10px;
+      --rc-space: 8px;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: var(--rc-ink);
+      overflow: hidden;
+    }
+    .cpo-root {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--rc-canvas);
+    }
+    .cpo-bar {
+      flex: none;
+      padding: 8px 16px;
+      background: var(--rc-canvas);
+      border-bottom: 1px solid var(--rc-border);
+    }
+    .cpo-row-1 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      height: 38px;
+    }
+    .cpo-row-2 {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      height: 38px;
+      margin-top: 4px;
+      border-top: 1px solid var(--rc-border);
+      padding-top: 4px;
+    }
+    .cpo-brand {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      letter-spacing: -0.01em;
+      font-weight: 500;
+    }
+    .cpo-brand-mark {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      background: var(--rc-surface);
+      color: var(--rc-accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .cpo-input {
+      height: 32px;
+      padding: 0 10px;
+      border-radius: var(--rc-radius-sm);
+      border: 1px solid var(--rc-border);
+      background: var(--rc-canvas);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .cpo-primary {
+      height: 32px;
+      padding: 0 14px;
+      background: var(--rc-accent);
+      color: white;
+      border-radius: var(--rc-radius-sm);
+      font-weight: 500;
+      font-size: 12px;
+      cursor: pointer;
+      border: none;
+    }
+    .cpo-ghost {
+      height: 32px;
+      padding: 0 10px;
+      background: var(--rc-surface);
+      border: 1px solid var(--rc-border);
+      color: var(--rc-ink);
+      border-radius: var(--rc-radius-sm);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cpo-select {
+      height: 32px;
+      padding: 0 8px;
+      border-radius: var(--rc-radius-sm);
+      border: 1px solid var(--rc-border);
+      background: var(--rc-canvas);
+      font-size: 12px;
+      color: var(--rc-ink);
+    }
+    .cpo-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      background: var(--rc-surface);
+    }
+    .cpo-rail {
+      width: 44px;
+      flex: none;
+      background: var(--rc-surface);
+      border-right: 1px solid var(--rc-border);
+      display: flex;
+      flex-direction: column;
+      padding: 12px 6px;
+      position: relative;
+      overflow: visible;
+      transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .cpo-rail.is-expanded {
+      width: 210px;
+    }
+    .cpo-stage {
+      flex: 1;
+      background: var(--rc-canvas);
+      position: relative;
+      overflow: hidden;
+    }
+    .cpo-evidence-sidebar {
+      width: 320px;
+      flex: none;
+      background: var(--rc-surface);
+      border-left: 1px solid var(--rc-border);
+      display: flex; 
+      flex-direction: column;
+      position: relative;
+    }
+    .cpo-panel-toggle {
+      position: absolute;
+      top: 50%;
+      width: 12px;
+      height: 48px;
+      background: var(--rc-surface);
+      border: 1px solid var(--rc-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: var(--rc-muted);
+      z-index: 40;
+      cursor: pointer;
+      transform: translateY(-50%);
+      transition: all 0.2s;
+    }
+    .cpo-panel-toggle.is-left {
+      right: -12px;
+      border-radius: 0 6px 6px 0;
+      border-left: none;
+    }
+    .cpo-panel-toggle.is-right {
+      left: -6px;
+      border-radius: 6px 0 0 6px;
+      border-right: none;
+    }
+    .cpo-tool-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--rc-ink);
+      cursor: pointer;
+      transition: all 0.2s;
+      min-height: 32px;
+    }
+    .cpo-tool-btn.is-active {
+      background: var(--rc-accent-soft);
+      color: var(--rc-accent);
+      font-weight: 500;
+    }
+    .cpo-legend-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: var(--rc-muted);
+    }
+    .cpo-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .cpo-tab-row {
+      display: flex;
+      padding: 6px 8px;
+      gap: 2px;
+      background: var(--rc-surface);
+      border-top: 1px solid var(--rc-border);
+      overflow-x: auto;
+    }
+    .cpo-tab {
+      padding: 5px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      color: var(--rc-muted);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .cpo-tab.is-on {
+      background: var(--rc-canvas);
+      color: var(--rc-accent);
+      font-weight: 600;
+    }
+    .cpo-statusbar {
+      height: 30px;
+      background: var(--rc-canvas);
+      border-top: 1px solid var(--rc-border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 11px;
+      color: var(--rc-muted);
+    }
+    .cpo-action-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--rc-muted);
+      border-radius: 4px;
+    }
+    .cpo-rail-icon {
+      font-size: 16px;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+    }
+    .cpo-scrub-row {
+      padding: 10px;
+      background: var(--rc-canvas);
+      border-radius: var(--rc-radius-sm);
+      border: 1px solid var(--rc-border);
+      margin: 4px 10px 12px;
+    }
+    /* Custom range styling to match reference thumb */
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--rc-border);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--rc-canvas);
+      border: 3px solid #4a6d8d;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .group-expanded .cpo-layout-label { display: block; }
+    .cpo-rail:not(.is-expanded) .cpo-layout-label { display: none; }
+    .cpo-rail:not(.is-expanded) .cpo-relation-toggle span:not(.cpo-dot) { display: none; }
+    .cpo-rail:not(.is-expanded) .cpo-legend-item span { display: none; }
+    .cpo-rail:not(.is-expanded) .cpo-scrub-row { display: none; }
+  
+/* Fidelity correction: flat rail controls, warm accent, and shared sizing. */
+.cpo-rail.is-expanded { width: 156px; }
+.cpo-tool-btn { min-height: 32px; padding: 5px 7px; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
+.cpo-tool-btn.is-active { padding-left: 8px; border-left: 2px solid var(--rc-accent); border-radius: 0; background: transparent; color: var(--rc-accent); }
+.cpo-relation-toggle { padding-inline: 0; border-radius: 0; background: transparent; }
+.cpo-relation-toggle.is-active { border-left: 0; padding-left: 0; background: transparent; color: var(--rc-ink); }
+.cpo-scrub-row { margin: 3px 0 8px; padding: 6px 0; border: 0; border-radius: 0; background: transparent; }
+#year-slider { accent-color: var(--rc-accent); background-color: var(--rc-border); }
+#year-slider::-webkit-slider-thumb { border-color: var(--rc-accent); }
+#year-slider::-moz-range-thumb { border-color: var(--rc-accent); }
+.cpo-rail-icon { width: 20px; height: 20px; font-size: 14px; color: var(--rc-muted); }
+.cpo-layout-label { font-size: 12px; line-height: 1.2; }
+.cpo-row-2 { height: 34px; gap: 10px; }
+.cpo-select, .cpo-input, .cpo-primary, .cpo-ghost { height: 32px; font-size: 12px; }
+.cpo-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.cpo-scrub-row input[type=range] { accent-color: var(--rc-accent); }
+  </style>
+</head>
+<body>
+  <div class="cpo-root">
+    <header class="cpo-bar">
+      <!-- Row 1: Search & Build -->
+      <div class="cpo-row-1">
+        <a href="#" id="nav-brand" class="cpo-brand">
+          <span class="cpo-brand-mark">R</span>
+          <strong>Research Connected</strong>
+        </a>
+        <div class="flex-1 flex items-center gap-2">
+          <input type="text" class="cpo-input flex-1" placeholder="DOI、OpenAlex ID 或论文标题" id="input-seed-search">
+          <button class="cpo-primary" id="cta-build">构建</button>
+        </div>
+        <div class="flex items-center gap-3 pl-4 border-l border-[var(--rc-border)]">
+          <div class="flex items-center gap-2">
+            <span class="cpo-dot bg-[var(--rc-quiet)] w-2 h-2"></span>
+            <span class="text-[12px] text-[var(--rc-quiet)] italic truncate max-w-[200px]">未选择种子论文</span>
+          </div>
+        </div>
+      </div>
+      <!-- Row 2: Projects & Views -->
+      <div class="cpo-row-2">
+        <div class="flex items-center gap-2">
+          <iconify-icon icon="lucide:folder-open" class="text-[14px] text-[var(--rc-quiet)]"></iconify-icon>
+          <span class="text-[11px] text-[var(--rc-quiet)] uppercase tracking-tight">项目</span>
+          <select class="cpo-select w-48" id="select-project">
+            <option>Head-Marking and Dependent</option>
+          </select>
+          <button class="cpo-ghost" id="btn-rename-project">
+            <iconify-icon icon="lucide:edit-3"></iconify-icon>
+            <span>重命名</span>
+          </button>
+        </div>
+        <div class="flex items-center gap-2 ml-auto">
+          <iconify-icon icon="lucide:layers" class="text-[14px] text-[var(--rc-quiet)]"></iconify-icon>
+          <span class="text-[11px] text-[var(--rc-quiet)] uppercase tracking-tight">视图</span>
+          <select class="cpo-select w-44" id="select-view">
+            <option>当前视图</option>
+          </select>
+          <input type="text" class="cpo-input w-36" placeholder="新视图名称">
+          <button class="cpo-ghost" id="btn-save-view">
+            <iconify-icon icon="lucide:save"></iconify-icon>
+            <span>保存视图</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="cpo-body">
+      <aside class="cpo-rail is-expanded group-expanded" id="left-rail">
+        <div class="cpo-panel-toggle is-left" id="rail-toggle">
+          <iconify-icon icon="lucide:chevron-left"></iconify-icon>
+        </div>
+
+        <!-- Layout choices -->
+        <div class="flex flex-col gap-0.5 mb-4" id="layout-group">
+          <div class="cpo-tool-btn" title="平面">
+            <span class="cpo-rail-icon"><iconify-icon icon="lucide:grid"></iconify-icon></span>
+            <span class="cpo-layout-label">平面</span>
+          </div>
+          <div class="cpo-tool-btn is-active" title="时间" id="layout-temporal">
+            <span class="cpo-rail-icon"><iconify-icon icon="lucide:clock"></iconify-icon></span>
+            <span class="cpo-layout-label">时间</span>
+          </div>
+          <div class="cpo-tool-btn" title="放射">
+            <span class="cpo-rail-icon"><iconify-icon icon="lucide:radial"></iconify-icon></span>
+            <span class="cpo-layout-label">放射</span>
+          </div>
+
+          <!-- Year Scrubber (only for Time) -->
+          <div class="cpo-scrub-row" id="scrub-container">
+            <input type="range" class="mb-3" id="year-slider" value="80">
+            <div class="flex items-center justify-between">
+              <span class="text-[12px] text-[var(--rc-ink)] font-medium">全部年份</span>
+              <button class="w-6 h-6 flex items-center justify-center text-[var(--rc-quiet)] hover:text-[var(--rc-accent)]">
+                <iconify-icon icon="lucide:play-circle" class="text-xl"></iconify-icon>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Relation Filters -->
+        <div class="flex flex-col gap-0.5 mb-4 pt-4 border-t border-[var(--rc-border)]">
+          <div class="cpo-tool-btn cpo-relation-toggle is-active" id="rel-direct">
+            <div class="w-6 flex justify-center shrink-0"><i class="cpo-dot bg-[var(--rc-ink)]"></i></div>
+            <div class="flex-1 flex items-center justify-between">
+              <span>引用</span>
+              <span class="text-[10px] text-[var(--rc-quiet)]">0</span>
+            </div>
+          </div>
+          <div class="cpo-tool-btn cpo-relation-toggle is-active" id="rel-cocitation">
+            <div class="w-6 flex justify-center shrink-0"><i class="cpo-dot bg-[var(--rc-accent)]"></i></div>
+            <div class="flex-1 flex items-center justify-between">
+              <span>共被引</span>
+              <span class="text-[10px] text-[var(--rc-quiet)]">0</span>
+            </div>
+          </div>
+          <div class="cpo-tool-btn cpo-relation-toggle is-active" id="rel-coupling">
+            <div class="w-6 flex justify-center shrink-0"><i class="cpo-dot bg-blue-400"></i></div>
+            <div class="flex-1 flex items-center justify-between">
+              <span>文献耦合</span>
+              <span class="text-[10px] text-[var(--rc-quiet)]">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Static Legend -->
+        <div class="mt-auto flex flex-col gap-0.5 border-t border-[var(--rc-border)] pt-4">
+          <div class="cpo-legend-item">
+            <span class="flex items-center gap-2">
+              <i class="cpo-dot bg-[var(--rc-accent)]"></i>
+              <span>种子文献</span>
+            </span>
+            <span class="text-[9px]">0</span>
+          </div>
+          <div class="cpo-legend-item">
+            <span class="flex items-center gap-2">
+              <i class="cpo-dot bg-[var(--rc-muted)]"></i>
+              <span>经典文献</span>
+            </span>
+            <span class="text-[9px]">0</span>
+          </div>
+          <div class="cpo-legend-item">
+            <span class="flex items-center gap-2">
+              <i class="cpo-dot bg-blue-400"></i>
+              <span>引用团</span>
+            </span>
+            <span class="text-[9px]">0</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="cpo-stage">
+        <div class="absolute inset-0 flex items-center justify-center">
+          <div class="text-center max-w-xs">
+            <h2 class="text-[var(--rc-quiet)] font-medium mb-2">从一篇种子论文开始</h2>
+            <p class="text-[11px] text-[var(--rc-quiet)] leading-relaxed">输入 DOI、OpenAlex 链接或作品 ID，也可以按标题搜索后点选。圆点按参考文献重叠和共被引聚在一起。</p>
+          </div>
+        </div>
+        <div class="absolute bottom-4 left-4 flex gap-1 p-1 bg-white border border-[var(--rc-border)] rounded-md shadow-sm">
+          <button class="cpo-action-icon" id="zoom-in" title="放大"><iconify-icon icon="lucide:plus"></iconify-icon></button>
+          <button class="cpo-action-icon" id="zoom-out" title="缩小"><iconify-icon icon="lucide:minus"></iconify-icon></button>
+          <button class="cpo-action-icon" id="zoom-fit" title="适配"><iconify-icon icon="lucide:maximize"></iconify-icon></button>
+        </div>
+      </main>
+
+      <aside class="cpo-evidence-sidebar relative">
+        <div class="cpo-panel-toggle is-right" id="sidebar-toggle">
+          <iconify-icon icon="lucide:chevron-right"></iconify-icon>
+        </div>
+        <header class="h-[40px] px-3 flex items-center justify-between bg-[var(--rc-surface)] border-b border-[var(--rc-border)] shrink-0">
+          <h2 class="text-[12px] font-semibold text-[var(--rc-ink)]">论文与关系证据</h2>
+          <button class="flex items-center gap-1 text-[11px] text-[var(--rc-muted)] hover:text-[var(--rc-ink)]" id="btn-diagnose" title="诊断当前图谱的候选采样" style="min-height:28px">
+            <iconify-icon icon="lucide:search" class="text-[13px]"></iconify-icon>
+            <span>诊断候选</span>
+          </button>
+        </header>
+        
+        <div class="flex-1 overflow-y-auto relative" id="sidebar-main">
+          <div class="p-3">
+            <h3 class="text-[14px] leading-[1.45] font-semibold text-[var(--rc-ink)] mb-1">Head-Marking and Dependent-Marking Grammar</h3>
+            <div class="text-[11px] text-[var(--rc-muted)] mb-3">Johanna Nichols · 1986</div>
+            <div class="text-[11px] text-[var(--rc-ink)] leading-[1.4] mb-3">
+              <span class="font-medium">Language</span><span class="text-[var(--rc-muted)]"> · 62(1) · 56–119</span>
+            </div>
+            
+            <div class="flex flex-wrap mb-3">
+              <div class="flex flex-wrap gap-1.5" role="group" aria-label="论文主题">
+                <span class="rounded-[4px] bg-[rgba(60,64,70,0.055)] px-2 py-1 text-[10px] leading-none text-[var(--rc-muted)]">语言类型学</span>
+                <span class="rounded-[4px] bg-[rgba(60,64,70,0.055)] px-2 py-1 text-[10px] leading-none text-[var(--rc-muted)]">形态标记</span>
+                <span class="rounded-[4px] bg-[rgba(60,64,70,0.055)] px-2 py-1 text-[10px] leading-none text-[var(--rc-muted)]">语法关系</span>
+                <span class="hidden rounded-[4px] bg-[rgba(60,64,70,0.055)] px-2 py-1 text-[10px] leading-none text-[var(--rc-muted)]" data-extra-topic>中心语标记</span>
+                <span class="hidden rounded-[4px] bg-[rgba(60,64,70,0.055)] px-2 py-1 text-[10px] leading-none text-[var(--rc-muted)]" data-extra-topic>依存语标记</span>
+                <button type="button" id="btn-topics-more" class="text-[10px] leading-none text-[var(--rc-muted)] hover:text-[var(--rc-ink)]" aria-expanded="false" title="显示其余主题">+2</button>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-[var(--rc-border)]">
+              <button class="flex items-center justify-center gap-1.5 h-[30px] px-3 rounded-[5px] border border-[var(--rc-accent-soft)] bg-[rgba(166,124,46,0.08)] text-[var(--rc-accent)] text-[12px] hover:bg-[rgba(166,124,46,0.12)] transition-colors whitespace-nowrap min-w-[104px]" id="btn-stage" aria-pressed="false" style="width:116px;flex:none">
+                <iconify-icon icon="lucide:bookmark" id="icon-stage"></iconify-icon>
+                <span id="text-stage">加入暂存列表</span>
+              </button>
+              
+              <div class="flex items-center gap-3" style="flex:none;min-height:30px">
+                <a id="source-openalex" href="#source-openalex" class="flex items-center gap-1 text-[11px] text-[var(--rc-muted)] hover:text-[var(--rc-ink)] transition-colors">
+                  OpenAlex <iconify-icon icon="lucide:external-link" class="text-[12px]"></iconify-icon>
+                </a>
+                <a id="source-doi" href="#source-doi" class="flex items-center gap-1 text-[11px] text-[var(--rc-muted)] hover:text-[var(--rc-ink)] transition-colors">
+                  DOI <iconify-icon icon="lucide:external-link" class="text-[12px]"></iconify-icon>
+                </a>
+              </div>
+            </div>
+
+
+            <div class="text-[12px] text-[var(--rc-ink)] leading-relaxed">
+              <strong class="font-medium block mb-1">摘要</strong>
+              <p class="text-[var(--rc-muted)]">This paper establishes a typological distinction between head-marking and dependent-marking morphology. In head-marking languages, grammatical relations are marked on the head of a constituent, while in dependent-marking languages they are marked on the dependents...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="absolute top-[40px] bottom-0 left-0 right-0 bg-[var(--rc-surface)] z-10 flex flex-col hidden" id="sidebar-diagnose">
+          <div class="h-[40px] px-3 flex items-center border-b border-[var(--rc-border)] shrink-0">
+            <button class="flex items-center gap-1 text-[11px] text-[var(--rc-muted)] hover:text-[var(--rc-ink)]" id="btn-diagnose-back">
+              <iconify-icon icon="lucide:arrow-left" class="text-[13px]"></iconify-icon>
+              <span>返回论文</span>
+            </button>
+          </div>
+          <div class="p-4 flex-1">
+            <h3 class="text-[13px] font-medium text-[var(--rc-ink)] mb-3">诊断候选节点</h3>
+            
+            <input type="text" class="cpo-input w-full mb-3" placeholder="DOI 或 OpenAlex ID" aria-label="要诊断的论文">
+            <button class="cpo-primary w-full">诊断</button>
+          </div>
+        </div>
+        <div class="cpo-actions-bar">
+          <div class="cpo-tab-row">
+            <button class="cpo-tab is-on" id="tab-graph">图谱</button>
+            <button class="cpo-tab" id="tab-prior">先验工作</button>
+            <button class="cpo-tab" id="tab-derivative">衍生工作</button>
+            <button class="cpo-tab" id="tab-staged">暂存</button>
+            <div class="flex-1"></div>
+            <button class="cpo-tab border border-[var(--rc-border)] px-2 hover:bg-[var(--rc-canvas)]" id="btn-export">
+              导出 <iconify-icon icon="lucide:chevron-down" class="inline ml-1"></iconify-icon>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="cpo-statusbar z-40 relative bg-white">
+      <div class="flex-1 flex items-center justify-between">
+        <span>从一篇种子论文开始。</span>
+        <button class="text-[var(--rc-accent)] hover:underline opacity-0 pointer-events-none" id="btn-undo">撤销</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const rail = document.getElementById('left-rail');
+    const toggle = document.getElementById('rail-toggle');
+    const temporalBtn = document.getElementById('layout-temporal');
+    const scrub = document.getElementById('scrub-container');
+
+    toggle.addEventListener('click', () => {
+      rail.classList.toggle('is-expanded');
+      rail.classList.toggle('group-expanded');
+      const icon = toggle.querySelector('iconify-icon');
+      icon.setAttribute('icon', rail.classList.contains('is-expanded') ? 'lucide:chevron-left' : 'lucide:chevron-right');
+    });
+
+    // Simplified toggle for demonstration
+    temporalBtn.addEventListener('click', () => {
+      scrub.classList.toggle('hidden');
+    });
+
+    const btnStage = document.getElementById('btn-stage');
+    const iconStage = document.getElementById('icon-stage');
+    const textStage = document.getElementById('text-stage');
+    let isStaged = false;
+    if (btnStage) {
+      btnStage.addEventListener('click', () => {
+        isStaged = !isStaged;
+        if (isStaged) {
+          iconStage.setAttribute('icon', 'lucide:bookmark-check');
+          textStage.textContent = '已暂存';
+          btnStage.setAttribute('aria-pressed', 'true');
+          btnStage.title = '从暂存列表移除';
+        } else {
+          iconStage.setAttribute('icon', 'lucide:bookmark');
+          textStage.textContent = '加入暂存列表';
+          btnStage.setAttribute('aria-pressed', 'false');
+          btnStage.title = '';
+        }
+      });
+    }
+
+    const moreTopics = document.getElementById('btn-topics-more');
+    const extraTopics = document.querySelectorAll('[data-extra-topic]');
+    if (moreTopics) {
+      moreTopics.addEventListener('click', () => {
+        const expanded = moreTopics.getAttribute('aria-expanded') !== 'true';
+        extraTopics.forEach((topic) => topic.classList.toggle('hidden', !expanded));
+        moreTopics.textContent = expanded ? '收起' : '+2';
+        moreTopics.setAttribute('aria-expanded', String(expanded));
+        moreTopics.title = expanded ? '收起其余主题' : '显示其余主题';
+      });
+    }
+
+    const btnDiagnose = document.getElementById('btn-diagnose');
+    const btnDiagnoseBack = document.getElementById('btn-diagnose-back');
+    const sidebarDiagnose = document.getElementById('sidebar-diagnose');
+    if (btnDiagnose && sidebarDiagnose) {
+      btnDiagnose.addEventListener('click', () => {
+        sidebarDiagnose.classList.remove('hidden');
+      });
+      btnDiagnoseBack.addEventListener('click', () => {
+        sidebarDiagnose.classList.add('hidden');
+      });
+    }
+  </script>
+</body>
+</html>

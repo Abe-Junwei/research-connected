@@ -2179,39 +2179,9 @@ button.cpo-agg-item {
 .cpo-embed .cpo-evidence-tools button.cpo-diagnose:hover {
 	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 14%, var(--background-secondary));
 }
-.cpo-evidence-tools .cpo-diagnose .cpo-icon-glyph,
-.cpo-evidence-tools .cpo-action-link .cpo-icon-glyph {
+.cpo-evidence-tools .cpo-diagnose .cpo-icon-glyph {
 	width: 13px;
 	height: 13px;
-}
-.cpo-root .cpo-evidence-tools .cpo-source-actions,
-.cpo-embed .cpo-evidence-tools .cpo-source-actions {
-	gap: 6px;
-}
-.cpo-evidence-tools .cpo-source-actions:not(:has(button:not([hidden]))) {
-	display: none;
-}
-.cpo-root .cpo-evidence-tools button.cpo-action-link,
-.cpo-embed .cpo-evidence-tools button.cpo-action-link {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 5px;
-	height: 28px;
-	min-width: 0;
-	padding: 0 7px;
-	border: 0;
-	border-radius: 5px;
-	background: transparent;
-	color: var(--text-muted);
-	font-size: 11px;
-	font-weight: 450;
-	box-shadow: none;
-}
-.cpo-root .cpo-evidence-tools button.cpo-action-link:hover,
-.cpo-embed .cpo-evidence-tools button.cpo-action-link:hover {
-	background: var(--background-modifier-hover);
-	color: var(--text-normal);
 }
 
 .cpo-sidebar-resizer {
@@ -2468,6 +2438,119 @@ button.cpo-agg-item {
 	color: #1d6e60;
 }
 
+/* Unified paper identity and action row for graph pane + embed. */
+.cpo-detail .cpo-card.cpo-paper-identity {
+	gap: 7px;
+	padding: 3px 0 10px;
+	border: 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background: transparent;
+}
+.cpo-paper-identity .cpo-card-title { font-size: 14px; line-height: 1.45; }
+.cpo-paper-authors,
+.cpo-paper-publication {
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 5px;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.45;
+}
+.cpo-paper-year { font-variant-numeric: tabular-nums; }
+.cpo-paper-separator { color: var(--text-faint, var(--text-muted)); }
+.cpo-paper-publication > span:not(.cpo-paper-separator):first-child {
+	color: var(--text-normal);
+	font-weight: 550;
+}
+.cpo-paper-topics {
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 5px;
+}
+.cpo-paper-topic,
+.cpo-paper-topic-more {
+	display: inline-flex;
+	min-height: 22px;
+	align-items: center;
+	padding: 1px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font: inherit;
+	font-size: 10px;
+	line-height: 1.3;
+}
+.cpo-paper-topic-more {
+	cursor: pointer;
+	color: var(--text-accent, var(--cpo-accent));
+}
+.cpo-paper-topic-more:hover { background: var(--background-modifier-hover); }
+.cpo-paper-actions {
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 0 10px;
+}
+.cpo-paper-sources {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+}
+.cpo-root .cpo-detail button.cpo-paper-action,
+.cpo-embed .cpo-detail button.cpo-paper-action {
+	display: inline-flex;
+	min-width: 0;
+	min-height: 30px;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 0 9px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1;
+	box-shadow: none;
+	white-space: nowrap;
+}
+.cpo-root .cpo-detail button.cpo-paper-stage,
+.cpo-embed .cpo-detail button.cpo-paper-stage {
+	min-width: 116px;
+	border: 1px solid color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 28%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 7%, var(--background-primary));
+	color: var(--text-accent, var(--cpo-accent));
+	font-size: 12px;
+}
+.cpo-root .cpo-detail button.cpo-paper-action:hover,
+.cpo-embed .cpo-detail button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cpo-root .cpo-detail button.cpo-paper-stage:hover,
+.cpo-embed .cpo-detail button.cpo-paper-stage:hover {
+	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 12%, var(--background-primary));
+	color: var(--text-accent, var(--cpo-accent));
+}
+.cpo-paper-action .cpo-icon-glyph { width: 13px; height: 13px; flex: none; }
+.cpo-paper-action-error { flex-basis: 100%; color: var(--text-error, #b42318); font-size: 11px; }
+.cpo-diagnose-back {
+	margin: 0 0 10px;
+	padding: 4px 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-accent, var(--cpo-accent));
+	font-size: 11px;
+	cursor: pointer;
+}
+.cpo-diagnose-back:disabled { opacity: .45; cursor: default; }
 /* 标题行的语言小标签。 */
 .cpo-sheet-tag {
 	flex: none;

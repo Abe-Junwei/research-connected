@@ -7,6 +7,7 @@ import { createVaultNote } from "./vault-note";
 
 interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
+	saveSettings(): Promise<void>;
 	/** Open the full graph pane focused on a seed; absent in hosts that cannot. */
 	openGraph?(target: { kind: "doi" | "openalex"; value: string }): void;
 }
@@ -45,6 +46,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
+			stagePaper: async () => { await plugin.saveSettings(); },
 			createNote: (filename, markdown) => createVaultNote(plugin.app, filename, markdown),
 			openGraph: plugin.openGraph ? (target) => plugin.openGraph?.(target) : undefined,
 		});
