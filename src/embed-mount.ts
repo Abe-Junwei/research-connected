@@ -3,7 +3,7 @@ import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClie
 import { mergeOpenCitation } from "./citation-evidence";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
-import { buildLegend, buildPathToggle } from "./filter-controls";
+import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
@@ -97,14 +97,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const rail = document.createElement("aside");
 	rail.className = "cpo-rail";
-	const filterButton = document.createElement("button");
-	filterButton.type = "button";
-	filterButton.className = "cpo-rail-filter";
-	filterButton.textContent = "筛选";
-	filterButton.title = "筛选 / 图例";
-	filterButton.setAttribute("aria-expanded", "false");
 	const layoutHost = document.createElement("div");
-	rail.append(filterButton, layoutHost);
+	const railToggle = document.createElement("button");
+	railToggle.type = "button";
+	railToggle.className = "cpo-panel-toggle is-left";
+	railToggle.textContent = "‹";
+	railToggle.setAttribute("aria-label", "折叠左侧栏");
+	railToggle.setAttribute("aria-expanded", "true");
+	rail.append(layoutHost, railToggle);
 
 	const stage = document.createElement("div");
 	stage.className = "cpo-stage";
@@ -141,53 +141,20 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sourceActions.append(openAlexAction, doiAction);
 	const graphActionSpacer = document.createElement("span");
 	graphActionSpacer.className = "cpo-graph-action-spacer";
-	graphActions.append(sourceActions, graphActionSpacer, zoom, openGraphAction);
-	const drawer = document.createElement("div");
-	drawer.className = "cpo-drawer";
-	drawer.hidden = true;
-	const drawerTitle = document.createElement("p");
-	drawerTitle.className = "cpo-drawer-title";
-	drawerTitle.textContent = "筛选 / 图例";
-	const tip = document.createElement("p");
-	tip.className = "cpo-side-tip";
-	tip.textContent = "拖拽平移，⌘/Ctrl+滚动缩放。点选节点或连线，详情在右侧栏展开。";
-	const kindLegend = document.createElement("div");
-	kindLegend.className = "cpo-drawer-legend";
-	const legend = document.createElement("div");
-	legend.className = "cpo-legend";
-	const rampWrap = document.createElement("span");
-	rampWrap.className = "cpo-ramp-wrap";
-	const rampStart = document.createElement("span");
-	rampStart.textContent = "较低";
-	const ramp = document.createElement("span");
-	ramp.className = "cpo-ramp cpo-topic-ramp";
-	const rampEnd = document.createElement("span");
-	rampEnd.textContent = "较高";
-	rampWrap.append(rampStart, ramp, rampEnd);
-	const rampHint = document.createElement("span");
-	rampHint.textContent = "与种子的主题相似度";
-	const grayHint = document.createElement("span");
-	grayHint.textContent = "灰色缺主题数据";
-	const sizeHint = document.createElement("span");
-	sizeHint.textContent = "圆点略大 = 被引更多";
-	const seedHint = document.createElement("span");
-	seedHint.textContent = "双环 = 种子";
-	legend.append(rampWrap, rampHint, grayHint, sizeHint, seedHint);
-	const paintColorLegend = (mode: LayoutMode): void => {
-		const grouped = mode === "force2d";
-		rampWrap.hidden = grouped;
-		rampHint.textContent = grouped ? "节点色为引用结构分组" : "与种子的主题相似度";
-		grayHint.textContent = grouped ? "同色 = 同一引用团" : "灰色缺主题数据";
-	};
-	const tools = document.createElement("div");
-	tools.classList.add("cpo-drawer-tools");
-	drawer.append(drawerTitle, tip, kindLegend, legend, tools);
-	stage.append(message, tooltip, graphActions, drawer);
+	graphActions.append(graphActionSpacer, sourceActions, openGraphAction);
+	stage.append(message, tooltip, graphActions, zoom);
 	body.append(rail, stage);
 	const sidebarResize = document.createElement("div");
 	sidebarResize.className = "cpo-sidebar-resizer";
 	const sidebar = document.createElement("aside");
 	sidebar.className = "cpo-evidence-sidebar";
+	const sidebarToggle = document.createElement("button");
+	sidebarToggle.type = "button";
+	sidebarToggle.className = "cpo-panel-toggle is-right";
+	sidebarToggle.textContent = "›";
+	sidebarToggle.setAttribute("aria-label", "折叠右侧栏");
+	sidebarToggle.setAttribute("aria-expanded", "true");
+	sidebar.append(sidebarToggle);
 	body.append(sidebarResize, sidebar);
 	const evidenceHeader = document.createElement("header");
 	evidenceHeader.className = "cpo-evidence-header";
@@ -210,12 +177,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const actionsBar = document.createElement("div");
 	actionsBar.className = "cpo-actions-bar";
 	sidebar.append(actionsBar);
-	filterButton.addEventListener("click", () => {
-		const open = drawer.hidden;
-		drawer.hidden = !open;
-		filterButton.setAttribute("aria-expanded", open ? "true" : "false");
-		filterButton.classList.toggle("is-on", open);
-	});
 
 	if (!parsed.ok) {
 		shell.classList.add("is-error");
@@ -243,24 +204,36 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	openGraphAction.hidden = !deps.openGraph;
 	openGraphAction.onclick = deps.openGraph ? () => deps.openGraph?.(spec.target) : null;
 	const map = new SimilarityMap(canvas, tooltip, stage, { wheel: "modifier" });
+	const afterPanelToggle = (): void => {
+		map.resize();
+		window.setTimeout(() => map.resize(), 240);
+	};
+	railToggle.addEventListener("click", () => {
+		const on = body.classList.toggle("is-rail-collapsed");
+		railToggle.textContent = on ? "›" : "‹";
+		railToggle.setAttribute("aria-expanded", on ? "false" : "true");
+		railToggle.setAttribute("aria-label", on ? "展开左侧栏" : "折叠左侧栏");
+		afterPanelToggle();
+	});
+	sidebarToggle.addEventListener("click", () => {
+		const on = body.classList.toggle("is-sidebar-collapsed");
+		sidebarToggle.textContent = on ? "‹" : "›";
+		sidebarToggle.setAttribute("aria-expanded", on ? "false" : "true");
+		sidebarToggle.setAttribute("aria-label", on ? "展开右侧栏" : "折叠右侧栏");
+		afterPanelToggle();
+	});
 	const applyFilter = (): void => {
 		map.setKinds(viewFilter.kinds);
 		map.setScrubYear(viewFilter.scrubYear);
-		map.setFocusPath(viewFilter.focusPath);
 	};
-	buildLegend(kindLegend, () => viewFilter, (next) => {
+	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
+	const graphKey = mountGraphKey(rail, () => viewFilter, (next) => {
 		viewFilter = next;
 		applyFilter();
 		paintLists();
 	});
-	legend.after(buildPathToggle(() => viewFilter, (next) => {
-		viewFilter = next;
-		applyFilter();
-		paintLists();
-	}));
+	graphKey.paintColor(layoutMode);
 	let tab: GraphTab = "graph";
-	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
-	paintColorLegend(layoutMode);
 	let currentGraph: SimilarityGraph | null = null;
 	let selected: PaperNode | null = null;
 	let chrome: GraphChrome | null = null;
@@ -282,17 +255,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		});
 	};
 
-	chrome = mountGraphChrome(tools, {
+	chrome = mountGraphChrome(layoutHost, {
 		layouts: ["force2d", "temporal", "radial"],
 		layout: layoutMode,
 		noteButton: Boolean(deps.createNote),
 		actionsHost: actionsBar,
 		layoutHost,
+		scrubHost: graphActions,
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(layoutMode);
 			map.setColorMode(defaultColorMode(layoutMode));
-			paintColorLegend(layoutMode);
+			graphKey.paintColor(layoutMode);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
@@ -488,6 +462,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		message.hidden = true;
 		currentGraph = graph;
 		map.setGraph(graph.nodes, graph.edges, graph.seedScore);
+		graphKey.setStats(graph.nodes, graph.edges);
+		graphKey.paintColor(layoutMode);
 		map.setLayout(layoutMode);
 		map.setColorMode(layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode));
 		applyFilter();
@@ -540,6 +516,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const added = graph.edges.length - edgesBefore;
 		if (added > 0) {
 			map.updateGraphData(graph.edges);
+			graphKey.setStats(graph.nodes, graph.edges);
 			status.textContent += ` · OpenCitations 补充 ${added} 条引用`;
 		}
 	};

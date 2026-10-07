@@ -1,6 +1,7 @@
 import { Plugin } from "obsidian";
 import { VIEW_TYPE } from "./constants";
 import { registerConnectedPapersEmbed } from "./embed-block";
+import { normalizeGrafted } from "./graph-edit";
 import {
 	ConnectedPapersSettingTab,
 	DEFAULT_SETTINGS,
@@ -73,6 +74,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		const maxNodes = Number(this.settings.maxNodes);
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
 		this.settings.stagedPapers = normalizeStagedList(stored?.stagedPapers);
+		this.settings.graftedBySeed = normalizeGrafted(stored?.graftedBySeed);
 	}
 
 	async saveSettings(): Promise<void> {

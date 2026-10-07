@@ -2,21 +2,6 @@ import { explainRelation, relationKind, type RelationKind } from "./relation";
 import { authorYear } from "./labels";
 import type { GraphEdge, PaperNode } from "./types";
 
-export type StrengthTier = "weak" | "mid" | "strong";
-
-export const TIER_LABEL: Record<StrengthTier, string> = {
-	weak: "弱",
-	mid: "中",
-	strong: "强",
-};
-
-/** Cylinder radius in layout units. Same three steps as the 弱 / 中 / 强 legend bars. */
-export const TIER_RADIUS: Record<StrengthTier, number> = {
-	weak: 0.9,
-	mid: 1.8,
-	strong: 3.1,
-};
-
 export interface GraphFilter {
 	kinds: Record<RelationKind, boolean>;
 	minCoCitedBy: number;
@@ -26,7 +11,6 @@ export interface GraphFilter {
 	language: string | null;
 	workType: string | null;
 	concept: string | null;
-	focusPath: boolean;
 	/** Hide papers published after this year. Null shows the whole filtered graph, including undated papers. */
 	scrubYear: number | null;
 }
@@ -41,18 +25,8 @@ export function emptyFilter(): GraphFilter {
 		language: null,
 		workType: null,
 		concept: null,
-		focusPath: true,
 		scrubYear: null,
 	};
-}
-
-export function strengthTier(edge: GraphEdge): StrengthTier {
-	const kind = relationKind(edge);
-	if (kind === "weak") return "weak";
-	const score = edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight;
-	if (score >= 0.55) return "strong";
-	if (score >= 0.22) return "mid";
-	return "weak";
 }
 
 export function nodeVisible(node: PaperNode, filter: GraphFilter): boolean {
@@ -94,63 +68,26 @@ export function edgeVisible(
 	return true;
 }
 
-/** Neighbors of the selection, plus the shortest visible path back to the seed when requested. */
+/** One-hop neighborhood of the hovered or selected node. */
 export function focusNodes(
 	selectedId: string | null,
-	seedId: string,
 	edges: readonly GraphEdge[],
 	visible: (edge: GraphEdge) => boolean,
-	includePath: boolean,
 ): Set<string> | null {
 	if (!selectedId) return null;
-	const adjacent = new Map<string, string[]>();
-	const link = (from: string, to: string): void => {
-		const list = adjacent.get(from);
-		if (list) list.push(to);
-		else adjacent.set(from, [to]);
-	};
+	const keep = new Set<string>([selectedId]);
 	for (const edge of edges) {
 		if (!visible(edge)) continue;
-		link(edge.source, edge.target);
-		link(edge.target, edge.source);
-	}
-	const keep = new Set<string>([selectedId, ...(adjacent.get(selectedId) ?? [])]);
-	if (includePath && selectedId !== seedId) {
-		for (const id of shortestPath(adjacent, selectedId, seedId)) keep.add(id);
+		if (edge.source === selectedId) keep.add(edge.target);
+		else if (edge.target === selectedId) keep.add(edge.source);
 	}
 	return keep;
-}
-
-export function shortestPath(adjacent: ReadonlyMap<string, readonly string[]>, start: string, goal: string): string[] {
-	if (start === goal) return [start];
-	const previous = new Map<string, string | null>([[start, null]]);
-	const queue = [start];
-	for (let head = 0; head < queue.length; head++) {
-		const current = queue[head];
-		if (!current) continue;
-		for (const next of adjacent.get(current) ?? []) {
-			if (previous.has(next)) continue;
-			previous.set(next, current);
-			if (next === goal) {
-				const path = [goal];
-				let cursor: string | null = current;
-				while (cursor) {
-					path.push(cursor);
-					cursor = previous.get(cursor) ?? null;
-				}
-				path.reverse();
-				return path;
-			}
-			queue.push(next);
-		}
-	}
-	return [];
 }
 
 /** Shown whenever a connection rests on similarity signals without a direct citation record. */
 export const SIMILARITY_NOT_CITATION = "图谱相似关系，不代表直接引用";
 
-/** Counts, tier, and the OpenAlex sampling caveat. Shown on edge hover and click. */
+/** Counts and the OpenAlex sampling caveat. Shown on edge hover and click. */
 export function evidenceText(
 	edge: GraphEdge,
 	source: Pick<PaperNode, "authors" | "year">,
@@ -160,7 +97,6 @@ export function evidenceText(
 	return [
 		explainRelation(edge, source, target),
 		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
-		`强度 ${TIER_LABEL[strengthTier(edge)]}`,
 		`共享参考文献 ${edge.sharedRefs} 篇`,
 		`共被引 ${edge.coCitedBy} 次`,
 		`来源：${sources}`,
@@ -198,7 +134,6 @@ export function relationFacts(
 	else if (edge.direct === "target-cites-source") lead = `${to} 引用了 ${from}`;
 	else if (edge.coCitedBy > 0 || edge.sharedRefs > 0) lead = "没有直接引用记录";
 	const facts: RelationFact[] = [
-		{ label: "强度", value: TIER_LABEL[strengthTier(edge)] },
 		{
 			label: "相似度",
 			value: edge.structuralSimilarity === null

@@ -10,6 +10,7 @@ import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
+import { chooseExpand, couplingFill, EXPAND_CAP, graftNodes, refreshDerived, type EditableGraph } from "./graph-edit";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
@@ -449,6 +450,82 @@ export async function loadNeighborhood(
 		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
 		selectionRank,
 	};
+}
+
+/** Fetch up to EXPAND_CAP new neighbors of `from`, skipping graph members and hidden ids. */
+export async function expandAround(
+	client: OpenAlexClient,
+	graph: EditableGraph,
+	from: PaperNode,
+	hidden: ReadonlySet<string>,
+	settings: ConnectedPapersSettings,
+	slots: number,
+): Promise<{ papers: PaperNode[]; lists: Map<string, readonly string[]> }> {
+	const cap = Math.min(EXPAND_CAP, Math.max(0, slots));
+	if (cap <= 0) return { papers: [], lists: new Map() };
+	const present = new Set(graph.nodes.map((node) => node.id));
+	const fetchN = Math.min(40, Math.max(12, cap * 4));
+	const accept = (work: RawWork): boolean => {
+		const paper = toPaper(work, "related");
+		return Boolean(paper && paper.id !== from.id && !present.has(paper.id) && !hidden.has(paper.id) && !nonResearchLabel(paper));
+	};
+	const [references, citations] = await Promise.all([
+		loadGroup(settings.includeReferences, () =>
+			client.sampleWorks(`cited_by:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 1, accept),
+		),
+		loadGroup(settings.includeCitations, () =>
+			client.sampleWorks(`cites:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 1, accept),
+		),
+	]);
+	const picked = chooseExpand(present, hidden, cap, {
+		reference: researchOnly(asPapers(references.works, "reference", from.id)),
+		citation: researchOnly(asPapers(citations.works, "citation", from.id)),
+	});
+	const have = new Set([...present, ...picked.map((paper) => paper.id)]);
+	const papers = picked.length < cap
+		? [...picked, ...couplingFill(graph, from.id, have, hidden, cap - picked.length)]
+		: picked;
+	const lists = new Map<string, readonly string[]>();
+	if (papers.length === 0) return { papers, lists };
+	try {
+		const detailed = await client.worksByIds(papers.map((paper) => paper.id));
+		for (const raw of detailed) {
+			const id = raw.id ? shortId(raw.id) : "";
+			if (id) lists.set(id, referenceIds(raw.referenced_works));
+		}
+	} catch {
+		// Scoring can proceed with empty lists for the new papers.
+	}
+	return { papers, lists };
+}
+
+/** Re-fetch and graft previously deep-dug members after a fresh seed build. */
+export async function restoreGraftedMembers<T extends EditableGraph>(
+	client: OpenAlexClient,
+	graph: T,
+	ids: readonly string[],
+	settings: ConnectedPapersSettings,
+): Promise<T> {
+	const present = new Set(graph.nodes.map((node) => node.id));
+	const slots = Math.max(0, settings.maxNodes - graph.nodes.length);
+	const want = ids.filter((id) => /^W\d+$/i.test(id) && !present.has(id.toUpperCase())).map((id) => id.toUpperCase()).slice(0, slots);
+	if (want.length === 0) return graph;
+	const papers: PaperNode[] = [];
+	const lists = new Map<string, readonly string[]>();
+	try {
+		const detailed = await client.worksByIds(want);
+		for (const raw of detailed) {
+			const paper = toPaper(raw, "related");
+			if (!paper || present.has(paper.id) || paper.isSeed || nonResearchLabel(paper)) continue;
+			papers.push(paper);
+			lists.set(paper.id, referenceIds(raw.referenced_works));
+			present.add(paper.id);
+		}
+	} catch {
+		return graph;
+	}
+	if (papers.length === 0) return graph;
+	return refreshDerived(graftNodes(graph, papers, lists));
 }
 
 export function selectNeighbors(

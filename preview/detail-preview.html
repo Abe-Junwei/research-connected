@@ -8,8 +8,7 @@
 	body { margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; background: #f6f5f2; }
 	.mock { display: flex; gap: 24px; padding: 24px; align-items: flex-start; flex-wrap: wrap; }
 	.panel { width: 340px; background: #fff; border: 1px solid #e3e1dc; border-radius: 12px; overflow: hidden; }
-	.stage { position: relative; width: 340px; height: 120px; background: #f6f5f2; border: 1px solid #e3e1dc; border-radius: 12px; }
-	.stage .cpo-graph-actions { opacity: 1; visibility: visible; transform: none; }
+	.stage { position: relative; width: 560px; height: 180px; background: #f6f5f2; border: 1px solid #e3e1dc; border-radius: 12px; }
 	h3.cap { font-size: 12px; color: #6b7280; margin: 0 0 8px; }
 </style>
 </head>
@@ -78,7 +77,6 @@
 									<p class="cpo-meter-hint">标题 / 摘要 / 主题，本地计算</p>
 								</div>
 								<div class="cpo-stat-grid">
-									<div class="cpo-stat"><span class="cpo-stat-label">强度</span><span class="cpo-stat-value">中</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">共享参考文献</span><span class="cpo-stat-value">3 篇</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">共被引</span><span class="cpo-stat-value">6 次</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">来源</span><span class="cpo-stat-value">OpenAlex + OpenCitations</span></div>
@@ -143,7 +141,6 @@
 									<p class="cpo-meter-hint">当前缺少可比较数据</p>
 								</div>
 								<div class="cpo-stat-grid">
-									<div class="cpo-stat"><span class="cpo-stat-label">强度</span><span class="cpo-stat-value">弱</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">共享参考文献</span><span class="cpo-stat-value">0 篇</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">共被引</span><span class="cpo-stat-value">1 次</span></div>
 									<div class="cpo-stat"><span class="cpo-stat-label">来源</span><span class="cpo-stat-value">OpenAlex 采样</span></div>
@@ -214,54 +211,47 @@
 		</div>
 	</div>
 	<div>
-		<h3 class="cap">筛选抽屉（图例区 / 操作区分区 + 路径开关 chip）</h3>
-		<div class="panel">
-			<div class="cpo-root" style="display:block">
-				<div class="cpo-drawer" style="position:static; width:auto; box-shadow:none; border-right:none">
-					<p class="cpo-drawer-title">筛选 / 图例</p>
-					<p class="cpo-side-tip">拖拽平移，滚轮缩放；点选节点或连线，详情在右侧栏展开。</p>
-					<div class="cpo-drawer-legend">
-						<button type="button" class="cpo-legend-kind is-on"><i data-kind="direct"></i>引用</button>
-						<button type="button" class="cpo-legend-kind is-on"><i data-kind="cocitation"></i>共被引</button>
-						<button type="button" class="cpo-legend-kind is-on"><i data-kind="coupling"></i>文献耦合</button>
-						<button type="button" class="cpo-legend-kind"><i data-kind="weak"></i>弱连线</button>
-						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-weak"></i>弱</span>
-						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-mid"></i>中</span>
-						<span class="cpo-tier-key"><i class="cpo-tier cpo-tier-strong"></i>强</span>
-					</div>
-					<div class="cpo-legend">
-						<span class="cpo-ramp-wrap"><span>较低</span><span class="cpo-ramp cpo-topic-ramp"></span><span>较高</span></span>
-						<span>与种子的主题相似度</span>
-						<span>灰色缺主题数据</span>
-						<span>圆点略大 = 被引更多</span>
-						<span>双环 = 种子</span>
-					</div>
-					<button type="button" class="cpo-path-toggle is-on">到种子的路径</button>
-					<div class="cpo-drawer-tools">
-						<div class="cpo-tool-row cpo-scrub-row">
-							<input type="range" min="1980" max="2025" value="2025">
-							<span class="cpo-scrub-readout">全部年份</span>
-							<button type="button" class="cpo-tool">播放</button>
-						</div>
-						<p class="cpo-tool-hint">横向按年份排列，纵向为对数被引量；未知年份在左侧。 连线粗细为结构相似度，箭头为引用方向。</p>
-					</div>
+		<h3 class="cap">左侧栏图例竖排 + 时间播放</h3>
+		<div class="cpo-root" style="display:flex; width: 640px; height: 220px; border: 1px solid #e3e1dc; border-radius: 12px; overflow: hidden;">
+			<aside class="cpo-rail">
+				<div class="cpo-tool-row cpo-rail-layouts">
+					<button type="button" class="cpo-tool is-on">平面</button>
+					<button type="button" class="cpo-tool">时间</button>
+					<button type="button" class="cpo-tool">放射</button>
 				</div>
-			</div>
-		</div>
-	</div>
-	<div>
-		<h3 class="cap">底部按钮排（应与缩放按钮一致）</h3>
-		<div class="stage cpo-root">
-			<div class="cpo-graph-actions">
-				<div class="cpo-source-actions">
-					<button type="button" class="cpo-action-link">OpenAlex ↗</button>
-					<button type="button" class="cpo-action-link">DOI ↗</button>
+				<div class="cpo-graph-key">
+					<div class="cpo-graph-key-kinds">
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="direct"></i>引用<span class="cpo-graph-key-n">12</span></button>
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="cocitation"></i>共被引<span class="cpo-graph-key-n">8</span></button>
+						<button type="button" class="cpo-legend-kind is-on"><i data-kind="coupling"></i>文献耦合<span class="cpo-graph-key-n">5</span></button>
+					</div>
+					<div class="cpo-graph-key-marks">
+						<span class="cpo-graph-key-seed"><i aria-hidden="true"></i>种子文献<span class="cpo-graph-key-n">1</span></span>
+						<span class="cpo-graph-key-classic"><i aria-hidden="true"></i>经典文献<span class="cpo-graph-key-n">3</span></span>
+					</div>
+					<span class="cpo-graph-key-color">
+						<span class="cpo-graph-key-dots" aria-hidden="true"><i style="background:rgb(214, 142, 142)"></i><i style="background:rgb(132, 159, 208)"></i><i style="background:rgb(177, 147, 194)"></i></span>
+						<span>引用团</span><span class="cpo-graph-key-n">2</span>
+					</span>
 				</div>
-				<span class="cpo-graph-action-spacer"></span>
+			</aside>
+			<div class="cpo-stage" style="flex:1; height: auto; width: auto; border: none; border-radius: 0;">
 				<div class="cpo-zoom">
 					<button type="button" class="cpo-icon" aria-label="放大">+</button>
 					<button type="button" class="cpo-icon" aria-label="缩小">−</button>
 					<button type="button" class="cpo-icon" aria-label="适应窗口">适配</button>
+				</div>
+				<div class="cpo-graph-actions">
+					<span class="cpo-graph-action-spacer"></span>
+					<div class="cpo-source-actions">
+						<button type="button" class="cpo-action-link">OpenAlex ↗</button>
+						<button type="button" class="cpo-action-link">DOI ↗</button>
+					</div>
+					<div class="cpo-tool-row cpo-scrub-row">
+						<input type="range" min="1980" max="2025" value="2025">
+						<span class="cpo-scrub-readout">全部年份</span>
+						<button type="button" class="cpo-tool">播放</button>
+					</div>
 				</div>
 			</div>
 		</div>

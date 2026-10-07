@@ -11,8 +11,6 @@ import {
 	evidenceText,
 	focusNodes,
 	nodeVisible,
-	shortestPath,
-	strengthTier,
 	type GraphFilter,
 } from "../src/graph-filter";
 import { authorYear, citationLabelAlpha, shortAuthor } from "../src/labels";
@@ -303,14 +301,13 @@ function unit(): void {
 	assert.equal(citationLabelAlpha(20, 1.0), 0, "长尾需更近才出现");
 
 	const weakEdge = weighted("S", "Q", 0.04);
-	assert.equal(strengthTier(weakEdge), "weak");
+	assert.equal(relationKind(weakEdge), "weak");
 	const midCite = { ...weighted("A", "B", 0.2), structuralSimilarity: 0.4, coCitedBy: 2, coCitation: 0.4 };
 	assert.equal(relationKind(midCite), "cocitation");
-	assert.equal(strengthTier(midCite), "mid");
 	const strongCouple = { ...weighted("A", "B", 0.5), structuralSimilarity: 0.6, sharedRefs: 8, coupling: 0.4 };
-	assert.equal(strengthTier(strongCouple), "strong");
+	assert.equal(relationKind(strongCouple), "coupling");
 	const mutual = { ...weighted("S", "P", 0.2), structuralSimilarity: 0, direct: "mutual" as const };
-	assert.equal(strengthTier(mutual), "weak", "citation direction should not inflate similarity thickness");
+	assert.equal(relationKind(mutual), "direct");
 	const sample = paper("S", "seed", 10);
 	const older = { ...paper("A", "reference", 3), year: 1980, language: "en", workType: "article", concepts: ["Deep learning"] };
 	const peer = paper("B", "citation", 4);
@@ -327,10 +324,9 @@ function unit(): void {
 	assert.equal(edgeVisible(midCite, nodesById, { ...filterish(), kinds: { ...filterish().kinds, cocitation: false } }), false);
 	const directSeen = { ...weighted("S", "A", 0.2), direct: "source-cites-target" as const, coCitedBy: 1 };
 	assert.equal(edgeVisible(directSeen, nodesById, { ...filterish(), minCoCitedBy: 9 }), true);
-	const path = shortestPath(new Map([["A", ["B"]], ["B", ["S"]]]), "A", "S");
-	assert.deepEqual(path, ["A", "B", "S"]);
-	const focus = focusNodes("A", "S", [weighted("A", "B", 0.2), weighted("B", "S", 0.2)], () => true, true);
-	assert.equal(focus?.has("S"), true);
+	const focus = focusNodes("A", [weighted("A", "B", 0.2), weighted("B", "S", 0.2)], () => true);
+	assert.equal(focus?.has("S"), false);
+	assert.equal(focus?.has("B"), true);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共享参考文献 0 篇/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共被引 2 次/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /OpenAlex/);
@@ -370,7 +366,7 @@ function unit(): void {
 	const breathB = classicBreath("paper-b", 0);
 	assert.ok(breathA >= 0 && breathA <= 1 && breathB >= 0 && breathB <= 1);
 	assert.notEqual(breathA, breathB);
-	assert.ok(Math.abs(classicBreath("paper-a", 0) - classicBreath("paper-a", 2 * Math.PI * CLASSIC_BREATH_MS)) < 1e-9);
+	assert.ok(Math.abs(classicBreath("paper-a", 0) - classicBreath("paper-a", CLASSIC_BREATH_MS)) < 1e-9);
 	assert.ok(yearNormalizedCitations(3500, 1991, 2026) < yearNormalizedCitations(400, 2023, 2026), "同年等效被引用年归一");
 	assert.equal(yearNormalizedCitations(80, 2026, 2026), 80);
 	assert.equal(yearNormalizedCitations(80, null, 2026), 80);

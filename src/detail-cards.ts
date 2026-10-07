@@ -1,13 +1,13 @@
 import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, type CrossCheckLike } from "./citation-evidence";
 import type { RankedWork } from "./aggregates";
-import { relationFacts, strengthTier, TIER_LABEL } from "./graph-filter";
+import { relationFacts } from "./graph-filter";
 import { paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
 import type { SelectionRank } from "./neighborhood";
 import { nonResearchLabel } from "./paper";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { formatCount } from "./visual";
 
-/** Sidebar detail cards shared by the main pane and the 3D embed. */
+/** Sidebar detail cards shared by the main pane and the note embed. */
 
 export const ORIGIN_TEXT: Record<Origin, string> = {
 	seed: "种子论文",
@@ -142,7 +142,6 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 		paintMeter(card, "文本相似度", options.semanticScore, options.semanticHint ?? "标题 / 摘要 / 主题，本地计算", true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
-	paintStat(grid, "强度", TIER_LABEL[strengthTier(edge)]);
 	paintStat(grid, "共享参考文献", `${edge.sharedRefs} 篇`);
 	paintStat(grid, "共被引", `${edge.coCitedBy} 次`);
 	paintStat(grid, "来源", options.sources);

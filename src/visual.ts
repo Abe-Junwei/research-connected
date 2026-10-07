@@ -34,13 +34,13 @@ export function citationRadius(citedByCount: number, minCited: number, maxCited:
 	return isSeed ? Math.max(radius, RADIUS_MIN + 0.7 * (RADIUS_MAX - RADIUS_MIN)) : radius;
 }
 
-/** 0–1 sine; phase hashed by id. Period ≈ 2.2s. */
-export const CLASSIC_BREATH_MS = 350;
+/** 0–1 sine; phase hashed by id. Period matches pure-self-color glow (3.5s). */
+export const CLASSIC_BREATH_MS = 3500;
 export function classicBreath(id: string, now = performance.now()): number {
 	let hash = 2166136261;
 	for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
 	const phase = ((hash >>> 0) / 4294967296) * Math.PI * 2;
-	return 0.5 + 0.5 * Math.sin(now / CLASSIC_BREATH_MS + phase);
+	return 0.5 + 0.5 * Math.sin((now / CLASSIC_BREATH_MS) * Math.PI * 2 + phase);
 }
 
 export function formatCount(value: number): string {

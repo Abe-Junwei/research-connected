@@ -43,6 +43,8 @@ export interface GraphChromeOptions {
 	actionsHost?: HTMLElement;
 	/** Layout buttons. When set, they leave the control host for the narrow rail. */
 	layoutHost?: HTMLElement;
+	/** Year scrubber / play. Hidden unless layout is temporal. */
+	scrubHost?: HTMLElement;
 }
 
 export interface GraphChrome {
@@ -65,15 +67,18 @@ export interface BottomSheet {
 
 /** Layout, color, year scrubber, list tabs, and export actions. Shared by the embed and the pane. */
 export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions): GraphChrome {
-	host.classList.add("cpo-tools");
-	host.replaceChildren();
 	const actions = options.actionsHost && options.actionsHost !== host ? options.actionsHost : host;
 	if (actions !== host) {
 		actions.classList.add("cpo-tools", "cpo-actions");
 		actions.replaceChildren();
 	}
 	const layoutHost = options.layoutHost && options.layoutHost !== host ? options.layoutHost : null;
+	const scrubHost = options.scrubHost && options.scrubHost !== host ? options.scrubHost : null;
 	if (layoutHost) layoutHost.classList.add("cpo-rail-layouts");
+	if (!layoutHost && !scrubHost) {
+		host.classList.add("cpo-tools");
+		if (actions === host) host.replaceChildren();
+	}
 
 	const layoutRow = document.createElement("div");
 	layoutRow.className = "cpo-tool-row";
@@ -81,13 +86,17 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	scrubRow.className = "cpo-tool-row cpo-scrub-row";
 	const tabRow = document.createElement("div");
 	tabRow.className = "cpo-tool-row cpo-tab-row";
-	const hint = document.createElement("p");
-	hint.className = "cpo-tool-hint";
 	let layout = options.layout;
-	const updateHint = (): void => {
-		hint.textContent = `${LAYOUT_HINT[layout]} 连线粗细为结构相似度，箭头为引用方向。`;
+	let hasYears = false;
+	const syncScrub = (): void => {
+		const show = layout === "temporal" && hasYears;
+		scrubRow.hidden = !show;
+		if (show) return;
+		stop();
+		range.value = String(maxYear);
+		readout.textContent = "全部年份";
+		options.onScrub(null);
 	};
-	updateHint();
 	const readout = document.createElement("span");
 	readout.className = "cpo-scrub-readout";
 	readout.textContent = "全部年份";
@@ -111,9 +120,10 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			stop();
 			layout = mode;
 			for (const [key, item] of layoutButtons) setPressed(item, key === mode);
-			updateHint();
+			syncScrub();
 			options.onLayout(mode);
 		});
+		button.title = LAYOUT_HINT[mode];
 		layoutButtons.set(mode, button);
 		layoutRow.append(button);
 	}
@@ -200,7 +210,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 
 	if (layoutHost) layoutHost.append(layoutRow);
 	else host.append(layoutRow);
-	host.append(scrubRow, hint);
+	(scrubHost ?? host).append(scrubRow);
+	syncScrub();
 	actions.append(tabRow, output);
 
 	return {
@@ -213,18 +224,20 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		},
 		setYears(min: number, max: number): void {
 			stop();
-			scrubRow.hidden = false;
+			hasYears = true;
 			minYear = min;
 			maxYear = Math.max(min, max);
 			range.min = String(minYear);
 			range.max = String(maxYear);
 			range.value = String(maxYear);
 			readout.textContent = "全部年份";
+			syncScrub();
 		},
 		clearYears(): void {
 			stop();
-			scrubRow.hidden = true;
+			hasYears = false;
 			readout.textContent = "全部年份";
+			syncScrub();
 		},
 		setTab(next: GraphTab): void {
 			for (const [key, item] of tabButtons) setPressed(item, key === next);

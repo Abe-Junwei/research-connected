@@ -30,6 +30,8 @@ type Drag =
 export class SimilarityMap {
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
 	onEdgeSelect: ((edge: GraphEdge) => void) | null = null;
+	onNodeMenu: ((paper: PaperNode | null, x: number, y: number) => void) | null = null;
+	onDeleteRequest: (() => void) | null = null;
 
 	private ctx: CanvasRenderingContext2D | null = null;
 	private nodes: DrawNode[] = [];
@@ -43,7 +45,6 @@ export class SimilarityMap {
 	private selectedId: string | null = null;
 	private hoverId: string | null = null;
 	private focus: Set<string> | null = null;
-	private focusPath = true;
 	private kindVisible: Record<RelationKind, boolean> = { direct: true, cocitation: true, coupling: true, weak: false };
 	private dragging: Drag | null = null;
 	private moved = false;
@@ -102,6 +103,7 @@ export class SimilarityMap {
 		this.onWheel = this.onWheel.bind(this);
 		this.onPointerLeave = this.onPointerLeave.bind(this);
 		this.onKeyDown = this.onKeyDown.bind(this);
+		this.onContextMenu = this.onContextMenu.bind(this);
 		canvas.tabIndex = 0;
 		// Optional-call: the headless verify script stubs a bare canvas object.
 		canvas.setAttribute?.("role", "application");
@@ -113,6 +115,7 @@ export class SimilarityMap {
 		canvas.addEventListener("wheel", this.onWheel, { passive: false });
 		canvas.addEventListener("pointerleave", this.onPointerLeave);
 		canvas.addEventListener("keydown", this.onKeyDown);
+		canvas.addEventListener("contextmenu", this.onContextMenu);
 		window.addEventListener("pointerup", this.onPointerUp);
 		window.addEventListener("pointercancel", this.onPointerUp);
 	}
@@ -130,6 +133,47 @@ export class SimilarityMap {
 		// 不重置 layoutMode：布局由应用层（chrome 按钮）持有，建图后回灌。
 		this.scrubYear = null;
 		this.rebuild(nodes, true);
+	}
+
+	/** Keep existing coordinates; park new nodes next to `nearId`. Does not reset the view. */
+	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string): void {
+		const prev = new Map(this.nodes.map((node) => [node.id, node]));
+		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
+		this.minYear = years.length ? Math.min(...years) : 0;
+		this.maxYear = years.length ? Math.max(...years) : 0;
+		this.seedScore = seedScore;
+		this.edges = edges;
+		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
+		this.classicGlow = classicInfluence(nodes, edges);
+		this.ensurePulse();
+		const placed = new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]));
+		const host = nearId ? prev.get(nearId) : null;
+		this.nodes = nodes.map((node) => {
+			const old = prev.get(node.id);
+			const at = placed.get(node.id);
+			const parked = host && !old ? parkNear(host.x, host.y, node.id) : null;
+			const x = old?.x ?? parked?.x ?? at?.x ?? 0;
+			const y = old?.y ?? parked?.y ?? at?.y ?? 0;
+			return {
+				...node,
+				x,
+				y,
+				homeX: x,
+				homeY: y,
+				radius: at?.radius ?? old?.radius ?? 8,
+				color: this.colorOf(node),
+				shown: this.isShown(node),
+			};
+		});
+		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
+		this.captureStructure();
+		if (this.selectedId && !this.nodes.some((node) => node.id === this.selectedId)) {
+			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
+			this.onSelect?.(this.nodes.find((node) => node.id === this.selectedId) ?? null);
+		}
+		this.refreshFocus();
+		this.reheat(0.28);
+		this.draw();
 	}
 
 	/**
@@ -196,31 +240,37 @@ export class SimilarityMap {
 		this.draw();
 	}
 
-	/** Whether the focus highlight also keeps the shortest visible path to the seed. */
-	setFocusPath(on: boolean): void {
-		this.focusPath = on;
-		this.refreshFocus();
-		this.draw();
-	}
-
-	/** One-hop neighborhood of the hovered (else selected) node, plus the path to the seed when enabled. */
 	private refreshFocus(): void {
 		const id = this.hoverId ?? this.selectedId;
-		const seedId = this.nodes.find((node) => node.isSeed)?.id ?? "";
 		this.focus = id
-			? focusNodes(id, seedId, this.edges, (edge) => this.kindVisible[relationKind(edge)], this.focusPath)
+			? focusNodes(id, this.edges, (edge) => this.kindVisible[relationKind(edge)])
 			: null;
 	}
 
 	resize(): void {
-		const rect = this.stage.getBoundingClientRect();
+		const stageRect = this.stage.getBoundingClientRect();
 		const dpr = window.devicePixelRatio || 1;
-		const width = Math.max(1, rect.width);
-		const height = Math.max(1, rect.height);
+		const padX = 8;
+		const padTop = 8;
+		const padBottom = 14;
+		const width = Math.max(1, Math.round(stageRect.width - padX * 2));
+		const height = Math.max(1, Math.round(stageRect.height - padTop - padBottom));
+		// Keep world point at the old center; do not refit — panel collapse must not rezoom.
+		const cx = (this.cssWidth / 2 - this.tx) / this.k;
+		const cy = (this.cssHeight / 2 - this.ty) / this.k;
 		this.cssWidth = width;
 		this.cssHeight = height;
-		this.canvas.width = Math.round(width * dpr);
-		this.canvas.height = Math.round(height * dpr);
+		this.tx = width / 2 - cx * this.k;
+		this.ty = height / 2 - cy * this.k;
+		// Drive both CSS and bitmap from the same px — % CSS + attribute size drifts and stretches nodes.
+		this.canvas.style.width = `${width}px`;
+		this.canvas.style.height = `${height}px`;
+		const bw = Math.round(width * dpr);
+		const bh = Math.round(height * dpr);
+		if (this.canvas.width !== bw || this.canvas.height !== bh) {
+			this.canvas.width = bw;
+			this.canvas.height = bh;
+		}
 		const ctx = this.canvas.getContext("2d");
 		if (!ctx) return;
 		this.ctx = ctx;
@@ -434,6 +484,7 @@ export class SimilarityMap {
 		this.canvas.removeEventListener("wheel", this.onWheel);
 		this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
 		this.canvas.removeEventListener("keydown", this.onKeyDown);
+		this.canvas.removeEventListener("contextmenu", this.onContextMenu);
 		window.removeEventListener("pointerup", this.onPointerUp);
 		window.removeEventListener("pointercancel", this.onPointerUp);
 		this.hideTooltip();
@@ -483,9 +534,23 @@ export class SimilarityMap {
 		this.zoomAt(local.x, local.y, factor);
 	}
 
+	private onContextMenu(event: MouseEvent): void {
+		event.preventDefault();
+		if (!this.alive) return;
+		const local = this.localPoint(event.clientX, event.clientY);
+		const hit = this.hit(local.x, local.y);
+		if (hit) {
+			this.selectedId = hit.id;
+			this.onSelect?.(hit);
+			this.draw();
+		}
+		this.onNodeMenu?.(hit, event.clientX, event.clientY);
+	}
+
 	private onPointerDown(event: PointerEvent): void {
 		if (!this.alive) return;
 		this.canvas.focus({ preventScroll: true });
+		if (event.button !== 0) return;
 		// Direct manipulation cancels any eased zoom still in flight.
 		this.zoomAnim = null;
 		this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -663,6 +728,11 @@ export class SimilarityMap {
 		if (!this.alive) return;
 		const panStep = 48;
 		const key = event.key;
+		if (key === "Delete") {
+			event.preventDefault();
+			this.onDeleteRequest?.();
+			return;
+		}
 		if (key === "Escape") {
 			event.preventDefault();
 			// 阻止冒泡：app 层 root 上还有一个 Escape 监听，避免 showDetail(null) 跑两次。
@@ -898,6 +968,8 @@ export class SimilarityMap {
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
 		const active = node.id === this.hoverId || node.id === this.selectedId;
+		const classic = this.classicGlow.has(node.id) && !node.isSeed;
+		const beat = classic ? classicBreath(node.id) : 0;
 		ctx.fillStyle = this.colorMode === "graph" && active ? this.graphNodeFocused : node.color;
 		ctx.shadowColor = "rgba(60, 64, 70, 0.18)";
 		ctx.shadowBlur = 5;
@@ -905,22 +977,15 @@ export class SimilarityMap {
 		ctx.shadowColor = "rgba(0, 0, 0, 0)";
 		ctx.shadowBlur = 0;
 		ctx.lineWidth = 1;
-		ctx.strokeStyle = shadeColor(node.color, 0.85);
+		// 峰值时淡化描边，让光晕从盘缘融出去
+		if (classic) {
+			ctx.strokeStyle = withAlpha(shadeColor(node.color, 0.85), Math.max(0.08, 1 - 0.92 * beat));
+		} else {
+			ctx.strokeStyle = shadeColor(node.color, 0.85);
+		}
 		ctx.stroke();
-		if (this.classicGlow.has(node.id) && !node.isSeed) {
-			const beat = classicBreath(node.id);
-			const t = this.classicGlow.get(node.id) ?? 0;
-			const halo = (5 + 18 * t) * (0.45 + 0.55 * beat);
-			const rim = radius / (radius + halo);
-			const glow = ctx.createRadialGradient(x, y, 0, x, y, radius + halo);
-			glow.addColorStop(0, `rgba(255, 255, 255, ${0.85 + 0.15 * beat})`);
-			glow.addColorStop(Math.max(0.02, rim * 0.72), `rgba(255, 255, 255, ${0.4 + 0.35 * beat})`);
-			glow.addColorStop(Math.min(0.98, rim), `rgba(255, 255, 255, ${0.25 + 0.4 * beat})`);
-			glow.addColorStop(1, "rgba(255, 255, 255, 0)");
-			ctx.fillStyle = glow;
-			ctx.beginPath();
-			ctx.arc(x, y, radius + halo, 0, Math.PI * 2);
-			ctx.fill();
+		if (classic) {
+			drawClassicSelfGlow(ctx, x, y, radius, node.color, beat, this.classicGlow.get(node.id) ?? 0);
 		}
 		if (node.isSeed) {
 			ctx.beginPath();
@@ -1073,6 +1138,45 @@ function shadeColor(rgb: string, factor: number): string {
 	return `rgb(${red}, ${green}, ${blue})`;
 }
 
+/** Pure self-color breath: centroid falloff, bright at center → soft fade to outer edge. */
+function drawClassicSelfGlow(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	radius: number,
+	color: string,
+	beat: number,
+	influence: number,
+): void {
+	const match = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+	if (!match) return;
+	const red = Number(match[1]);
+	const green = Number(match[2]);
+	const blue = Number(match[3]);
+	const power = 0.4 + 0.6 * influence;
+	const halo = (8 + 16 * beat) * power;
+	const peak = (0.32 + 0.48 * beat) * power;
+	const outer = radius + halo;
+	// 质心最亮，经盘缘到外晕平滑减淡（多档色停避免断层）
+	const glow = ctx.createRadialGradient(x, y, 0, x, y, outer);
+	const rim = clamp(radius / Math.max(outer, 1), 0.15, 0.85);
+	glow.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${peak})`);
+	glow.addColorStop(rim * 0.45, `rgba(${red}, ${green}, ${blue}, ${peak * 0.78})`);
+	glow.addColorStop(rim, `rgba(${red}, ${green}, ${blue}, ${peak * 0.42})`);
+	glow.addColorStop(rim + (1 - rim) * 0.45, `rgba(${red}, ${green}, ${blue}, ${peak * 0.16})`);
+	glow.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
+	ctx.fillStyle = glow;
+	ctx.beginPath();
+	ctx.arc(x, y, outer, 0, Math.PI * 2);
+	ctx.fill();
+}
+
+function withAlpha(color: string, alpha: number): string {
+	const match = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+	if (!match) return color;
+	return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${clamp(alpha, 0, 1)})`;
+}
+
 function strokeArrow(
 	ctx: CanvasRenderingContext2D,
 	x1: number,
@@ -1091,6 +1195,13 @@ function strokeArrow(
 	ctx.lineTo(tipX - length * Math.cos(angle + 0.4), tipY - length * Math.sin(angle + 0.4));
 	ctx.closePath();
 	ctx.fill();
+}
+
+function parkNear(x: number, y: number, id: string): { x: number; y: number } {
+	let hash = 2166136261;
+	for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+	const angle = ((hash >>> 0) / 4294967296) * Math.PI * 2;
+	return { x: x + Math.cos(angle) * 36, y: y + Math.sin(angle) * 36 };
 }
 
 function pairKey(a: string, b: string): string {

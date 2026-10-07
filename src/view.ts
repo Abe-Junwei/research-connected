@@ -53,6 +53,7 @@ export class ConnectedPapersView extends ItemView {
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.appHandle = mountGraphApp(this.contentEl, {
 			getSettings: () => this.host.getSettings(),
+			persistSettings: () => this.host.saveSettings(),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,

@@ -21,6 +21,8 @@ export interface ConnectedPapersSettings {
 	includeCitations: boolean;
 	includeRelated: boolean;
 	stagedPapers: StagedPaper[];
+	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
+	graftedBySeed: Record<string, string[]>;
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
@@ -41,4 +43,5 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	includeCitations: true,
 	includeRelated: true,
 	stagedPapers: [],
+	graftedBySeed: {},
 };

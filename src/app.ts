@@ -1,13 +1,28 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { EXAMPLE_DOI } from "./constants";
-import { buildLegend, buildPathToggle } from "./filter-controls";
+import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
+import {
+	EXPAND_CAP,
+	forgetGrafted,
+	graftedFor,
+	graftNodes,
+	omitNode,
+	refreshDerived,
+	rememberGrafted,
+} from "./graph-edit";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
-import { loadNeighborhood, type LoadWarning, type SimilarityGraph } from "./neighborhood";
+import {
+	expandAround,
+	loadNeighborhood,
+	restoreGraftedMembers,
+	type LoadWarning,
+	type SimilarityGraph,
+} from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, crossrefAbstract, doisFromOpenCitation, semanticAbstract } from "./citation-sources";
 import {
@@ -61,6 +76,8 @@ export interface AppDeps {
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string) => Promise<void>;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
+	/** Persist settings (grafted members, staging, …). */
+	persistSettings?: () => Promise<void> | void;
 	initialDoi?: string;
 	/** Seed to build immediately; wins over initialDoi when both are set. */
 	initialTarget?: { kind: "doi" | "openalex"; value: string };
@@ -120,11 +137,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const body = el(root, "div", "cpo-body");
 	const rail = el(body, "aside", "cpo-rail");
-	const filterButton = el(rail, "button", "cpo-rail-filter", "筛选") as HTMLButtonElement;
-	filterButton.type = "button";
-	filterButton.title = "筛选 / 图例";
-	filterButton.setAttribute("aria-expanded", "false");
 	const layoutHost = el(rail, "div");
+	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "‹") as HTMLButtonElement;
+	railToggle.type = "button";
+	railToggle.setAttribute("aria-label", "折叠左侧栏");
+	railToggle.setAttribute("aria-expanded", "true");
 
 	const stage = el(body, "div", "cpo-stage");
 	const canvas = el(stage, "canvas");
@@ -140,45 +157,23 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	);
 	const tooltip = el(stage, "div", "cpo-tooltip");
 	tooltip.hidden = true;
+	const nodeMenu = el(stage, "div", "cpo-node-menu");
+	nodeMenu.hidden = true;
+	nodeMenu.setAttribute("role", "menu");
+	const deleteItem = el(nodeMenu, "button", undefined, "删除") as HTMLButtonElement;
+	const expandItem = el(nodeMenu, "button", undefined, "深挖") as HTMLButtonElement;
+	const seedItem = el(nodeMenu, "button", undefined, "设为种子") as HTMLButtonElement;
+	for (const item of [deleteItem, expandItem, seedItem]) {
+		item.type = "button";
+		item.setAttribute("role", "menuitem");
+	}
 
-	const drawer = el(stage, "div", "cpo-drawer");
-	drawer.hidden = true;
-	el(drawer, "p", "cpo-drawer-title", "筛选 / 图例");
-	el(drawer, "p", "cpo-side-tip", "拖拽平移，滚轮缩放；点选节点或连线，详情在右侧栏展开。");
-	const kindLegend = el(drawer, "div", "cpo-drawer-legend");
-	const legend = el(drawer, "div", "cpo-legend");
-	legend.hidden = true;
-	const rampWrap = el(legend, "span", "cpo-ramp-wrap");
-	const rampStart = el(rampWrap, "span", undefined, "较低");
-	const ramp = el(rampWrap, "span", "cpo-ramp");
-	ramp.classList.add("cpo-topic-ramp");
-	const rampEnd = el(rampWrap, "span", undefined, "较高");
-	const rampHint = el(legend, "span", undefined, "节点色为引用结构分组");
-	const grayHint = el(legend, "span", undefined, "同色 = 同一引用团");
-	el(legend, "span", undefined, "圆点略大 = 被引更多");
-	el(legend, "span", undefined, "双环 = 种子");
-	const paintColorLegend = (mode: LayoutMode): void => {
-		const grouped = mode === "force2d";
-		rampWrap.hidden = grouped;
-		rampHint.textContent = grouped ? "节点色为引用结构分组" : "与种子的主题相似度";
-		grayHint.textContent = grouped ? "同色 = 同一引用团" : "灰色缺主题数据";
-	};
-	const toolsHost = el(drawer, "div");
-	toolsHost.classList.add("cpo-drawer-tools");
-	filterButton.addEventListener("click", () => {
-		const open = drawer.hidden;
-		drawer.hidden = !open;
-		filterButton.setAttribute("aria-expanded", open ? "true" : "false");
-		filterButton.classList.toggle("is-on", open);
-	});
-
-	// 悬浮按钮排：左侧来源链接，右侧缩放按钮。
 	const graphActions = el(stage, "div", "cpo-graph-actions");
+	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
 	const sourceActions = el(graphActions, "div", "cpo-source-actions");
 	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
 	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
-	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
-	const zoom = el(graphActions, "div", "cpo-zoom");
+	const zoom = el(stage, "div", "cpo-zoom");
 	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
 	const zoomOut = el(zoom, "button", "cpo-icon", "−") as HTMLButtonElement;
 	const fit = el(zoom, "button", "cpo-icon", "适配") as HTMLButtonElement;
@@ -192,6 +187,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	}
 
 	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
+	const sidebarToggle = el(sidebar, "button", "cpo-panel-toggle is-right", "›") as HTMLButtonElement;
+	sidebarToggle.type = "button";
+	sidebarToggle.setAttribute("aria-label", "折叠右侧栏");
+	sidebarToggle.setAttribute("aria-expanded", "true");
 	const sidebarResize = el(body, "div", "cpo-sidebar-resizer");
 	body.insertBefore(sidebarResize, sidebar);
 	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
@@ -208,15 +207,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, { onResize: () => map.resize() });
 	let mapFilter: GraphFilter = emptyFilter();
 	map.setKinds(mapFilter.kinds);
-	buildLegend(kindLegend, () => mapFilter, (next) => {
+	const graphKey = mountGraphKey(rail, () => mapFilter, (next) => {
 		mapFilter = next;
 		map.setKinds(next.kinds);
 	});
-	legend.after(buildPathToggle(() => mapFilter, (next) => {
-		mapFilter = next;
-		map.setKinds(next.kinds);
-		map.setFocusPath(next.focusPath);
-	}));
+	graphKey.paintColor("force2d");
 	let graph: SimilarityGraph | null = null;
 	let tab: GraphTab = "graph";
 	let narrative: ResearchNarrative | null = null;
@@ -238,6 +233,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	/** 脉络里被点过的未收录节点，避免同一篇重复单篇补取。 */
 	const timelinePickedMeta = new Set<string>();
 	let generation = 0;
+	let hiddenIds = new Set<string>();
 	let composing = false;
 	let disposed = false;
 	let narrativeBusy = false;
@@ -573,7 +569,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 	};
 
-	chrome = mountGraphChrome(toolsHost, {
+	chrome = mountGraphChrome(layoutHost, {
 		layouts: ["force2d", "temporal", "radial"],
 		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
@@ -582,11 +578,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
+		scrubHost: graphActions,
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(mode);
 			map.setColorMode(defaultColorMode(mode));
-			paintColorLegend(mode);
+			graphKey.paintColor(mode);
 		},
 		onScrub: (year) => {
 			scrubYear = year;
@@ -732,6 +729,47 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	map.onSelect = (paper) => showDetail(paper);
+	map.onNodeMenu = (paper, x, y) => {
+		if (!paper || !graph) {
+			nodeMenu.hidden = true;
+			return;
+		}
+		deleteItem.disabled = paper.isSeed;
+		deleteItem.title = paper.isSeed ? "种子不能删除" : "从当前图中去掉";
+		seedItem.disabled = paper.isSeed;
+		seedItem.title = paper.isSeed ? "已是种子" : "以这篇重建整图";
+		nodeMenu.dataset.paperId = paper.id;
+		nodeMenu.hidden = false;
+		const rect = stage.getBoundingClientRect();
+		const pad = 8;
+		const mw = Math.max(nodeMenu.offsetWidth, 108);
+		const mh = Math.max(nodeMenu.offsetHeight, 96);
+		const left = Math.min(Math.max(pad, x - rect.left), Math.max(pad, rect.width - mw - pad));
+		const top = Math.min(Math.max(pad, y - rect.top), Math.max(pad, rect.height - mh - pad));
+		nodeMenu.style.left = `${left}px`;
+		nodeMenu.style.top = `${top}px`;
+	};
+	const afterPanelToggle = (): void => {
+		map.resize();
+		window.setTimeout(() => map.resize(), 240);
+	};
+	railToggle.addEventListener("click", () => {
+		const on = body.classList.toggle("is-rail-collapsed");
+		railToggle.textContent = on ? "›" : "‹";
+		railToggle.setAttribute("aria-expanded", on ? "false" : "true");
+		railToggle.setAttribute("aria-label", on ? "展开左侧栏" : "折叠左侧栏");
+		afterPanelToggle();
+	});
+	sidebarToggle.addEventListener("click", () => {
+		const on = body.classList.toggle("is-sidebar-collapsed");
+		sidebarToggle.textContent = on ? "‹" : "›";
+		sidebarToggle.setAttribute("aria-expanded", on ? "false" : "true");
+		sidebarToggle.setAttribute("aria-label", on ? "展开右侧栏" : "折叠右侧栏");
+		afterPanelToggle();
+	});
+	map.onDeleteRequest = () => {
+		if (selectedPaper) removePaper(selectedPaper);
+	};
 	const showEdgeDetail = (edge: GraphEdge): void => {
 		if (!graph) return;
 		const a = graph.nodes.find(p => p.id === edge.source), b = graph.nodes.find(p => p.id === edge.target);
@@ -784,8 +822,93 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	showDetail(null);
 
+	const hideNodeMenu = (): void => {
+		nodeMenu.hidden = true;
+		delete nodeMenu.dataset.paperId;
+	};
+
+	const applyEdit = (next: SimilarityGraph, note: string, nearId?: string): void => {
+		graph = next;
+		map.adoptGraph(next.nodes, next.edges, next.seedScore, nearId);
+		graphKey.setStats(next.nodes, next.edges);
+		graphKey.paintColor(layoutMode);
+		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
+		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years));
+		else chrome?.clearYears();
+		paintLists();
+		const selectedId = selectedPaper?.id;
+		const keep = selectedId && next.nodes.some((node) => node.id === selectedId);
+		if (!keep) {
+			const seed = next.nodes.find((node) => node.isSeed) ?? null;
+			selectedPaper = seed;
+			selectedEdge = null;
+			showDetail(seed);
+		}
+		status.textContent = `${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`;
+	};
+
+	const currentSeedId = (): string | null => graph?.nodes.find((node) => node.isSeed)?.id ?? null;
+
+	const persistGrafted = async (store: Record<string, string[]>): Promise<void> => {
+		deps.getSettings().graftedBySeed = store;
+		await deps.persistSettings?.();
+	};
+
+	const removePaper = (paper: PaperNode): void => {
+		if (!graph || paper.isSeed) return;
+		hideNodeMenu();
+		const next = omitNode(graph, paper.id);
+		if (!next) return;
+		hiddenIds.add(paper.id);
+		const seedId = currentSeedId();
+		if (seedId) void persistGrafted(forgetGrafted(deps.getSettings().graftedBySeed ?? {}, seedId, paper.id));
+		applyEdit(refreshDerived(next), "已去掉 1 篇");
+	};
+
+	const expandPaper = async (paper: PaperNode): Promise<void> => {
+		if (!graph) return;
+		hideNodeMenu();
+		const settings = deps.getSettings();
+		const slots = Math.min(EXPAND_CAP, settings.maxNodes - graph.nodes.length);
+		if (slots <= 0) {
+			status.textContent = `已到上限（${settings.maxNodes} 篇），先删几点再深挖`;
+			return;
+		}
+		const token = generation;
+		const host = graph;
+		const seedId = currentSeedId();
+		status.textContent = `正在从「${paper.title.slice(0, 24)}」扩展…`;
+		try {
+			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
+			const { papers, lists } = await expandAround(oa, host, paper, hiddenIds, settings, slots);
+			if (disposed || token !== generation || graph !== host) return;
+			if (papers.length === 0) {
+				status.textContent = "没有可并入的新文献";
+				return;
+			}
+			applyEdit(refreshDerived(graftNodes(host, papers, lists)), `已并入 ${papers.length} 篇`, paper.id);
+			if (seedId) {
+				void persistGrafted(rememberGrafted(settings.graftedBySeed ?? {}, seedId, papers.map((item) => item.id)));
+			}
+		} catch (error) {
+			if (disposed || token !== generation || graph !== host) return;
+			status.textContent = error instanceof Error ? error.message : "深挖失败。";
+		}
+	};
+
+	deleteItem.addEventListener("click", () => {
+		const paper = graph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
+		if (paper) removePaper(paper);
+	});
+	expandItem.addEventListener("click", () => {
+		const paper = graph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
+		if (paper) void expandPaper(paper);
+	});
+
 	const applyGraph = (next: SimilarityGraph): void => {
 		graph = next;
+		hiddenIds = new Set();
+		hideNodeMenu();
 		timelineMetaGraph = null;
 		timelineMetaRequested = false;
 		timelineMetaLoading = false;
@@ -796,7 +919,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		narrativeInput = null;
 		narrativeError = "";
 		empty.hidden = true;
-		legend.hidden = false;
 		hideResults();
 		const seed = next.nodes.find((node) => node.isSeed) ?? null;
 		if (seed) {
@@ -806,10 +928,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
+		graphKey.setStats(next.nodes, next.edges);
+		graphKey.paintColor(layoutMode);
 		// setGraph 不再重置布局；把轨道按钮当前选中的布局回灌给画布。
 		map.setLayout(layoutMode);
 		map.setColorMode(defaultColorMode(layoutMode));
-		paintColorLegend(layoutMode);
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years));
 		else chrome?.clearYears();
@@ -855,6 +978,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		if (disposed || graph !== next || token !== generation) return;
 		map.updateGraphData(next.edges);
+		graphKey.setStats(next.nodes, next.edges);
 		if (selectedEdge) showEdgeDetail(selectedEdge);
 		else showDetail(selectedPaper);
 		paintLists();
@@ -881,19 +1005,30 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		hideResults();
 		status.textContent = STAGE_TEXT.resolving;
 		try {
+			const settings = deps.getSettings();
+			const oa = client();
 			const next = await loadNeighborhood(
-				client(),
+				oa,
 				target,
-				deps.getSettings(),
+				settings,
 				(stage) => {
 					if (token !== generation) return;
 					status.textContent = STAGE_TEXT[stage];
 				},
 				reconcileSource(),
-				new CrossrefClient(deps.getJson, deps.getSettings().contactEmail),
+				new CrossrefClient(deps.getJson, settings.contactEmail),
 			);
-			if (token !== generation) return;
+			if (disposed || token !== generation) return;
 			applyGraph(next);
+			const seed = next.nodes.find((node) => node.isSeed);
+			const extras = seed ? graftedFor(settings.graftedBySeed ?? {}, seed.id) : [];
+			if (extras.length === 0) return;
+			status.textContent = "正在恢复深挖并入的文献…";
+			const restored = await restoreGraftedMembers(oa, next, extras, settings);
+			if (disposed || token !== generation || graph !== next) return;
+			const added = restored.nodes.length - next.nodes.length;
+			if (added <= 0) return;
+			applyEdit(restored, `已恢复 ${added} 篇深挖文献`);
 		} catch (error) {
 			if (token !== generation) return;
 			showError(error instanceof Error ? error.message : "构建图谱失败。");
@@ -902,6 +1037,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (token === generation) setBusy(false);
 		}
 	};
+
+	seedItem.addEventListener("click", () => {
+		const paper = graph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
+		if (!paper || paper.isSeed) return;
+		hideNodeMenu();
+		input.value = paper.id;
+		void buildResolved({ kind: "openalex", value: paper.id });
+	});
 
 	const showHits = (hits: SearchHit[]): void => {
 		results.replaceChildren();
@@ -978,9 +1121,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	fit.addEventListener("click", () => map.fit(true));
 
 	const onKey = (event: KeyboardEvent): void => {
-		if (event.key === "Escape") showDetail(null);
+		if (event.key === "Escape") {
+			hideNodeMenu();
+			showDetail(null);
+		}
 	};
 	root.addEventListener("keydown", onKey);
+	const onPointerDown = (event: PointerEvent): void => {
+		if (!nodeMenu.hidden && !nodeMenu.contains(event.target as Node)) hideNodeMenu();
+	};
+	window.addEventListener("pointerdown", onPointerDown);
 	const onSettings = (): void => {
 		settingsRevision++;
 		chrome?.setResearchVisible(llmReady());
@@ -1003,7 +1153,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const observer = observeResponsiveMode(root, () => {
 		map.resize();
-		if (!map.hasAdjusted()) map.fit();
 	});
 	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
@@ -1107,6 +1256,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			stopSidebarResize();
 			observer.disconnect();
 			root.removeEventListener("keydown", onKey);
+			window.removeEventListener("pointerdown", onPointerDown);
 			window.removeEventListener("research-connected-settings", onSettings);
 			window.removeEventListener("research-connected-theme", onTheme);
 			map.destroy();

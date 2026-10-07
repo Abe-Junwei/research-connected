@@ -11,6 +11,16 @@ import {
 	missingReferenceIds,
 } from "../src/citation-timeline";
 import { evidenceText, focusNodes, SIMILARITY_NOT_CITATION } from "../src/graph-filter";
+import { graphKeyStats } from "../src/filter-controls";
+import {
+	chooseExpand,
+	EXPAND_CAP,
+	forgetGrafted,
+	normalizeGrafted,
+	omitNode,
+	refreshDerived,
+	rememberGrafted,
+} from "../src/graph-edit";
 import { buildCommunityRegions } from "../src/community-regions";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation } from "../src/relation";
@@ -78,7 +88,6 @@ function evidenceCopy(): void {
 	assert.match(evidenceText(direct, ada, grace), /来源：OpenAlex 采样/);
 	for (const sources of ["openalex + opencitations", "opencitations", undefined] as const) {
 		const text = sources === undefined ? evidenceText(direct, ada, grace) : evidenceText(direct, ada, grace, sources);
-		assert.match(text, /强度/);
 		assert.match(text, /共享参考文献 0 篇/);
 		assert.match(text, /共被引 0 次/);
 		assert.match(text, /引用列表可能不完整/);
@@ -109,18 +118,15 @@ function badges(): void {
 	assert.deepEqual(edgeCitationPairs(edge({})), []);
 }
 
-/** 到种子的路径高亮：开关的纯函数部分。 */
-function focusPath(): void {
+function focusNeighborhood(): void {
 	const edges = [
 		edge({ source: "A", target: "B", sharedRefs: 4, coupling: 0.3 }),
 		edge({ source: "B", target: "S", sharedRefs: 4, coupling: 0.3 }),
 	];
-	const visible = () => true;
-	const withPath = focusNodes("A", "S", edges, visible, true);
-	assert.ok(withPath?.has("S"), "开关打开时保留到种子的路径");
-	const withoutPath = focusNodes("A", "S", edges, visible, false);
-	assert.equal(withoutPath?.has("S"), false, "开关关闭时只有一跳邻域");
-	assert.ok(withoutPath?.has("B"));
+	const keep = focusNodes("A", edges, () => true);
+	assert.equal(keep?.has("S"), false);
+	assert.ok(keep?.has("A"));
+	assert.ok(keep?.has("B"));
 }
 
 /** Kumu-inspired enclosures remain geometric groupings, never inferred topic labels. */
@@ -393,10 +399,55 @@ function timeline(): void {
 	assert.ok(compact.points.length <= ZONE_LIMIT * 2, "有年份节点分区限量展示");
 }
 
+function keyStats(): void {
+	const stats = graphKeyStats(
+		[paper("S", "seed"), paper("A", "reference"), paper("B", "citation")],
+		[
+			edge({ source: "S", target: "A", direct: "source-cites-target" }),
+			edge({ source: "A", target: "B", coCitedBy: 2 }),
+			edge({ source: "S", target: "B", sharedRefs: 3 }),
+			edge({ source: "A", target: "S" }),
+		],
+	);
+	assert.equal(stats.kinds.direct, 1);
+	assert.equal(stats.kinds.cocitation, 1);
+	assert.equal(stats.kinds.coupling, 1);
+	assert.equal(stats.seeds, 1);
+	assert.ok(stats.groups >= 1);
+}
+
+function graphEdits(): void {
+	const graph = syntheticGraph(24);
+	const seed = graph.nodes.find((node) => node.isSeed);
+	const other = graph.nodes.find((node) => !node.isSeed);
+	assert.ok(seed && other);
+	assert.equal(omitNode(graph, seed.id), null);
+	const gone = omitNode(graph, other.id);
+	assert.ok(gone && !gone.nodes.some((node) => node.id === other.id));
+	const next = refreshDerived(gone);
+	assert.equal(next.edges.some((edge) => edge.source === other.id || edge.target === other.id), false);
+	assert.ok(next.nodes.some((node) => node.isSeed));
+	const hidden = new Set([other.id]);
+	const present = new Set(graph.nodes.map((node) => node.id));
+	const picked = chooseExpand(present, hidden, EXPAND_CAP, {
+		reference: [other, paper("WEXPAND1", "reference")],
+		citation: [paper("WEXPAND2", "citation")],
+	});
+	assert.equal(picked.some((node) => node.id === other.id), false);
+	assert.ok(picked.some((node) => node.id === "WEXPAND1"));
+	assert.ok(picked.some((node) => node.id === "WEXPAND2"));
+	const store = rememberGrafted({}, "w1", ["W2", "w2", "bad"]);
+	assert.deepEqual(store.W1, ["W2"]);
+	assert.deepEqual(normalizeGrafted({ W1: ["W2", 1, "W3"], x: ["W9"] }), { W1: ["W2", "W3"] });
+	assert.deepEqual(forgetGrafted(store, "W1", "W2"), {});
+}
+
 export function verifyUi(): void {
 	evidenceCopy();
 	badges();
-	focusPath();
+	keyStats();
+	graphEdits();
+	focusNeighborhood();
 	communityRegions();
 	compactCommunityLayout();
 	evidenceSidebarSizing();

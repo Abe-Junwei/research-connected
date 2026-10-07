@@ -14,8 +14,7 @@ interface EmbedHost extends Plugin {
 /**
  * Reading view and Live Preview both use this processor. While the cursor is
  * inside the fence, Obsidian shows the source; leaving the block mounts the
- * 3D graph again. The WebGL context is disposed in onunload so the editor
- * does not keep a hidden canvas.
+ * graph again.
  */
 export function registerConnectedPapersEmbed(plugin: EmbedHost): void {
 	const handler = (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext): void => {

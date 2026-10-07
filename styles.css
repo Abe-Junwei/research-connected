@@ -262,21 +262,25 @@
 
 .cpo-stage {
 	position: relative;
+	z-index: 0;
 	flex: 1;
 	min-width: 0;
 	min-height: 0;
-	background: var(--background-primary);
+	background: var(--background-secondary);
 }
 
 .cpo-stage canvas {
 	position: absolute;
-	inset: 0;
+	top: 8px;
+	left: 8px;
 	z-index: 0;
-	width: 100%;
-	height: 100%;
+	/* width/height set in px by SimilarityMap.resize — avoids attribute/CSS aspect stretch */
 	display: block;
 	cursor: grab;
 	touch-action: none;
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
 }
 
 .cpo-stage canvas:focus-visible {
@@ -309,6 +313,256 @@
 	margin: 0;
 	color: #6b7280;
 	line-height: 1.55;
+}
+
+.cpo-node-menu {
+	position: absolute;
+	z-index: 20;
+	min-width: 108px;
+	padding: 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: 0 8px 24px rgba(60, 64, 70, 0.16);
+}
+
+.cpo-node-menu[hidden] {
+	display: none !important;
+}
+
+.cpo-node-menu button {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 6px 10px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-normal);
+	font: inherit;
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.cpo-node-menu button:hover:not(:disabled) {
+	background: var(--background-modifier-hover);
+}
+
+.cpo-node-menu button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.cpo-root .cpo-panel-toggle,
+.cpo-embed .cpo-panel-toggle,
+.cpo-root .cpo-panel-toggle:hover,
+.cpo-embed .cpo-panel-toggle:hover,
+.cpo-root .cpo-panel-toggle:active,
+.cpo-embed .cpo-panel-toggle:active {
+	--cpo-handle-h: 40px;
+	--cpo-handle-w: 12px;
+	position: absolute;
+	z-index: 6;
+	top: 50%;
+	width: var(--cpo-handle-w);
+	height: var(--cpo-handle-h);
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent !important;
+	color: transparent;
+	font: inherit;
+	font-size: 0;
+	line-height: 1;
+	cursor: pointer;
+	transform: translateY(-50%);
+	box-shadow: none !important;
+	filter: none;
+}
+
+/* ::before = 梯形描边；::after = 同色填充 + 箭头 */
+.cpo-panel-toggle::before,
+.cpo-panel-toggle::after {
+	content: "";
+	position: absolute;
+	pointer-events: none;
+}
+
+.cpo-panel-toggle::before {
+	inset: 0;
+	background: var(--background-modifier-border);
+}
+
+.cpo-panel-toggle::after {
+	display: grid;
+	place-items: center;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1;
+}
+
+.cpo-panel-toggle:hover::after,
+.cpo-panel-toggle:active::after {
+	color: var(--text-normal);
+}
+
+.cpo-panel-toggle:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+/* 伸进侧栏 1px；外角用二次曲线收圆 */
+.cpo-panel-toggle.is-left {
+	right: calc(-1 * var(--cpo-handle-w) + 1px);
+	left: auto;
+}
+
+.cpo-panel-toggle.is-left::before {
+	clip-path: path("M 0 0 H 4 Q 12 0 12 10 V 30 Q 12 40 4 40 H 0 Z");
+}
+
+.cpo-panel-toggle.is-left::after {
+	content: "‹";
+	top: 1px;
+	right: 1px;
+	bottom: 1px;
+	left: 0;
+	clip-path: path("M 0 0 H 3 Q 11 0 11 9 V 29 Q 11 38 3 38 H 0 Z");
+}
+
+.cpo-panel-toggle.is-left[aria-expanded="false"]::after {
+	content: "›";
+}
+
+.cpo-panel-toggle.is-right {
+	left: calc(-1 * var(--cpo-handle-w) + 1px);
+	right: auto;
+}
+
+.cpo-panel-toggle.is-right::before {
+	clip-path: path("M 0 10 Q 0 0 8 0 H 12 V 40 H 8 Q 0 40 0 30 Z");
+}
+
+.cpo-panel-toggle.is-right::after {
+	content: "›";
+	top: 1px;
+	left: 1px;
+	bottom: 1px;
+	right: 0;
+	clip-path: path("M 0 9 Q 0 0 7 0 H 11 V 38 H 7 Q 0 38 0 29 Z");
+}
+
+.cpo-panel-toggle.is-right[aria-expanded="false"]::after {
+	content: "‹";
+}
+
+.cpo-body.is-rail-collapsed > .cpo-rail {
+	flex: 0 0 0;
+	width: 0;
+	min-width: 0;
+	max-width: 0;
+	padding-left: 0;
+	padding-right: 0;
+	opacity: 1;
+	border-right-width: 0;
+	background-image: none;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.cpo-body.is-rail-collapsed > .cpo-rail > :not(.cpo-panel-toggle) {
+	visibility: hidden;
+	opacity: 0;
+}
+
+.cpo-body.is-rail-collapsed > .cpo-rail > .cpo-panel-toggle {
+	pointer-events: auto;
+}
+
+/* 收起后整颗手柄落在可视区内，避免被 root overflow 裁掉左侧描边 */
+.cpo-body.is-rail-collapsed > .cpo-rail > .cpo-panel-toggle.is-left {
+	right: auto;
+	left: 0;
+}
+
+.cpo-body.is-rail-collapsed > .cpo-rail > .cpo-panel-toggle.is-left::before {
+	clip-path: path("M 0 9 Q 0 0 6 0 H 6 Q 12 0 12 9 V 31 Q 12 40 6 40 H 6 Q 0 40 0 31 Z");
+}
+
+.cpo-body.is-rail-collapsed > .cpo-rail > .cpo-panel-toggle.is-left::after {
+	left: 1px;
+	clip-path: path("M 0 8 Q 0 0 5 0 H 5 Q 10 0 10 8 V 30 Q 10 38 5 38 H 5 Q 0 38 0 30 Z");
+}
+
+.cpo-root.is-narrow .cpo-body.is-rail-collapsed > .cpo-rail,
+.cpo-embed.is-narrow .cpo-body.is-rail-collapsed > .cpo-rail {
+	width: 100%;
+	max-width: none;
+	height: 0;
+	min-height: 0;
+	max-height: 0;
+	padding: 0;
+	border-bottom-width: 0;
+	overflow: visible;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar {
+	flex: 0 0 0 !important;
+	width: 0 !important;
+	min-width: 0 !important;
+	max-width: 0 !important;
+	opacity: 1;
+	border-left-width: 0;
+	overflow: visible;
+	pointer-events: none;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar::before,
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar::after {
+	content: none;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > :not(.cpo-panel-toggle) {
+	visibility: hidden;
+	opacity: 0;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > .cpo-panel-toggle {
+	pointer-events: auto;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > .cpo-panel-toggle.is-right {
+	left: auto;
+	right: 0;
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > .cpo-panel-toggle.is-right::before {
+	clip-path: path("M 0 9 Q 0 0 6 0 H 6 Q 12 0 12 9 V 31 Q 12 40 6 40 H 6 Q 0 40 0 31 Z");
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > .cpo-panel-toggle.is-right::after {
+	right: 1px;
+	clip-path: path("M 0 8 Q 0 0 5 0 H 5 Q 10 0 10 8 V 30 Q 10 38 5 38 H 5 Q 0 38 0 30 Z");
+}
+
+.cpo-body.is-sidebar-collapsed > .cpo-sidebar-resizer {
+	flex: 0 0 0;
+	width: 0;
+	min-width: 0;
+	opacity: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cpo-rail,
+	.cpo-evidence-sidebar,
+	.cpo-sidebar-resizer {
+		transition: none;
+	}
 }
 
 .cpo-tooltip {
@@ -359,47 +613,187 @@
 .cpo-zoom {
 	position: absolute;
 	z-index: 4;
-	right: 12px;
-	bottom: 12px;
+	top: 14px;
+	right: 18px;
 	display: flex;
+	flex-direction: column;
+	align-items: stretch;
 	gap: 4px;
+	pointer-events: auto;
+}
+
+.cpo-zoom button {
+	width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.cpo-stage .cpo-zoom,
+	.cpo-stage .cpo-source-actions,
+	.cpo-stage .cpo-graph-actions > .cpo-action-link {
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 120ms ease;
+	}
+
+	.cpo-stage:hover .cpo-zoom,
+	.cpo-stage:hover .cpo-source-actions,
+	.cpo-stage:hover .cpo-graph-actions > .cpo-action-link,
+	.cpo-stage:focus-within .cpo-zoom,
+	.cpo-stage:focus-within .cpo-source-actions,
+	.cpo-stage:focus-within .cpo-graph-actions > .cpo-action-link {
+		opacity: 1;
+		pointer-events: auto;
+	}
 }
 
 .cpo-graph-actions {
 	position: absolute;
 	z-index: 4;
-	left: 12px;
-	right: 12px;
-	bottom: 12px;
+	left: 18px;
+	right: 18px;
+	bottom: 18px;
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: 8px;
-	pointer-events: auto;
-	opacity: 0;
-	visibility: hidden;
-	transform: scale(0.94) translateY(2px);
-	transform-origin: bottom center;
-	transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease;
+	pointer-events: none;
 }
 
-.cpo-stage:hover .cpo-graph-actions,
-.cpo-graph-actions:hover,
-.cpo-graph-actions:focus-within {
-	opacity: 1;
-	visibility: visible;
-	transform: scale(1);
+.cpo-graph-key,
+.cpo-source-actions,
+.cpo-graph-actions > .cpo-action-link,
+.cpo-graph-actions .cpo-scrub-row {
+	pointer-events: auto;
+}
+
+.cpo-graph-key {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px 10px;
+	flex: 1 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	padding: 5px 8px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+	box-shadow: 0 1px 4px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.12));
+}
+
+.cpo-graph-key-kinds {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 1px;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.cpo-graph-key-n {
+	margin-left: auto;
+	padding-left: 6px;
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.cpo-graph-key-marks {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.cpo-graph-key-seed,
+.cpo-graph-key-classic {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+.cpo-graph-key-seed i {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 99px;
+	background: var(--text-muted);
+	box-shadow: 0 0 0 1.5px #333943, 0 0 0 3px rgba(51, 57, 67, 0.35);
+}
+
+.cpo-graph-key-classic i {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 99px;
+	background: #7b68ee;
+	animation: cpo-classic-breath 3.5s ease-in-out infinite;
+}
+
+@keyframes cpo-classic-breath {
+	from, to {
+		transform: scale(1);
+		box-shadow: 0 0 6px rgba(123, 104, 238, 0.4), 0 0 14px rgba(123, 104, 238, 0.18);
+	}
+	50% {
+		transform: scale(1.03);
+		box-shadow: 0 0 8px rgba(123, 104, 238, 0.7), 0 0 18px rgba(123, 104, 238, 0.35), 0 0 28px rgba(123, 104, 238, 0.14);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cpo-graph-key-classic i {
+		animation: none;
+		opacity: 1;
+	}
+}
+
+.cpo-graph-key-color {
+	display: inline-flex;
+	align-items: center;
+	width: 100%;
+	gap: 5px;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+.cpo-graph-key-color[hidden] {
+	display: none !important;
+}
+
+.cpo-graph-key-dots {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+}
+
+.cpo-graph-key-dots i {
+	width: 7px;
+	height: 7px;
+	border-radius: 99px;
+	margin-left: -2px;
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-primary) 80%, transparent);
+}
+
+.cpo-graph-key-dots i:first-child {
+	margin-left: 0;
+}
+
+.cpo-graph-actions .cpo-scrub-row {
+	flex: 1 1 100%;
+	order: 10;
+	margin: 0;
+	gap: 8px;
 }
 
 .cpo-source-actions {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-}
-
-.cpo-graph-actions .cpo-zoom {
-	position: static;
-	right: auto;
-	bottom: auto;
+	flex: none;
 }
 
 .cpo-action-link[hidden] {
@@ -422,11 +816,6 @@
 
 .cpo-action-link-right {
 	margin-left: auto;
-}
-
-/* The embed keeps a resize grip at the graph's bottom-right corner. */
-.cpo-embed .cpo-zoom {
-	position: static;
 }
 
 .cpo-root button.cpo-action-link,
@@ -456,16 +845,57 @@
 }
 
 .cpo-rail {
+	--cpo-handle-h: 40px;
+	position: relative;
+	z-index: 2;
 	flex: none;
-	width: 64px;
+	width: 128px;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 6px 4px;
-	overflow: auto;
-	background: var(--background-secondary);
-	border-right: 1px solid var(--background-modifier-border);
+	gap: 12px;
+	padding: 12px 10px;
+	overflow: visible;
+	background-color: var(--background-secondary);
+	/* 描边上下两段，中间留给手柄，避免手柄压边叠色 */
+	border-right: none;
+	background-image:
+		linear-gradient(var(--background-modifier-border), var(--background-modifier-border)),
+		linear-gradient(var(--background-modifier-border), var(--background-modifier-border));
+	/* 缺口略小于手柄，上下描边各伸进 1px，避免手柄下沿露侧栏色 */
+	background-size: 1px calc(50% - (var(--cpo-handle-h) / 2) + 1px), 1px calc(50% - (var(--cpo-handle-h) / 2) + 1px);
+	background-position: right top, right bottom;
+	background-repeat: no-repeat;
+	transition:
+		width 0.22s ease,
+		min-width 0.22s ease,
+		max-width 0.22s ease,
+		height 0.22s ease,
+		max-height 0.22s ease,
+		padding 0.22s ease,
+		opacity 0.18s ease,
+		border-right-width 0.22s ease,
+		border-bottom-width 0.22s ease,
+		flex-basis 0.22s ease;
+}
+
+.cpo-rail .cpo-graph-key {
+	flex: none;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 12px;
+	margin-top: auto;
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.cpo-rail .cpo-graph-key-kinds {
+	flex-direction: column;
+	align-items: stretch;
+	overflow: visible;
+	gap: 6px;
 }
 
 .cpo-rail .cpo-tool-row {
@@ -473,11 +903,21 @@
 	align-items: stretch;
 }
 
-.cpo-root .cpo-rail button,
-.cpo-embed .cpo-rail button {
+.cpo-rail .cpo-graph-key button.cpo-legend-kind {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	width: 100%;
+	white-space: normal;
+	text-align: left;
+	padding: 6px 4px;
+}
+
+.cpo-root .cpo-rail button:not(.cpo-panel-toggle),
+.cpo-embed .cpo-rail button:not(.cpo-panel-toggle) {
 	width: 100%;
 	margin: 0;
-	padding: 5px 2px;
+	padding: 7px 4px;
 	border: none;
 	border-radius: 6px;
 	background: transparent;
@@ -486,11 +926,6 @@
 	font-size: 11px;
 	line-height: 1.2;
 	cursor: pointer;
-}
-
-.cpo-rail button.is-on,
-.cpo-rail button.cpo-tool.is-on {
-	background: var(--background-modifier-hover);
 }
 
 .cpo-drawer {
@@ -518,7 +953,6 @@
 	margin: 0 0 10px;
 }
 
-/* 图例组（边型/强度/颜色语义）与下方操作组之间用分隔线分区。 */
 .cpo-drawer .cpo-legend {
 	margin: 0 0 10px;
 	padding-bottom: 10px;
@@ -739,10 +1173,36 @@
 	flex-direction: row;
 }
 
-.cpo-root.is-narrow .cpo-rail button,
-.cpo-embed.is-narrow .cpo-rail button {
+.cpo-root.is-narrow .cpo-rail button:not(.cpo-panel-toggle),
+.cpo-embed.is-narrow .cpo-rail button:not(.cpo-panel-toggle) {
 	width: auto;
 	padding: 4px 8px;
+}
+
+.cpo-root.is-narrow .cpo-rail .cpo-graph-key,
+.cpo-embed.is-narrow .cpo-rail .cpo-graph-key {
+	flex-direction: row;
+	flex: 1;
+	margin-top: 0;
+	padding: 0;
+	align-items: center;
+}
+
+.cpo-root.is-narrow .cpo-rail .cpo-graph-key-kinds,
+.cpo-embed.is-narrow .cpo-rail .cpo-graph-key-kinds {
+	flex-direction: row;
+}
+
+.cpo-root.is-narrow .cpo-rail .cpo-graph-key-marks,
+.cpo-embed.is-narrow .cpo-rail .cpo-graph-key-marks,
+.cpo-root.is-narrow .cpo-rail .cpo-graph-key-color,
+.cpo-embed.is-narrow .cpo-rail .cpo-graph-key-color {
+	padding-left: 8px;
+}
+
+.cpo-root.is-narrow .cpo-rail .cpo-graph-key-color,
+.cpo-embed.is-narrow .cpo-rail .cpo-graph-key-color {
+	flex-direction: row;
 }
 
 .cpo-results[hidden],
@@ -750,7 +1210,8 @@
 .cpo-empty[hidden],
 .cpo-tooltip[hidden],
 .cpo-legend[hidden],
-.cpo-detail[hidden] {
+.cpo-detail[hidden],
+.cpo-scrub-row[hidden] {
 	display: none !important;
 }
 
@@ -922,33 +1383,45 @@
 }
 
 .cpo-embed-legend,
-.cpo-drawer-legend {
+.cpo-drawer-legend,
+.cpo-graph-key-kinds {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px 10px;
 	margin: 0 0 8px;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 11px;
 }
 
+.cpo-graph-key-kinds {
+	flex-wrap: nowrap;
+	gap: 1px;
+	margin: 0;
+}
+
 .cpo-embed-legend i[data-kind],
-.cpo-drawer-legend i[data-kind] {
+.cpo-drawer-legend i[data-kind],
+.cpo-graph-key i[data-kind] {
 	display: inline-block;
-	width: 16px;
-	height: 3px;
-	margin-right: 5px;
+	width: 12px;
+	height: 2px;
+	margin-right: 4px;
 	border-radius: 2px;
 	vertical-align: middle;
 }
 
 .cpo-embed-legend i[data-kind="direct"],
-.cpo-drawer-legend i[data-kind="direct"] { background: #d4a24a; }
+.cpo-drawer-legend i[data-kind="direct"],
+.cpo-graph-key i[data-kind="direct"] { background: #d4a24a; }
 .cpo-embed-legend i[data-kind="cocitation"],
-.cpo-drawer-legend i[data-kind="cocitation"] { background: #2bb39a; }
+.cpo-drawer-legend i[data-kind="cocitation"],
+.cpo-graph-key i[data-kind="cocitation"] { background: #2bb39a; }
 .cpo-embed-legend i[data-kind="coupling"],
-.cpo-drawer-legend i[data-kind="coupling"] { background: #6f7ee0; }
+.cpo-drawer-legend i[data-kind="coupling"],
+.cpo-graph-key i[data-kind="coupling"] { background: #6f7ee0; }
 .cpo-embed-legend i[data-kind="weak"],
-.cpo-drawer-legend i[data-kind="weak"] { background: #7b8499; }
+.cpo-drawer-legend i[data-kind="weak"],
+.cpo-graph-key i[data-kind="weak"] { background: #7b8499; }
 
 .cpo-embed-labels {
 	position: absolute;
@@ -998,52 +1471,27 @@
 }
 
 .cpo-embed button.cpo-legend-kind,
-.cpo-drawer button.cpo-legend-kind {
-	padding: 2px 6px;
+.cpo-drawer button.cpo-legend-kind,
+.cpo-graph-key button.cpo-legend-kind {
+	display: inline-flex;
+	align-items: center;
+	width: 100%;
+	padding: 2px 5px;
 	border: none;
 	border-radius: 6px;
 	background: transparent;
 	color: inherit;
 	font: inherit;
 	font-size: 11px;
+	line-height: 1.2;
 	cursor: pointer;
+	white-space: nowrap;
 }
 
 .cpo-embed button.cpo-legend-kind:not(.is-on),
-.cpo-drawer button.cpo-legend-kind:not(.is-on) {
+.cpo-drawer button.cpo-legend-kind:not(.is-on),
+.cpo-graph-key button.cpo-legend-kind:not(.is-on) {
 	opacity: 0.35;
-}
-
-/* 路径高亮开关：与图例色点区分的小 chip，面板抽屉与嵌入共用。 */
-button.cpo-path-toggle {
-	display: inline-flex;
-	align-items: center;
-	align-self: flex-start;
-	padding: 3px 10px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	background: var(--background-primary);
-	color: var(--text-muted);
-	font: inherit;
-	font-size: 11px;
-	cursor: pointer;
-	transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
-}
-
-.cpo-drawer > button.cpo-path-toggle {
-	margin: 0 0 10px;
-}
-
-button.cpo-path-toggle.is-on {
-	border-color: var(--cpo-accent);
-	background: rgba(179, 139, 77, 0.12);
-	color: var(--cpo-accent);
-}
-
-.cpo-tier-key {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
 }
 
 .cpo-badges {
@@ -1074,20 +1522,6 @@ button.cpo-path-toggle.is-on {
 	background: rgba(212, 162, 74, 0.15);
 	color: #a67c2e;
 }
-
-.cpo-tier {
-	display: inline-block;
-	width: 18px;
-	border-radius: 2px;
-	background: #9aa0a6;
-}
-
-.cpo-embed-legend i.cpo-tier-weak,
-.cpo-drawer-legend i.cpo-tier-weak { height: 2px; }
-.cpo-embed-legend i.cpo-tier-mid,
-.cpo-drawer-legend i.cpo-tier-mid { height: 4px; }
-.cpo-embed-legend i.cpo-tier-strong,
-.cpo-drawer-legend i.cpo-tier-strong { height: 7px; }
 
 .cpo-root .cpo-evidence {
 	white-space: pre-line;
@@ -1190,8 +1624,9 @@ button.cpo-path-toggle.is-on {
 	flex-wrap: wrap;
 }
 
-.cpo-drawer-tools .cpo-scrub-row input[type="range"] {
-	flex-basis: 100%;
+.cpo-graph-actions .cpo-scrub-row input[type="range"] {
+	flex: 1 1 140px;
+	min-width: 96px;
 }
 
 .cpo-actions-bar .cpo-tool-row {
@@ -1445,6 +1880,9 @@ button.cpo-agg-item {
    belongs to the evidence rail instead of spanning the canvas. */
 .cpo-evidence-sidebar {
 	--cpo-sidebar-width: 320px;
+	--cpo-handle-h: 40px;
+	position: relative;
+	z-index: 2;
 	flex: 0 0 var(--cpo-sidebar-width);
 	width: var(--cpo-sidebar-width);
 	min-width: 260px;
@@ -1452,9 +1890,38 @@ button.cpo-agg-item {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
-	background: var(--background-secondary);
-	border-left: 1px solid var(--background-modifier-border);
+	overflow: visible;
+	background-color: var(--background-secondary);
+	border-left: none;
+	transition:
+		flex-basis 0.22s ease,
+		width 0.22s ease,
+		min-width 0.22s ease,
+		max-width 0.22s ease,
+		opacity 0.18s ease,
+		border-left-width 0.22s ease;
+}
+
+/* 伪元素描边叠在子元素之上；中间缺口接手柄 */
+.cpo-evidence-sidebar::before,
+.cpo-evidence-sidebar::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	width: 1px;
+	background: var(--background-modifier-border);
+	z-index: 4;
+	pointer-events: none;
+}
+
+.cpo-evidence-sidebar::before {
+	top: 0;
+	height: calc(50% - (var(--cpo-handle-h) / 2) + 1px);
+}
+
+.cpo-evidence-sidebar::after {
+	bottom: 0;
+	height: calc(50% - (var(--cpo-handle-h) / 2) + 1px);
 }
 
 .cpo-evidence-header {
@@ -1485,41 +1952,27 @@ button.cpo-agg-item {
 .cpo-sidebar-resizer {
 	position: relative;
 	z-index: 5;
-	flex: 0 0 6px;
-	width: 6px;
+	/* 不占缝：命中区用负边距，避免 stage|空隙|侧栏 多出一条带 */
+	flex: 0 0 0;
+	width: 0;
 	min-height: 0;
+	margin: 0 -4px;
+	padding: 0 4px;
 	cursor: col-resize;
 	touch-action: none;
 	background: transparent;
+	transition: opacity 0.18s ease;
 }
 
 .cpo-sidebar-resizer::after {
-	content: "";
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	left: 2px;
-	width: 1px;
-	background: rgba(60, 64, 70, 0.12);
-	transition: width 120ms ease, background 120ms ease;
-}
-
-.cpo-sidebar-resizer:hover::after,
-.cpo-sidebar-resizer:focus-visible::after,
-.cpo-sidebar-resizer.is-dragging::after {
-	left: 1px;
-	width: 3px;
-	background: rgba(166, 124, 46, 0.55);
-}
-
-.cpo-sidebar-resizer:focus-visible {
-	outline: none;
+	content: none;
 }
 
 .cpo-evidence-sidebar > .cpo-sheet {
 	flex: 1 1 auto;
 	max-height: none;
 	min-height: 0;
+	overflow: hidden;
 	background: var(--background-primary);
 	border-top: none;
 }
@@ -2006,7 +2459,8 @@ button.cpo-agg-item {
 	--cpo-sidebar-width: var(--rc-sidebar-width);
 	min-width: var(--rc-sidebar-min);
 	max-width: var(--rc-sidebar-max);
-	background: var(--rc-surface-muted);
+	/* 用 color 勿用 background 简写，否则会清掉左侧描边用的 background-image */
+	background-color: var(--rc-surface-muted);
 	border-color: var(--rc-border);
 }
 

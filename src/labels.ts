@@ -1,6 +1,6 @@
 import type { PaperNode } from "./types";
 
-/** What the 3D graph prints next to each node. */
+/** Text shown next to each graph node. */
 export type LabelMode = "author-year" | "title" | "both" | "off";
 
 export function shortAuthor(authors: string): string {

@@ -20,9 +20,9 @@ export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横向按年份排列，纵向为对数被引量；未知年份在左侧。",
-	radial: "种子居中，越近越相似；角度仅用于排开节点。",
-	force2d: "平面力导向：种子居中；同组聚在一起并上色，组和组分开。边越强越近。",
+	temporal: "横轴年份，纵轴被引。",
+	radial: "越近越相似。",
+	force2d: "同组相近，边强则近。",
 };
 
 export interface PlacedNode {
