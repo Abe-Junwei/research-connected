@@ -69,6 +69,16 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+.cpo-project-group {
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	flex: 0 1 auto;
+	gap: 6px;
+}
+
+.cpo-view-group { margin-left: auto; }
+
 .cpo-project-label {
 	margin-inline: 3px 1px;
 	color: var(--text-faint);
@@ -281,7 +291,7 @@
 .cpo-statusbar .cpo-status { flex: 1; }
 .cpo-statusbar .cpo-undo { flex: none; padding: 3px 8px; font-size: 11px; }
 .cpo-statusbar .cpo-undo[hidden] { display: none !important; }
-.cpo-statusbar .cpo-diagnose { flex: none; padding: 3px 8px; font-size: 11px; }
+.cpo-evidence-header .cpo-diagnose { flex: none; margin-top: 7px; padding: 3px 8px; font-size: 11px; }
 
 .cpo-diagnose-form { display: flex; gap: 7px; margin: 10px 0; }
 .cpo-diagnose-form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
@@ -862,6 +872,13 @@
 	flex: none;
 }
 
+.cpo-detail-source-actions {
+	margin: 0 0 8px;
+	justify-content: flex-start;
+}
+.cpo-detail-source-actions button { flex: none; }
+.cpo-rail-scrub .cpo-scrub-row[hidden] { display: none !important; }
+
 .cpo-action-link[hidden] {
 	display: none !important;
 }
@@ -988,6 +1005,20 @@
 	flex-direction: column;
 	align-items: stretch;
 }
+
+.cpo-rail-scrub { flex: none; min-width: 0; }
+.cpo-rail .cpo-scrub-row {
+	min-height: 0;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 5px;
+	padding: 7px 6px;
+	border: 0;
+	box-shadow: none;
+	background: transparent;
+}
+.cpo-rail .cpo-scrub-row input[type="range"] { width: 100%; min-width: 0; flex: none; }
+.cpo-rail .cpo-scrub-row .cpo-scrub-readout { margin: 0; text-align: center; }
 
 .cpo-rail .cpo-graph-key button.cpo-legend-kind {
 	display: flex;
@@ -1267,6 +1298,13 @@
 .cpo-embed.is-narrow .cpo-rail .cpo-tool-row {
 	flex-direction: row;
 }
+
+.cpo-root.is-narrow .cpo-rail-scrub,
+.cpo-embed.is-narrow .cpo-rail-scrub { flex: 1 1 150px; }
+.cpo-root.is-narrow .cpo-rail .cpo-scrub-row,
+.cpo-embed.is-narrow .cpo-rail .cpo-scrub-row { flex-direction: row; align-items: center; }
+.cpo-root.is-narrow .cpo-rail .cpo-scrub-row .cpo-scrub-readout,
+.cpo-embed.is-narrow .cpo-rail .cpo-scrub-row .cpo-scrub-readout { white-space: nowrap; }
 
 .cpo-root.is-narrow .cpo-rail button:not(.cpo-panel-toggle),
 .cpo-embed.is-narrow .cpo-rail button:not(.cpo-panel-toggle) {
@@ -2803,6 +2841,11 @@ button.cpo-agg-item {
 
 .cpo-root .cpo-body.is-rail-collapsed > .cpo-rail > .cpo-graph-key,
 .cpo-embed .cpo-body.is-rail-collapsed > .cpo-rail > .cpo-graph-key {
+	display: none;
+}
+
+.cpo-root .cpo-body.is-rail-collapsed > .cpo-rail > .cpo-rail-scrub,
+.cpo-embed .cpo-body.is-rail-collapsed > .cpo-rail > .cpo-rail-scrub {
 	display: none;
 }
 

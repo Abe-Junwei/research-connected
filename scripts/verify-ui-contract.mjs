@@ -11,7 +11,7 @@ for (const token of ["surface", "canvas", "ink", "muted", "border", "accent", "f
 }
 assert.match(css, /:focus-visible/, "shared keyboard focus contract is required");
 assert.match(css, /\.cpo-stage:hover \.cpo-zoom/, "zoom chrome appears on graph hover");
-assert.match(css, /\.cpo-stage:hover \.cpo-source-actions/, "OpenAlex chrome appears on graph hover");
+assert.match(css, /\.cpo-detail-source-actions/, "source links sit beside the selected paper");
 assert.match(css, /\.cpo-actions-bar \.cpo-tool-row,[\s\S]*?flex-wrap: wrap;/, "actions must wrap instead of overflow");
 assert.doesNotMatch(css.slice(css.lastIndexOf("Shared Research Connected surface contract")), /overflow-x:\s*auto/, "final surface contract must not restore hidden horizontal actions");
 assert.match(responsive, /NARROW_SURFACE_WIDTH = 780/, "one responsive breakpoint must drive both surfaces");
@@ -24,7 +24,10 @@ assert.match(embed, /mountGraphKey\(rail/, "embed legend sits in the left rail")
 	assert.doesNotMatch(app, /buildPathToggle/, "pane has no path-to-seed toggle");
 	assert.doesNotMatch(embed, /buildPathToggle/, "embed has no path-to-seed toggle");
 	assert.doesNotMatch(css, /cpo-path-toggle/, "path toggle styles are gone");
-assert.match(embed, /scrubHost:\s*graphActions/, "embed year play sits on the graph bar");
+assert.match(app, /scrubHost,/, "pane year play sits in the left rail");
+assert.match(embed, /scrubHost,/, "embed year play sits in the left rail");
+assert.match(embed, /诊断候选/, "embed exposes candidate diagnosis");
+assert.match(app, /cpo-evidence-header[\s\S]*?诊断候选/, "pane exposes candidate diagnosis in evidence header");
 assert.doesNotMatch(app, /cpo-rail-filter/, "pane has no filter tab");
 assert.doesNotMatch(embed, /cpo-rail-filter/, "embed has no filter tab");
 assert.match(css, /\.cpo-graph-key\b/, "graph key strip is styled");

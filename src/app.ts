@@ -108,28 +108,31 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const submit = el(form, "button", "cpo-primary", "构建") as HTMLButtonElement;
 	submit.type = "submit";
 	const projectTools = el(bar, "div", "cpo-project-tools");
-	el(projectTools, "span", "cpo-project-label", "项目");
-	const projectSelect = el(projectTools, "select", "cpo-project-select") as HTMLSelectElement;
+	const projectGroup = el(projectTools, "div", "cpo-project-group");
+	el(projectGroup, "span", "cpo-project-label", "项目");
+	const projectSelect = el(projectGroup, "select", "cpo-project-select") as HTMLSelectElement;
 	projectSelect.setAttribute("aria-label", "研究项目");
 	projectSelect.title = "切换研究项目";
-	el(projectTools, "span", "cpo-project-label", "视图");
-	const viewSelect = el(projectTools, "select", "cpo-project-select cpo-view-select") as HTMLSelectElement;
+	const viewGroup = el(projectTools, "div", "cpo-project-group cpo-view-group");
+	el(viewGroup, "span", "cpo-project-label", "视图");
+	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select") as HTMLSelectElement;
 	viewSelect.setAttribute("aria-label", "保存的视图");
 	viewSelect.title = "恢复保存的视图";
 	viewSelect.disabled = true;
-	const viewNameInput = el(projectTools, "input", "cpo-project-name-input") as HTMLInputElement;
+	const viewNameInput = el(viewGroup, "input", "cpo-project-name-input") as HTMLInputElement;
 	viewNameInput.placeholder = "新视图名称";
 	viewNameInput.setAttribute("aria-label", "新视图名称");
-	const saveViewButton = el(projectTools, "button", "cpo-ghost", "保存视图") as HTMLButtonElement;
+	const saveViewButton = el(viewGroup, "button", "cpo-ghost", "保存视图") as HTMLButtonElement;
 	saveViewButton.type = "button";
 	saveViewButton.disabled = true;
-	const renameProjectInput = el(projectTools, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
+	const renameProjectInput = el(projectGroup, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
 	renameProjectInput.placeholder = "项目新名称";
 	renameProjectInput.setAttribute("aria-label", "项目新名称");
 	renameProjectInput.hidden = true;
-	const renameProjectButton = el(projectTools, "button", "cpo-ghost", "重命名") as HTMLButtonElement;
+	const renameProjectButton = el(projectGroup, "button", "cpo-ghost", "重命名") as HTMLButtonElement;
 	renameProjectButton.type = "button";
 	renameProjectButton.disabled = true;
+	projectTools.append(projectGroup, viewGroup);
 
 	const status = document.createElement("p");
 	status.className = "cpo-status";
@@ -156,16 +159,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	undoButton.type = "button";
 	undoButton.hidden = true;
 	undoButton.disabled = true;
-	const diagnoseButton = el(statusBar, "button", "cpo-text-btn cpo-diagnose", "诊断候选") as HTMLButtonElement;
-	diagnoseButton.type = "button";
-	diagnoseButton.disabled = true;
 	const rail = el(body, "aside", "cpo-rail");
 	const layoutHost = el(rail, "div", "cpo-rail-layouts");
+	const scrubHost = el(rail, "div", "cpo-rail-scrub");
 	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›") as HTMLButtonElement;
 	railToggle.type = "button";
 	railToggle.setAttribute("aria-label", "展开左侧栏");
 	railToggle.setAttribute("aria-expanded", "false");
-
 	const stage = el(body, "div", "cpo-stage");
 	const canvas = el(stage, "canvas");
 	canvas.setAttribute("aria-label", "论文相似度图谱");
@@ -191,9 +191,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		item.setAttribute("role", "menuitem");
 	}
 
-	const graphActions = el(stage, "div", "cpo-graph-actions");
-	const graphActionSpacer = el(graphActions, "span", "cpo-graph-action-spacer");
-	const sourceActions = el(graphActions, "div", "cpo-source-actions");
+	const sourceActions = document.createElement("div");
+	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
 	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
 	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
 	const zoom = el(stage, "div", "cpo-zoom");
@@ -219,10 +218,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
 	el(evidenceHeader, "h2", undefined, "论文与关系证据");
 	el(evidenceHeader, "p", undefined, "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。");
+	const diagnoseButton = el(evidenceHeader, "button", "cpo-text-btn cpo-diagnose", "诊断候选") as HTMLButtonElement;
+	diagnoseButton.type = "button";
+	diagnoseButton.disabled = true;
 	const sheetHost = el(sidebar, "section");
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
 	const detail = el(sheet.body, "div", "cpo-detail");
+	detail.append(sourceActions);
 	const listPanel = el(sheet.body, "div", "cpo-agg");
 	listPanel.hidden = true;
 	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
@@ -508,7 +511,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		stagingButton: Boolean(deps.stagePaper),
 		actionsHost: actionsBar,
 		layoutHost,
-		scrubHost: graphActions,
+		scrubHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(mode);
@@ -546,6 +549,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedEdge = null;
 		map.setSelected(null);
 		detail.replaceChildren();
+		detail.append(sourceActions);
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary("候选诊断", "当前图谱的采样记录");
@@ -616,6 +620,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedPaper = paper;
 		selectedEdge = null;
 		detail.replaceChildren();
+		detail.append(sourceActions);
 		if (!paper || !graph) {
 			map.setSelected(null);
 			sheet.setSummary("点选节点查看论文", "");
@@ -744,7 +749,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!a || !b) return;
 		openAlexAction.hidden = true;
 		doiAction.hidden = true;
-		detail.replaceChildren(); detail.hidden = false; sheet.setExpanded(true);
+		detail.replaceChildren(); detail.append(sourceActions); detail.hidden = false; sheet.setExpanded(true);
 		sheet.setSummary("引用证据", "");
 		paintRelationSection(detail, edge, a, b, { sources: edgeSources(edge), getEvidence });
 		paintJumpStrip(detail, a, (target) => showDetail(target));
@@ -1361,6 +1366,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedPaper = null;
 		selectedEdge = null;
 		detail.replaceChildren();
+		detail.append(sourceActions);
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		const path = pathResult.paths[pathIndex];

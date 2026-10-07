@@ -270,6 +270,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 				layoutHost.replaceChildren();
 				layoutHost.classList.remove("cpo-rail-layouts");
 			}
+			if (scrubHost) scrubHost.replaceChildren();
 		},
 	};
 }

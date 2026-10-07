@@ -9,7 +9,7 @@ import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, 
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
-import { loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
+import { diagnoseCandidate, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
@@ -88,13 +88,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const rail = document.createElement("aside");
 	rail.className = "cpo-rail";
 	const layoutHost = document.createElement("div");
+	layoutHost.className = "cpo-rail-layouts";
+	const scrubHost = document.createElement("div");
+	scrubHost.className = "cpo-rail-scrub";
 	const railToggle = document.createElement("button");
 	railToggle.type = "button";
 	railToggle.className = "cpo-panel-toggle is-left";
 	railToggle.textContent = "›";
 	railToggle.setAttribute("aria-label", "展开左侧栏");
 	railToggle.setAttribute("aria-expanded", "false");
-	rail.append(layoutHost, railToggle);
+	rail.append(layoutHost, scrubHost, railToggle);
 
 	const stage = document.createElement("div");
 	stage.className = "cpo-stage";
@@ -114,7 +117,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const graphActions = document.createElement("div");
 	graphActions.className = "cpo-graph-actions";
 	const sourceActions = document.createElement("div");
-	sourceActions.className = "cpo-source-actions";
+	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
 	const openAlexAction = document.createElement("button");
 	openAlexAction.className = "cpo-action-link";
 	openAlexAction.textContent = "OpenAlex ↗";
@@ -131,7 +134,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sourceActions.append(openAlexAction, doiAction);
 	const graphActionSpacer = document.createElement("span");
 	graphActionSpacer.className = "cpo-graph-action-spacer";
-	graphActions.append(graphActionSpacer, sourceActions, openGraphAction);
+	graphActions.append(graphActionSpacer, openGraphAction);
 	stage.append(message, tooltip, graphActions, zoom);
 	body.append(rail, stage);
 	const sidebarResize = document.createElement("div");
@@ -153,6 +156,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const evidenceHint = document.createElement("p");
 	evidenceHint.textContent = "点选节点查看来源、关系与摘要；拖动左侧边缘调整宽度。";
 	evidenceHeader.append(evidenceTitle, evidenceHint);
+	const diagnoseButton = document.createElement("button");
+	diagnoseButton.type = "button";
+	diagnoseButton.className = "cpo-text-btn cpo-diagnose";
+	diagnoseButton.textContent = "诊断候选";
+	diagnoseButton.disabled = true;
+	evidenceHeader.append(diagnoseButton);
 	sidebar.append(evidenceHeader);
 	const sheetHost = document.createElement("section");
 	sidebar.append(sheetHost);
@@ -160,6 +169,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sheet.setExpanded(true);
 	const detail = document.createElement("div");
 	detail.className = "cpo-detail";
+	detail.append(sourceActions);
 	const listPanel = document.createElement("div");
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
@@ -258,7 +268,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		noteButton: Boolean(deps.createNote),
 		actionsHost: actionsBar,
 		layoutHost,
-		scrubHost: graphActions,
+		scrubHost,
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(layoutMode);
@@ -360,6 +370,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		openAlexAction.hidden = true;
 		doiAction.hidden = true;
 		detail.replaceChildren();
+		detail.append(sourceActions);
 		const empty = document.createElement("p");
 		empty.className = "cpo-side-tip";
 		empty.textContent = "点选节点查看题名、年份、作者和证据。";
@@ -381,6 +392,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		doiAction.hidden = !doi;
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 		detail.replaceChildren();
+		detail.append(sourceActions);
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -448,6 +460,57 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintAbstractCard(detail, paper, embedAbstractText);
 	};
 
+	diagnoseButton.addEventListener("click", () => {
+		if (!currentGraph) return;
+		tab = "graph";
+		chrome?.setTab("graph");
+		paintLists();
+		selected = null;
+		map.setSelected(null);
+		detail.replaceChildren(sourceActions);
+		detail.hidden = false;
+		sheet.setExpanded(true);
+		sheet.setSummary("候选诊断", "当前图谱的采样记录");
+		const tip = document.createElement("p");
+		tip.className = "cpo-side-tip";
+		tip.textContent = "输入 DOI 或 OpenAlex ID，查看它在本轮采样中的状态。";
+		const form = document.createElement("form");
+		form.className = "cpo-diagnose-form";
+		const query = document.createElement("input");
+		query.placeholder = "DOI 或 OpenAlex ID";
+		query.setAttribute("aria-label", "要诊断的论文");
+		const submit = document.createElement("button");
+		submit.type = "submit";
+		submit.className = "cpo-primary";
+		submit.textContent = "查询";
+		form.append(query, submit);
+		const result = document.createElement("div");
+		result.className = "cpo-diagnose-result";
+		detail.append(tip, form, result);
+		form.addEventListener("submit", (event) => {
+			event.preventDefault();
+			if (!currentGraph) return;
+			const finding = diagnoseCandidate(currentGraph, query.value, new Set(), viewFilter.scrubYear);
+			result.replaceChildren();
+			const title = document.createElement("strong");
+			title.textContent = finding.title;
+			const text = document.createElement("p");
+			text.className = "cpo-side-tip";
+			text.textContent = finding.detail;
+			result.append(title, text);
+			const paper = finding.paperId && currentGraph.nodes.find((item) => item.id === finding.paperId);
+			if (paper) {
+				const open = document.createElement("button");
+				open.type = "button";
+				open.className = "cpo-text-btn";
+				open.textContent = "查看论文";
+				open.onclick = () => { if (currentGraph) showDetail(paper, currentGraph, null); };
+				result.append(open);
+			}
+		});
+		query.focus();
+	});
+
 	const snapshotView = (): void => {
 		rememberViewState(stateKey, { filter: viewFilter, layout: layoutMode });
 	};
@@ -469,6 +532,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		snapshotView();
 		message.hidden = true;
 		currentGraph = graph;
+		diagnoseButton.disabled = false;
 		map.setGraph(graph.nodes, graph.edges, graph.seedScore);
 		graphKey.setStats(graph.nodes, graph.edges);
 		graphKey.paintColor(layoutMode);
