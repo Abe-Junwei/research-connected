@@ -2535,19 +2535,23 @@ button.cpo-agg-item {
 }
 .cpo-root .cpo-detail button.cpo-paper-stage,
 .cpo-embed .cpo-detail button.cpo-paper-stage {
+	flex: 0 0 116px;
+	width: 116px;
+	max-width: 116px;
 	min-width: 116px;
 	height: 30px;
-	border: 1px solid color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 28%, var(--background-modifier-border));
-	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 7%, var(--background-primary));
-	color: var(--text-accent, var(--cpo-accent));
+	padding: 0 7px;
+	border: 1px solid color-mix(in srgb, #a67c2e 30%, var(--background-modifier-border));
+	background: color-mix(in srgb, #a67c2e 8%, var(--background-primary));
+	color: #a67c2e;
 	font-size: 12px;
 }
 .cpo-root .cpo-detail button.cpo-paper-action:hover,
 .cpo-embed .cpo-detail button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .cpo-root .cpo-detail button.cpo-paper-stage:hover,
 .cpo-embed .cpo-detail button.cpo-paper-stage:hover {
-	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 12%, var(--background-primary));
-	color: var(--text-accent, var(--cpo-accent));
+	background: color-mix(in srgb, #a67c2e 12%, var(--background-primary));
+	color: #a67c2e;
 }
 .cpo-paper-action .cpo-icon-glyph { width: 13px; height: 13px; flex: none; }
 .cpo-paper-action-error { flex-basis: 100%; color: var(--text-error, #b42318); font-size: 11px; }

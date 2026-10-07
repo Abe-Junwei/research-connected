@@ -83,12 +83,14 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
 	const authors = el(card, "div", "cpo-paper-authors");
 	const authorNames = paper.authorList.length ? paper.authorList : paper.authors ? [paper.authors] : [];
-	if (authorNames[0]) {
-		const authorText = authorNames.length > 1 ? `${authorNames[0]} 等 ${authorNames.length} 位` : authorNames[0];
-		const author = el(authors, "span", undefined, authorText);
+	if (authorNames.length) {
+		const author = el(authors, "span", undefined, authorNames.join(", "));
 		author.title = authorNames.join(", ");
 	}
-	if (paper.year !== null) el(authors, "span", "cpo-paper-year", String(paper.year));
+	if (paper.year !== null) {
+		if (authorNames.length) el(authors, "span", "cpo-paper-separator", "·");
+		el(authors, "span", "cpo-paper-year", String(paper.year));
+	}
 	const publication = [
 		paper.venue,
 		paper.bibliography?.volume ? `${paper.bibliography.volume}${paper.bibliography.issue ? `(${paper.bibliography.issue})` : ""}` : null,
