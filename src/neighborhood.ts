@@ -4,7 +4,7 @@ import {
 	type RawWork,
 	type SampledWorks,
 } from "./openalex";
-import { normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
+import { classifyQuery, normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
@@ -17,11 +17,18 @@ import type { GraphEdge, Origin, PaperNode } from "./types";
 export type LoadStage = "resolving" | "fetching" | "scoring";
 export type LoadWarning = "references" | "citations" | "related" | "details" | "crosscheck";
 
+export interface CandidateAudit {
+	id: string;
+	doi: string | null;
+	source: "reference" | "citation" | "related";
+	rejection?: string;
+}
+
 /**
  * Sampling tiers. Standard matches the historical behavior. Extended pulls a
  * full 200-per-page list; deep cursor-pages references and citations up to
  * 1000 works each. Deep costs roughly 20 requests per map and wants an API key.
- * Related works are never paged (the list has no meaningful sort).
+ * Related works can use one extra page to replace filtered records.
  */
 export const SAMPLE_TIERS: Record<
 	SampleDepth,
@@ -58,6 +65,10 @@ export interface SimilarityGraph {
 	skippedRetracted?: number;
 	/** Per-source sampling counters. Optional to keep offline fixtures backwards-compatible. */
 	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
+	/** Retained candidates and filtered records from this build, for local diagnosis. */
+	candidateAudit?: readonly CandidateAudit[];
+	/** Papers explicitly removed from this graph; deep expansion must not re-add them. */
+	excludedIds?: readonly string[];
 	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
 	/** 语义相似度（BM25+主题余弦，本地计算），键为节点 id；null = 信号缺失。 */
@@ -170,13 +181,12 @@ export async function loadNeighborhood(
 	onStage?.("fetching");
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
 	const acceptsResearch = (work: RawWork): boolean => {
-		const paper = toPaper(work, "related");
-		return Boolean(paper && paper.id !== seed.id && !nonResearchLabel(paper) && !(settings.excludeRetracted && paper.retracted));
+		return candidateExclusion(work, seed.id, settings.excludeRetracted) === null;
 	};
 	const [references, citations, related] = await Promise.all([
 		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", tier.pages, acceptsResearch)),
 		loadGroup(settings.includeCitations, () => client.sampleWorks(`cites:${seed.id}`, tier.citations, tier.citations, "cited_by_count:desc", tier.pages, acceptsResearch)),
-		loadGroup(settings.includeRelated, () => client.sampleWorks(`related_to:${seed.id}`, tier.related, tier.related, undefined, 1, acceptsResearch)),
+		loadGroup(settings.includeRelated, () => client.sampleWorks(`related_to:${seed.id}`, tier.related, tier.related, undefined, 2, acceptsResearch)),
 	]);
 
 	const warnings: LoadWarning[] = [];
@@ -206,6 +216,12 @@ export async function loadNeighborhood(
 	const skippedRetracted = settings.excludeRetracted
 		? [references, citations, related].reduce((count, group) => count + group.sample.rejected.filter((work) => work.is_retracted === true).length, 0)
 		: 0;
+	const candidateAudit: CandidateAudit[] = ([
+		["reference", references], ["citation", citations], ["related", related],
+	] as const).flatMap(([source, group]) => [
+		...group.sample.works.map((work) => auditCandidate(work, source)),
+		...group.sample.rejected.map((work) => auditCandidate(work, source, candidateExclusion(work, seed.id, settings.excludeRetracted) ?? "已过滤")),
+	]).filter((item) => item.id || item.doi);
 	// 候选排序：权威分（log 被引 × 新近度，3.7c）与语义分（标题/concepts/主题，
 	// 摘要此刻尚未补取）各占一半；语义缺失时退回纯权威分。
 	const rankPool = [...refPapers, ...citePapers, ...relatedPapers];
@@ -214,7 +230,8 @@ export async function loadNeighborhood(
 	const rankCandidate = (paper: PaperNode): number => {
 		const authority = impactScore(paper) / maxImpact;
 		const semantic = preSemantic.score(paper);
-		return semantic === null ? authority : 0.5 * authority + 0.5 * semantic;
+		const relevance = semantic === null ? authority : 0.5 * authority + 0.5 * semantic;
+		return paper.retracted ? relevance * 0.1 : relevance;
 	};
 	// MMR 多样性（Phase C）：候选两两相似度用对称的词项/主题余弦，不请求向量。
 	const mmr: MmrOptions = { sim: buildPairSimilarity(rankPool), lambda: MMR_LAMBDA };
@@ -452,6 +469,7 @@ export async function loadNeighborhood(
 			citations: statsFor(citations.sample, citePapers.length, tier.citations),
 			related: statsFor(related.sample, relatedPapers.length, tier.related),
 		},
+		candidateAudit,
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 		semanticScores,
 		semanticMode,
@@ -482,14 +500,14 @@ export async function expandAround(
 	const fetchN = Math.min(40, Math.max(12, cap * 4));
 	const accept = (work: RawWork): boolean => {
 		const paper = toPaper(work, "related");
-		return Boolean(paper && paper.id !== from.id && !present.has(paper.id) && !hidden.has(paper.id) && !nonResearchLabel(paper));
+		return Boolean(paper && paper.id !== from.id && !present.has(paper.id) && !hidden.has(paper.id) && !nonResearchLabel(paper) && !(settings.excludeRetracted && paper.retracted));
 	};
 	const [references, citations] = await Promise.all([
 		loadGroup(settings.includeReferences, () =>
-			client.sampleWorks(`cited_by:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 1, accept),
+			client.sampleWorks(`cited_by:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 2, accept),
 		),
 		loadGroup(settings.includeCitations, () =>
-			client.sampleWorks(`cites:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 1, accept),
+			client.sampleWorks(`cites:${from.id}`, fetchN, fetchN, "cited_by_count:desc", 2, accept),
 		),
 	]);
 	const picked = chooseExpand(present, hidden, cap, {
@@ -501,8 +519,11 @@ export async function expandAround(
 		citations.error ? `施引文献查询失败：${citations.error}` : "",
 	].filter(Boolean);
 	const have = new Set([...present, ...picked.map((paper) => paper.id)]);
+	const blocked = settings.excludeRetracted
+		? new Set([...hidden, ...graph.catalog.filter((paper) => paper.retracted).map((paper) => paper.id)])
+		: hidden;
 	const papers = picked.length < cap
-		? [...picked, ...couplingFill(graph, from.id, have, hidden, cap - picked.length)]
+		? [...picked, ...couplingFill(graph, from.id, have, blocked, cap - picked.length)]
 		: picked;
 	const lists = new Map<string, readonly string[]>();
 	const noMore = (!settings.includeReferences || references.sample.exhausted) && (!settings.includeCitations || citations.sample.exhausted);
@@ -545,7 +566,7 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 		const detailed = await client.worksByIds(want);
 		for (const raw of detailed) {
 			const paper = toPaper(raw, "related");
-			if (!paper || present.has(paper.id) || paper.isSeed || nonResearchLabel(paper)) continue;
+			if (!paper || present.has(paper.id) || paper.isSeed || nonResearchLabel(paper) || (settings.excludeRetracted && paper.retracted)) continue;
 			papers.push(paper);
 			lists.set(paper.id, referenceIds(raw.referenced_works));
 			present.add(paper.id);
@@ -691,6 +712,61 @@ function statsFor(
 		pages: sample.pages,
 		exhausted: sample.exhausted,
 		partial: Boolean(sample.error) || sample.pages > 0 && accepted < target,
+	};
+}
+
+function candidateExclusion(work: RawWork, seedId: string, excludeRetracted: boolean): string | null {
+	const paper = toPaper(work, "related");
+	if (!paper) return "记录缺少有效标题或 OpenAlex ID";
+	if (paper.id === seedId) return "这篇是种子论文";
+	const kind = nonResearchLabel(paper);
+	if (kind) return `OpenAlex 将其归为「${kind}」`;
+	if (excludeRetracted && paper.retracted) return "构建时开启了排除已撤稿作品";
+	return null;
+}
+
+function auditCandidate(work: RawWork, source: CandidateAudit["source"], rejection?: string): CandidateAudit {
+	return { id: work.id ? shortId(work.id) : "", doi: normalizeDoi(work.doi), source, rejection };
+}
+
+/** Explain only what the retained sample proves; an absent record has no inferred global rank. */
+export function diagnoseCandidate(
+	graph: SimilarityGraph,
+	query: string,
+	excludedIds: ReadonlySet<string> = new Set(graph.excludedIds ?? []),
+	scrubYear: number | null = null,
+): { title: string; detail: string; paperId?: string } {
+	const parsed = classifyQuery(query);
+	if (!parsed || parsed.kind === "search") return { title: "请输入 DOI 或 OpenAlex ID", detail: "诊断只查当前图谱保存的采样记录。" };
+	const matches = (id: string, doi: string | null): boolean => parsed.kind === "openalex" ? id === parsed.value : doi === parsed.value;
+	const found = graph.nodes.find((paper) => matches(paper.id, normalizeDoi(paper.doiUrl)));
+	if (found) {
+		if (!found.isSeed && scrubYear !== null && (found.year === null || found.year > scrubYear)) {
+			return { title: "已在图谱中，当前年份范围将其隐藏", detail: `论文 ${found.id} · 调整时间视图的年份范围即可看到。`, paperId: found.id };
+		}
+		return { title: found.isSeed ? "当前种子论文" : "已在当前图谱中", detail: `${found.title} · ${found.id}`, paperId: found.id };
+	}
+	const removed = [...excludedIds].find((id) => matches(id, graph.candidateAudit?.find((item) => item.id === id)?.doi ?? normalizeDoi(graph.catalog.find((paper) => paper.id === id)?.doiUrl)));
+	if (removed) return { title: "已从当前图谱删除", detail: `论文 ${removed} 已被排除；重新构建图谱可重新采样。` };
+	const records = (graph.candidateAudit ?? []).filter((item) => matches(item.id, item.doi));
+	const retained = records.filter((item) => !item.rejection);
+	const sources = [...new Set(retained.map((item) => ({ reference: "参考文献", citation: "施引", related: "相关作品" })[item.source]))].join("、");
+	if (retained.length) return {
+		title: "已采样，未入选图谱节点",
+		detail: `进入了${sources}候选池；有限节点配额和多样性选择后未入选。现有记录不能确定单一落选因素。`,
+	};
+	if (records.length) return { title: "采样时被过滤", detail: [...new Set(records.map((item) => item.rejection))].join("；") };
+	const context = graph.catalog.find((paper) => matches(paper.id, normalizeDoi(paper.doiUrl)));
+	if (context) return { title: "已抓取为引用上下文，未入选节点", detail: `${context.title} · ${context.id}` };
+	const incomplete = Object.values(graph.retrievalStats ?? {}).some((stats) => stats.partial);
+	const sampled = graph.retrievalStats
+		? `本轮保留参考 ${graph.retrievalStats.references.accepted}、施引 ${graph.retrievalStats.citations.accepted}、相关 ${graph.retrievalStats.related.accepted} 条。`
+		: "";
+	return {
+		title: "当前候选记录中没有这篇论文",
+		detail: graph.candidateAudit
+			? `${sampled}它未进入本轮保留的候选池或过滤记录；${incomplete ? "部分采样未满或请求失败，" : ""}采样范围和来源设置可能限制了结果，无法据此判断论文不存在。`
+			: "这个项目快照没有逐篇采样记录。重新构建图谱后可诊断过滤与落选原因。",
 	};
 }
 

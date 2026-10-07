@@ -93,7 +93,7 @@ export function chooseExpand(
 ): PaperNode[] {
 	if (slots <= 0) return [];
 	const ok = (paper: PaperNode): boolean => !paper.isSeed && !present.has(paper.id) && !hidden.has(paper.id);
-	const byCite = (a: PaperNode, b: PaperNode): number => b.citedByCount - a.citedByCount || a.id.localeCompare(b.id);
+	const byCite = (a: PaperNode, b: PaperNode): number => Number(a.retracted) - Number(b.retracted) || b.citedByCount - a.citedByCount || a.id.localeCompare(b.id);
 	const refs = groups.reference.filter(ok).sort(byCite);
 	const cites = groups.citation.filter(ok).sort(byCite);
 	const take = (list: PaperNode[], n: number, skip: ReadonlySet<string>): PaperNode[] => {
@@ -135,7 +135,7 @@ export function couplingFill<T extends EditableGraph>(
 		}
 		if (shared > 0) scored.push({ paper, shared });
 	}
-	scored.sort((a, b) => b.shared - a.shared || b.paper.citedByCount - a.paper.citedByCount || a.paper.id.localeCompare(b.paper.id));
+	scored.sort((a, b) => b.shared * (b.paper.retracted ? 0.1 : 1) - a.shared * (a.paper.retracted ? 0.1 : 1) || b.paper.citedByCount * (b.paper.retracted ? 0.1 : 1) - a.paper.citedByCount * (a.paper.retracted ? 0.1 : 1) || a.paper.id.localeCompare(b.paper.id));
 	return scored.slice(0, need).map((item) => item.paper);
 }
 

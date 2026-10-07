@@ -212,7 +212,7 @@ export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, 
 	details.append(summary);
 	paintMeter(details, "权威分", rank.authority, "log 被引 × 新近度，候选池内归一", true);
 	paintMeter(details, "选择时语义分", rank.semantic, "标题 / 主题，本地计算（选择时摘要尚未补取）", true);
-	paintMeter(details, "选择时相关性", rank.relevance, "0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分", true);
+	paintMeter(details, "选择时相关性", rank.relevance, "0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分；撤稿作品进一步降权", true);
 	if (currentScore !== undefined) {
 		paintMeter(details, "建图后当前综合分", currentScore, "结构 + 语义信号；未参与候选入选");
 	}

@@ -20,12 +20,13 @@ import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
 import { runForceLayout } from "../src/layout";
-import { loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
+import { diagnoseCandidate, loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
 import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
 import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
+import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
 import { buildPairSimilarity } from "../src/diversity";
@@ -413,6 +414,26 @@ function unit(): void {
 		catalog: [seedPaper, early, later, survey],
 		skippedNonResearch: 0,
 	};
+	const auditGraph: SimilarityGraph = {
+		...rankedGraph,
+		nodes: [paper("W1", "seed", 10), { ...paper("W2", "reference", 5), doiUrl: "https://doi.org/10.1234/present" }],
+		catalog: [paper("W1", "seed", 10), paper("W2", "reference", 5)],
+		candidateAudit: [
+			{ id: "W2", doi: "10.1234/present", source: "reference" },
+			{ id: "W3", doi: "10.1234/unpicked", source: "citation" },
+			{ id: "W4", doi: null, source: "related", rejection: "OpenAlex 将其归为「书评」" },
+		],
+		excludedIds: ["W5"],
+	};
+	assert.equal(diagnoseCandidate(auditGraph, "10.1234/present").title, "已在当前图谱中");
+	assert.equal(diagnoseCandidate(auditGraph, "W2", undefined, 2010).title, "已在图谱中，当前年份范围将其隐藏");
+	assert.equal(diagnoseCandidate(auditGraph, "10.1234/unpicked").title, "已采样，未入选图谱节点");
+	assert.match(diagnoseCandidate(auditGraph, "W4").detail, /书评/);
+	assert.equal(diagnoseCandidate(auditGraph, "W5").title, "已从当前图谱删除");
+	assert.equal(diagnoseCandidate(auditGraph, "W6").title, "当前候选记录中没有这篇论文");
+	const savedAudit = restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(auditGraph))));
+	assert.deepEqual(savedAudit?.excludedIds, ["W5"]);
+	assert.equal(savedAudit?.candidateAudit?.length, 3);
 	const visible = new Set(["S", "A", "B"]);
 	const priors = priorWorks(rankedGraph, visible);
 	assert.equal(priors[0]?.paper.id, "A");
@@ -899,6 +920,24 @@ async function reconcileOffline(): Promise<void> {
 	assert.equal(rankW2.semantic, null, "无主题且标题无有效词项时语义为 null");
 	assert.equal(rankW2.relevance, rankW2.authority, "语义缺失时相关性等于权威分");
 	assert.equal(graph.selectionRank?.has("W1"), false, "种子不进 selectionRank");
+	assert.ok(graph.candidateAudit?.some((item) => item.id === "W2" && !item.rejection));
+	const retractedClient = new OpenAlexClient(async (url, init) => {
+		if (new URL(url).searchParams.get("filter") === "cited_by:W1") return { results: [{ ...neighborWork, is_retracted: true }] };
+		return mock(url, init);
+	}, { apiKey: "", contactEmail: "" });
+	const excluded = await loadNeighborhood(
+		retractedClient,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, excludeRetracted: true, s2Reconcile: false, maxNodes: 20 },
+	);
+	assert.equal(excluded.nodes.some((paper) => paper.id === "W2"), false);
+	assert.match(diagnoseCandidate(excluded, "W2").detail, /排除已撤稿/);
+	const flagged = await loadNeighborhood(
+		retractedClient,
+		{ kind: "openalex", value: "W1" },
+		{ ...DEFAULT_SETTINGS, includeCitations: false, includeRelated: false, s2Reconcile: false, maxNodes: 20 },
+	);
+	assert.ok((flagged.selectionRank?.get("W2")?.relevance ?? 1) <= 0.1, "retracted candidate is not ranked highly");
 
 	// Toggle off: no cross-check, no backfill.
 	const off = await loadNeighborhood(

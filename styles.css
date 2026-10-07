@@ -281,6 +281,11 @@
 .cpo-statusbar .cpo-status { flex: 1; }
 .cpo-statusbar .cpo-undo { flex: none; padding: 3px 8px; font-size: 11px; }
 .cpo-statusbar .cpo-undo[hidden] { display: none !important; }
+.cpo-statusbar .cpo-diagnose { flex: none; padding: 3px 8px; font-size: 11px; }
+
+.cpo-diagnose-form { display: flex; gap: 7px; margin: 10px 0; }
+.cpo-diagnose-form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
+.cpo-diagnose-result { padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
 
 .cpo-banner {
 	flex: none;

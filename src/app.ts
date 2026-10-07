@@ -16,6 +16,7 @@ import {
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import {
+	diagnoseCandidate,
 	expandAround,
 	loadNeighborhood,
 	restoreGraftedMembers,
@@ -155,6 +156,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	undoButton.type = "button";
 	undoButton.hidden = true;
 	undoButton.disabled = true;
+	const diagnoseButton = el(statusBar, "button", "cpo-text-btn cpo-diagnose", "诊断候选") as HTMLButtonElement;
+	diagnoseButton.type = "button";
+	diagnoseButton.disabled = true;
 	const rail = el(body, "aside", "cpo-rail");
 	const layoutHost = el(rail, "div", "cpo-rail-layouts");
 	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›") as HTMLButtonElement;
@@ -534,6 +538,42 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		chrome?.setTab("graph");
 		paintLists();
 	};
+
+	diagnoseButton.addEventListener("click", () => {
+		if (!graph) return;
+		activateGraphTab();
+		selectedPaper = null;
+		selectedEdge = null;
+		map.setSelected(null);
+		detail.replaceChildren();
+		detail.hidden = false;
+		sheet.setExpanded(true);
+		sheet.setSummary("候选诊断", "当前图谱的采样记录");
+		el(detail, "p", "cpo-side-tip", "输入 DOI 或 OpenAlex ID，查看它在本轮采样中的状态。" );
+		const form = el(detail, "form", "cpo-diagnose-form");
+		const query = el(form, "input") as HTMLInputElement;
+		query.type = "text";
+		query.placeholder = "DOI 或 OpenAlex ID";
+		query.setAttribute("aria-label", "要诊断的论文");
+		const check = el(form, "button", "cpo-primary", "查询") as HTMLButtonElement;
+		check.type = "submit";
+		const result = el(detail, "div", "cpo-diagnose-result");
+		form.addEventListener("submit", (event) => {
+			event.preventDefault();
+			if (!graph) return;
+			const finding = diagnoseCandidate(graph, query.value, hiddenIds, scrubYear);
+			result.replaceChildren();
+			el(result, "strong", undefined, finding.title);
+			el(result, "p", "cpo-side-tip", finding.detail);
+			const paper = finding.paperId && graph.nodes.find((item) => item.id === finding.paperId);
+			if (paper) {
+				const open = el(result, "button", "cpo-text-btn", "查看论文") as HTMLButtonElement;
+				open.type = "button";
+				open.onclick = () => showDetail(paper);
+			}
+		});
+		query.focus();
+	});
 
 	const exportPane = async (kind: ExportKind): Promise<void> => {
 		if (!graph) return;
@@ -972,9 +1012,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		hideNodeMenu();
 		const next = omitNode(graph, paper.id);
 		if (!next) return;
-		hiddenIds.add(paper.id);
+		next.excludedIds = [...hiddenIds, paper.id];
 		const seedId = currentSeedId();
 		applyEdit(refreshDerived(next), "已去掉 1 篇");
+		hiddenIds.add(paper.id);
 		if (seedId) void persistGrafted(forgetGrafted(deps.getSettings().graftedBySeed ?? {}, seedId, paper.id));
 	};
 
@@ -1027,7 +1068,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true): void => {
 		graph = next;
-		hiddenIds = new Set();
+		hiddenIds = new Set(next.excludedIds ?? []);
+		diagnoseButton.disabled = false;
 		hideNodeMenu();
 		narrative = null;
 		narrativeInput = null;

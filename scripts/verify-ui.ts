@@ -333,6 +333,9 @@ function graphEdits(): void {
 		citation: [paper("WEXPAND2", "citation")],
 	});
 	assert.equal(picked.some((node) => node.id === other.id), false);
+	const normal = { ...paper("WEXPAND3", "citation"), citedByCount: 3 };
+	const retracted = { ...paper("WEXPAND4", "citation"), citedByCount: 10000, retracted: true };
+	assert.deepEqual(chooseExpand(new Set(), new Set(), 1, { reference: [], citation: [retracted, normal] }).map((node) => node.id), [normal.id]);
 	assert.ok(picked.some((node) => node.id === "WEXPAND1"));
 	assert.ok(picked.some((node) => node.id === "WEXPAND2"));
 	const store = rememberGrafted({}, "w1", ["W2", "w2", "bad"]);

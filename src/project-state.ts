@@ -18,6 +18,8 @@ export interface SavedGraphSnapshot {
 	skippedNonResearch: number;
 	skippedRetracted?: number;
 	retrievalStats?: SimilarityGraph["retrievalStats"];
+	candidateAudit?: SimilarityGraph["candidateAudit"];
+	excludedIds?: SimilarityGraph["excludedIds"];
 	crossCheck?: Array<[string, NonNullable<SimilarityGraph["crossCheck"]> extends ReadonlyMap<string, infer T> ? T : never]>;
 	semanticScores?: Array<[string, number | null]>;
 	semanticMode?: SimilarityGraph["semanticMode"];
@@ -65,6 +67,8 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 		skippedNonResearch: graph.skippedNonResearch,
 		skippedRetracted: graph.skippedRetracted,
 		retrievalStats: graph.retrievalStats,
+		candidateAudit: graph.candidateAudit,
+		excludedIds: graph.excludedIds,
 		crossCheck: graph.crossCheck ? [...graph.crossCheck] : undefined,
 		semanticScores: graph.semanticScores ? [...graph.semanticScores] : undefined,
 		semanticMode: graph.semanticMode,
@@ -97,6 +101,10 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 		skippedNonResearch: saved.skippedNonResearch ?? 0,
 		skippedRetracted: saved.skippedRetracted ?? 0,
 		retrievalStats: saved.retrievalStats,
+		candidateAudit: Array.isArray(saved.candidateAudit)
+			? saved.candidateAudit.filter((item) => item && typeof item.id === "string" && typeof item.source === "string" && (item.doi === null || typeof item.doi === "string")).slice(0, 5000)
+			: undefined,
+		excludedIds: Array.isArray(saved.excludedIds) ? saved.excludedIds.filter((id): id is string => typeof id === "string" && /^W\d+$/i.test(id)).slice(0, 300) : undefined,
 		crossCheck: saved.crossCheck ? new Map(saved.crossCheck) : undefined,
 		semanticScores: saved.semanticScores ? new Map(saved.semanticScores) : undefined,
 		semanticMode: saved.semanticMode,

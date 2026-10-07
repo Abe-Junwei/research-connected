@@ -58,7 +58,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
    - DOI (`10.1038/nature14539` or `https://doi.org/...`)
    - OpenAlex work id (`W2919115771`) or an `openalex.org` work URL
    - or a title. Title search shows up to 8 hits; click one to make it the seed.
-3. Press **构建图谱** (Build map). **示例 DOI** loads the Nature review *Deep learning* (`10.1038/nature14539`).
+3. Press **构建** to load the map.
 4. The seed sits in the middle with a double ring and a halo. Other papers are placed by similarity:
    - in **平面**, node colors identify detected citation-structure groups; in **时间** and **放射**, color shows topic similarity to the seed
    - node size follows year-normalized citation counts; classics in the sampled graph receive a subtle glow
@@ -67,6 +67,8 @@ Restricted mode must be off, or Obsidian will not load community plugins.
 6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **在 OpenAlex 中打开**, and **打开 DOI** when a DOI exists.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
 7. Chinese titles render with the interface font plus a CJK fallback stack. In-pane labels are Chinese; the command name stays English.
+
+The project and view controls beneath the search box save the current graph and camera position locally. The bottom status bar has **撤销** after a node deletion or deep expansion, and **诊断候选** for looking up a DOI or OpenAlex ID. Diagnosis uses this map's retained sample: it can identify filtered or unselected candidates, but cannot determine why a work outside the sample was absent from OpenAlex results.
 
 While a request is in flight the button reads **正在构建…**. Failures (unknown id, exhausted budget, network) show a banner and leave the previous map in place.
 
