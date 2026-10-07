@@ -3,7 +3,7 @@ import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged";
 
-export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "pause" | "edit" | "save" | "project" | "views" | "refresh"): SVGSVGElement {
+export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "pause" | "edit" | "save" | "project" | "views" | "refresh" | "diagnose" | "external"): SVGSVGElement {
 	const paths: Record<typeof name, string[]> = {
 		grid: ["M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z"],
 		clock: ["M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z", "M10 5v5l3.2 2"],
@@ -15,6 +15,8 @@ export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "p
 		project: ["M2.5 5.5h6l1.5 1.7h7.5v8.3h-15z", "M2.5 5.5V4h6l1.5 1.5"],
 		views: ["m10 3 7 3.5-7 3.5-7-3.5z", "m3 10 7 3.5 7-3.5M3 13.5 10 17l7-3.5"],
 		refresh: ["M16 7V3.5l-2 2A6.5 6.5 0 1 0 16.5 12", "M16 3.5v4h-4"],
+		diagnose: ["M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z", "m12.2 12.2 4.3 4.3"],
+		external: ["M11 4h5v5", "m16 4-7 7", "M14 11v5H4V6h5"],
 	};
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
 	svg.setAttribute("viewBox", "0 0 20 20");

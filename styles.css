@@ -2154,27 +2154,64 @@ button.cpo-agg-item {
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 6px;
-	margin-top: 8px;
+	margin-top: 7px;
 }
-.cpo-evidence-tools .cpo-diagnose {
+.cpo-root .cpo-evidence-tools button.cpo-diagnose,
+.cpo-embed .cpo-evidence-tools button.cpo-diagnose {
 	flex: none;
 	margin: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 28px;
 	min-height: 28px;
-	padding: 0 10px;
+	padding: 0 9px;
+	border: 1px solid color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 25%, transparent);
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 8%, var(--background-secondary));
+	color: var(--text-accent, var(--cpo-accent));
 	font-size: 11px;
+	font-weight: 550;
+	box-shadow: none;
 }
-.cpo-evidence-tools .cpo-source-actions {
+.cpo-root .cpo-evidence-tools button.cpo-diagnose:hover,
+.cpo-embed .cpo-evidence-tools button.cpo-diagnose:hover {
+	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 14%, var(--background-secondary));
+}
+.cpo-evidence-tools .cpo-diagnose .cpo-icon-glyph,
+.cpo-evidence-tools .cpo-action-link .cpo-icon-glyph {
+	width: 13px;
+	height: 13px;
+}
+.cpo-root .cpo-evidence-tools .cpo-source-actions,
+.cpo-embed .cpo-evidence-tools .cpo-source-actions {
 	gap: 6px;
 }
 .cpo-evidence-tools .cpo-source-actions:not(:has(button:not([hidden]))) {
 	display: none;
 }
-.cpo-evidence-tools .cpo-action-link {
+.cpo-root .cpo-evidence-tools button.cpo-action-link,
+.cpo-embed .cpo-evidence-tools button.cpo-action-link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
 	height: 28px;
 	min-width: 0;
-	padding: 0 9px;
-	border-radius: 7px;
+	padding: 0 7px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: 450;
 	box-shadow: none;
+}
+.cpo-root .cpo-evidence-tools button.cpo-action-link:hover,
+.cpo-embed .cpo-evidence-tools button.cpo-action-link:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 
 .cpo-sidebar-resizer {

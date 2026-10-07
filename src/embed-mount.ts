@@ -120,10 +120,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
 	const openAlexAction = document.createElement("button");
 	openAlexAction.className = "cpo-action-link";
-	openAlexAction.textContent = "OpenAlex ↗";
+	openAlexAction.append(createChromeIcon("external"), document.createTextNode("OpenAlex"));
 	const doiAction = document.createElement("button");
 	doiAction.className = "cpo-action-link";
-	doiAction.textContent = "DOI ↗";
+	doiAction.append(createChromeIcon("external"), document.createTextNode("DOI"));
 	const openGraphAction = document.createElement("button");
 	openGraphAction.className = "cpo-action-link";
 	openGraphAction.textContent = "在图谱中打开";
@@ -155,10 +155,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	evidenceTitle.textContent = "论文与关系证据";
 	const evidenceTools = document.createElement("div");
 	evidenceTools.className = "cpo-evidence-tools";
+	evidenceTools.setAttribute("role", "toolbar");
+	evidenceTools.setAttribute("aria-label", "论文操作");
 	const diagnoseButton = document.createElement("button");
 	diagnoseButton.type = "button";
 	diagnoseButton.className = "cpo-text-btn cpo-diagnose";
-	diagnoseButton.textContent = "诊断候选";
+	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.disabled = true;
 	evidenceTools.append(diagnoseButton, sourceActions);
 	evidenceHeader.append(evidenceTitle, evidenceTools);

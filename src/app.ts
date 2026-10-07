@@ -201,6 +201,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	sourceActions.className = "cpo-source-actions cpo-detail-source-actions";
 	const openAlexAction = el(sourceActions, "button", "cpo-action-link", "OpenAlex ↗") as HTMLButtonElement;
 	const doiAction = el(sourceActions, "button", "cpo-action-link", "DOI ↗") as HTMLButtonElement;
+	openAlexAction.replaceChildren(createChromeIcon("external"), document.createTextNode("OpenAlex"));
+	doiAction.replaceChildren(createChromeIcon("external"), document.createTextNode("DOI"));
 	const zoom = el(stage, "div", "cpo-zoom");
 	const zoomIn = el(zoom, "button", "cpo-icon", "+") as HTMLButtonElement;
 	const zoomOut = el(zoom, "button", "cpo-icon", "−") as HTMLButtonElement;
@@ -224,10 +226,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
 	el(evidenceHeader, "h2", undefined, "论文与关系证据");
 	const evidenceTools = el(evidenceHeader, "div", "cpo-evidence-tools");
-	const diagnoseButton = el(evidenceHeader, "button", "cpo-text-btn cpo-diagnose", "诊断候选") as HTMLButtonElement;
+	evidenceTools.setAttribute("role", "toolbar");
+	evidenceTools.setAttribute("aria-label", "论文操作");
+	const diagnoseButton = el(evidenceTools, "button", "cpo-text-btn cpo-diagnose", "") as HTMLButtonElement;
+	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.type = "button";
 	diagnoseButton.disabled = true;
-	evidenceTools.append(diagnoseButton, sourceActions);
+	evidenceTools.append(sourceActions);
 	const sheetHost = el(sidebar, "section");
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
