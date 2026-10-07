@@ -5,7 +5,7 @@ import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip,
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { createChromeIcon, mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
@@ -70,7 +70,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const reload = document.createElement("button");
 	reload.type = "button";
 	reload.className = "cpo-ghost";
-	reload.textContent = "重新加载";
+	reload.append(createChromeIcon("refresh"), document.createTextNode("重新加载"));
 	topLine.append(brand, reload);
 	const status = document.createElement("p");
 	status.className = "cpo-status";
@@ -210,13 +210,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 	railToggle.addEventListener("click", () => {
 		const on = body.classList.toggle("is-rail-collapsed");
-		layoutHost.classList.toggle("is-icon-only", on);
-		for (const button of Array.from(layoutHost.querySelectorAll(".cpo-tool"))) {
-			const icon = button.querySelector(".cpo-layout-icon") as HTMLElement | null;
-			const label = button.querySelector(".cpo-layout-label") as HTMLElement | null;
-			if (icon) icon.style.display = on ? "inline" : "none";
-			if (label) label.style.display = on ? "none" : "";
-		}
 		railToggle.textContent = on ? "›" : "‹";
 		railToggle.setAttribute("aria-expanded", on ? "false" : "true");
 		railToggle.setAttribute("aria-label", on ? "展开左侧栏" : "折叠左侧栏");
@@ -290,14 +283,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			void exportView(kind);
 		},
 	});
-	layoutHost.classList.add("is-icon-only");
-	for (const button of Array.from(layoutHost.querySelectorAll(".cpo-tool"))) {
-		const icon = button.querySelector(".cpo-layout-icon") as HTMLElement | null;
-		const label = button.querySelector(".cpo-layout-label") as HTMLElement | null;
-		if (icon) icon.style.display = "inline";
-		if (label) label.style.display = "none";
-	}
-
 	const exportView = async (kind: ExportKind): Promise<void> => {
 		if (!currentGraph) return;
 		if (kind === "note") {

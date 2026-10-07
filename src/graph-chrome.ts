@@ -3,6 +3,31 @@ import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged";
 
+export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "pause" | "edit" | "save" | "project" | "views" | "refresh"): SVGSVGElement {
+	const paths: Record<typeof name, string[]> = {
+		grid: ["M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z"],
+		clock: ["M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z", "M10 5v5l3.2 2"],
+		radial: ["M10 10 4 4M10 10l7-1M10 10l-3 7", "M10 10m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0", "M2.5 2.5h3v3h-3zM15 7h3v3h-3zM5.5 15h3v3h-3z"],
+		play: ["m7 4 9 6-9 6z"],
+		pause: ["M6.5 4.5v11M13.5 4.5v11"],
+		edit: ["m4 13.5-.8 3.3 3.3-.8L16 6.5 13.5 4z", "m11.8 5.7 2.5 2.5"],
+		save: ["M4 3.5h10l2 2V16.5H4z", "M7 3.5v4h6v-4M7 16.5v-5h6v5"],
+		project: ["M2.5 5.5h6l1.5 1.7h7.5v8.3h-15z", "M2.5 5.5V4h6l1.5 1.5"],
+		views: ["m10 3 7 3.5-7 3.5-7-3.5z", "m3 10 7 3.5 7-3.5M3 13.5 10 17l7-3.5"],
+		refresh: ["M16 7V3.5l-2 2A6.5 6.5 0 1 0 16.5 12", "M16 3.5v4h-4"],
+	};
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.setAttribute("viewBox", "0 0 20 20");
+	svg.setAttribute("aria-hidden", "true");
+	svg.classList.add("cpo-icon-glyph");
+	for (const d of paths[name]) {
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", d);
+		svg.append(path);
+	}
+	return svg;
+}
+
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
 	if (badges.length === 0) return;
@@ -109,7 +134,9 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	const stop = (): void => {
 		if (timer) window.clearInterval(timer);
 		timer = 0;
-		play.textContent = "播放";
+		play.setAttribute("aria-label", "播放时间视图");
+		play.title = "播放时间视图";
+		play.replaceChildren(createChromeIcon("play"));
 		play.setAttribute("aria-pressed", "false");
 	};
 
@@ -124,7 +151,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		});
 		button.title = LAYOUT_HINT[mode];
 		button.dataset.layout = mode;
-		button.dataset.icon = mode === "force2d" ? "▦" : mode === "temporal" ? "◷" : "◎";
 		button.setAttribute("aria-label", LAYOUT_LABEL[mode]);
 		const label = document.createElement("span");
 		label.className = "cpo-layout-label";
@@ -132,7 +158,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		const icon = document.createElement("span");
 		icon.className = "cpo-layout-icon";
 		icon.setAttribute("aria-hidden", "true");
-		icon.textContent = button.dataset.icon;
+		icon.append(createChromeIcon(mode === "force2d" ? "grid" : mode === "temporal" ? "clock" : "radial"));
 		button.replaceChildren(icon, label);
 		layoutButtons.set(mode, button);
 		layoutRow.append(button);
@@ -169,7 +195,9 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		if (!Number.isFinite(year) || year >= maxYear) year = minYear;
 		range.value = String(year);
 		publish();
-		play.textContent = "暂停";
+		play.setAttribute("aria-label", "暂停时间视图");
+		play.title = "暂停时间视图";
+		play.replaceChildren(createChromeIcon("pause"));
 		play.setAttribute("aria-pressed", "true");
 		timer = window.setInterval(() => {
 			year += 1;
@@ -184,7 +212,10 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		}, 700);
 	});
 
-	scrubRow.append(range, readout, play);
+	const scrubMeta = document.createElement("div");
+	scrubMeta.className = "cpo-scrub-meta";
+	scrubMeta.append(readout, play);
+	scrubRow.append(range, scrubMeta);
 
 	const tabs: Array<[GraphTab, string]> = [
 		["graph", "图谱"],

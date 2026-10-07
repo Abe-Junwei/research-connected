@@ -82,25 +82,33 @@
       "baselineDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
       "activeDraftId": "ebce02fb-3731-4c9f-8d2c-aeeff41730c6",
       "designSystemPath": ".superdesign/design-system.md",
-      "referenceIds": [],
+      "referenceIds": [
+        "eae46dad-0deb-46a9-ad13-765e636d6f83",
+        "a3cd631a-8bd6-4b81-ac53-e7efeab0a26f"
+      ],
       "contextFiles": [
         ".superdesign/design-system.md",
-        "src/app.ts:90:220",
+        ".superdesign/init/components.md",
+        ".superdesign/init/layouts.md",
+        "src/app.ts:95:230",
+        "src/embed-mount.ts:56:175",
         "src/graph-chrome.ts",
         "src/filter-controls.ts",
-        "styles.css:40:120",
-        "styles.css:267:285",
-        "styles.css:913:1015",
-        "styles.css:1690:1808",
-        "styles.css:2051:2210",
-        "styles.css:2778:2855"
+        "src/layout-modes.ts",
+        "styles.css:1:130",
+        "styles.css:930:1030",
+        "styles.css:2700:2940"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
-        "src/app.ts": "d1c64d7970945a40469e6a7d5ff73bd98b3c780642505dc3c3ab7f97cec1ed2c",
+        ".superdesign/init/components.md": "c26ddd228c0a323f4046fe17daf063f68cbffb778aca8cca9d35a6a78cc9d506",
+        ".superdesign/init/layouts.md": "d03ad3a0b2c6198d7cb8289af06c615f32515b0f27372218624b80826350f9c8",
+        "src/app.ts": "f4597cf721e20bbd84afdb8488e719ffe5b327cb94090780c789865077c95130",
+        "src/embed-mount.ts": "560b3b7afd7093822a5d02cbb29c30cca4efdfaa237243e5d366f1336bcc709e",
+        "src/graph-chrome.ts": "a86573d7c526457a97b3af7a7c37843eded8259f1c5b68df275c4d1af6f0db99",
         "src/filter-controls.ts": "e3c47198047acef2e516037b0c1146ee5fd976f74fa0faceeecebbc54eabe6e2",
-        "src/graph-chrome.ts": "b1ef9af2c6dfd2c6736b20fa2513e224cc4178b264c96df49d2894d5beb4bf9f",
-        "styles.css": "fb4f0bcb6844b287efcfb19c24529cf35291fe0f69864d68f4fd790351a9b4b2"
+        "src/layout-modes.ts": "a696514131e3787b2c582dad230a23b5372f97f5b78c5f661c5fd6b767f015dc",
+        "styles.css": "527079e345d8b586c334b1e81ffeb7964b57ed660d195c1bca2b92c2e9cfb95b"
       },
       "drafts": {
         "5c76acec-2d83-4a4b-8d06-201fa4d0e571": {
@@ -109,13 +117,13 @@
           "currentVersion": 1
         },
         "ebce02fb-3731-4c9f-8d2c-aeeff41730c6": {
-          "title": "Research Connected Expanded Rail Fidelity",
-          "visualDirection": "flat labeled left rail and grouped workspace actions",
+          "title": "Research Connected Refined Workspace",
+          "visualDirection": "compact warm-paper controls with aligned line icons",
           "parentDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
-          "currentVersion": 5
+          "currentVersion": 7
         }
       },
-      "updatedAt": "2026-10-07T08:08:26Z"
+      "updatedAt": "2026-10-07T08:37:09.992Z"
     }
   }
 }

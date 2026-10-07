@@ -932,7 +932,7 @@
 	position: relative;
 	z-index: 2;
 	flex: none;
-	width: 128px;
+	width: 156px;
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
@@ -2901,6 +2901,111 @@ button.cpo-agg-item {
 	border: 0;
 	border-radius: 0;
 	background: transparent;
+}
+
+/* Balanced project controls and consistent line icons across both surfaces. */
+.cpo-icon-glyph {
+	width: 15px;
+	height: 15px;
+	flex: none;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.cpo-project-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	margin: 0 2px 0 0;
+	font-size: 11px;
+	line-height: 1;
+}
+.cpo-project-label .cpo-icon-glyph { width: 14px; height: 14px; }
+.cpo-root .cpo-project-tools { gap: 10px; padding-top: 6px; }
+.cpo-project-group { min-height: 34px; gap: 7px; }
+.cpo-root .cpo-project-tools .cpo-project-select {
+	height: 32px;
+	padding: 4px 8px;
+	font-size: 12px;
+}
+.cpo-root .cpo-project-tools .cpo-view-select { width: clamp(118px, 14vw, 165px); flex-basis: clamp(118px, 14vw, 165px); }
+.cpo-root .cpo-project-tools .cpo-project-name-input { height: 32px; font-size: 12px; }
+.cpo-root .cpo-project-tools button.cpo-ghost {
+	height: 32px;
+	min-height: 32px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 0 9px;
+	font-size: 11px;
+}
+.cpo-root .cpo-project-tools button .cpo-icon-glyph { width: 14px; height: 14px; }
+.cpo-root .cpo-project-group .cpo-ghost:focus-visible,
+.cpo-root .cpo-project-select:focus-visible,
+.cpo-root .cpo-project-name-input:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--cpo-accent) 45%, transparent);
+	outline-offset: 1px;
+}
+
+.cpo-rail-layouts .cpo-tool-row { gap: 4px; }
+.cpo-rail-layouts button.cpo-tool {
+	min-height: 34px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 8px;
+	padding: 5px 8px;
+	text-align: left;
+}
+.cpo-rail-layouts .cpo-layout-icon { display: inline-flex; align-items: center; justify-content: center; width: 17px; flex: none; color: var(--text-muted); }
+.cpo-rail-layouts .cpo-layout-icon .cpo-icon-glyph { width: 16px; height: 16px; }
+.cpo-rail-layouts .cpo-layout-label { font-size: 12px; line-height: 1.2; }
+.cpo-rail-layouts button.cpo-tool.is-on {
+	background: color-mix(in srgb, var(--cpo-accent) 11%, var(--background-primary));
+	color: var(--cpo-accent);
+}
+.cpo-rail-layouts button.cpo-tool.is-on .cpo-layout-icon { color: var(--cpo-accent); }
+
+.cpo-rail .cpo-scrub-row {
+	gap: 8px;
+	padding: 5px 2px;
+}
+.cpo-rail .cpo-scrub-row input[type="range"] { height: 20px; }
+.cpo-scrub-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cpo-rail .cpo-scrub-row .cpo-scrub-readout {
+	min-width: 0;
+	padding: 0;
+	background: transparent;
+	font-size: 11px;
+	text-align: left;
+}
+.cpo-rail .cpo-scrub-row button.cpo-tool {
+	width: 30px;
+	min-width: 30px;
+	height: 30px;
+	min-height: 30px;
+	padding: 0;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 50%;
+}
+.cpo-rail .cpo-scrub-row button.cpo-tool .cpo-icon-glyph { width: 15px; height: 15px; }
+.cpo-root.is-narrow .cpo-rail .cpo-scrub-row,
+.cpo-embed.is-narrow .cpo-rail .cpo-scrub-row { gap: 8px; }
+.cpo-root.is-narrow .cpo-rail .cpo-scrub-meta,
+.cpo-embed.is-narrow .cpo-rail .cpo-scrub-meta { flex: none; }
+
+.cpo-embed button.cpo-ghost {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 28px;
+	font-size: 11px;
 }
 
 .cpo-root .cpo-evidence-sidebar .cpo-detail > .cpo-card + .cpo-card,

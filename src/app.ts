@@ -1,7 +1,7 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
-import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import {
@@ -109,12 +109,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	submit.type = "submit";
 	const projectTools = el(bar, "div", "cpo-project-tools");
 	const projectGroup = el(projectTools, "div", "cpo-project-group");
-	el(projectGroup, "span", "cpo-project-label", "项目");
+	const projectLabel = el(projectGroup, "span", "cpo-project-label", "项目");
+	projectLabel.prepend(createChromeIcon("project"));
 	const projectSelect = el(projectGroup, "select", "cpo-project-select") as HTMLSelectElement;
 	projectSelect.setAttribute("aria-label", "研究项目");
 	projectSelect.title = "切换研究项目";
 	const viewGroup = el(projectTools, "div", "cpo-project-group cpo-view-group");
-	el(viewGroup, "span", "cpo-project-label", "视图");
+	const viewLabel = el(viewGroup, "span", "cpo-project-label", "视图");
+	viewLabel.prepend(createChromeIcon("views"));
 	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select") as HTMLSelectElement;
 	viewSelect.setAttribute("aria-label", "保存的视图");
 	viewSelect.title = "恢复保存的视图";
@@ -123,6 +125,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	viewNameInput.placeholder = "新视图名称";
 	viewNameInput.setAttribute("aria-label", "新视图名称");
 	const saveViewButton = el(viewGroup, "button", "cpo-ghost", "保存视图") as HTMLButtonElement;
+	saveViewButton.replaceChildren(createChromeIcon("save"), document.createTextNode("保存视图"));
 	saveViewButton.type = "button";
 	saveViewButton.disabled = true;
 	const renameProjectInput = el(projectGroup, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
@@ -130,6 +133,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	renameProjectInput.setAttribute("aria-label", "项目新名称");
 	renameProjectInput.hidden = true;
 	const renameProjectButton = el(projectGroup, "button", "cpo-ghost", "重命名") as HTMLButtonElement;
+	const renameProjectText = document.createElement("span");
+	renameProjectText.textContent = "重命名";
+	renameProjectButton.replaceChildren(createChromeIcon("edit"), renameProjectText);
 	renameProjectButton.type = "button";
 	renameProjectButton.disabled = true;
 	projectTools.append(projectGroup, viewGroup);
@@ -891,7 +897,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (renameProjectInput.hidden) {
 			renameProjectInput.hidden = false;
 			renameProjectInput.value = project.name;
-			renameProjectButton.textContent = "确认";
+			renameProjectText.textContent = "确认";
 			renameProjectInput.focus();
 			return;
 		}
@@ -902,7 +908,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		try {
 			await deps.saveProject?.(project);
 			renameProjectInput.hidden = true;
-			renameProjectButton.textContent = "重命名";
+			renameProjectText.textContent = "重命名";
 			refreshProjectSelect(project.seedId);
 			status.textContent = `项目已重命名为「${project.name}」`;
 		} catch (error) {
@@ -911,7 +917,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 	renameProjectInput.addEventListener("keydown", (event) => {
 		if (event.key === "Enter") { event.preventDefault(); renameProjectButton.click(); }
-		if (event.key === "Escape") { renameProjectInput.hidden = true; renameProjectButton.textContent = "重命名"; }
+		if (event.key === "Escape") { renameProjectInput.hidden = true; renameProjectText.textContent = "重命名"; }
 	});
 
 	viewSelect.addEventListener("change", () => {
