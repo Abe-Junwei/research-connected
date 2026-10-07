@@ -1,4 +1,5 @@
 import type { StagedPaper } from "./staging";
+import type { ResearchProject } from "./project-state";
 export type SampleDepth = "standard" | "extended" | "deep";
 
 export interface ConnectedPapersSettings {
@@ -20,9 +21,12 @@ export interface ConnectedPapersSettings {
 	includeReferences: boolean;
 	includeCitations: boolean;
 	includeRelated: boolean;
+	/** Exclude retracted works from new graph samples; default keeps them with a ranking penalty. */
+	excludeRetracted: boolean;
 	stagedPapers: StagedPaper[];
 	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
 	graftedBySeed: Record<string, string[]>;
+	researchProjects: Record<string, ResearchProject>;
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
@@ -42,6 +46,8 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	includeReferences: true,
 	includeCitations: true,
 	includeRelated: true,
+	excludeRetracted: false,
 	stagedPapers: [],
 	graftedBySeed: {},
+	researchProjects: {},
 };

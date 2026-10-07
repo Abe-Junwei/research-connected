@@ -240,6 +240,11 @@ function unit(): void {
 	assert.equal(emptyLabel.get(0), "社区 1");
 
 	assert.equal(allowedExternalUrl("https://doi.org/10.1038/nature14539")?.startsWith("https://doi.org/"), true);
+	assert.equal(allowedExternalUrl("https://openalex.org/W1")?.startsWith("https://openalex.org/"), true);
+	assert.equal(allowedExternalUrl("https://attacker.openalex.org/W1"), null);
+	assert.equal(allowedExternalUrl("https://attacker.doi.org/10.1038/nature14539"), null);
+	assert.equal(allowedExternalUrl("https://user@doi.org/10.1038/nature14539"), null);
+	assert.equal(allowedExternalUrl("https://doi.org:8443/10.1038/nature14539"), null);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
 	assert.equal(allowedExternalUrl("javascript:alert(1)"), null);
 
@@ -331,7 +336,8 @@ function unit(): void {
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共被引 2 次/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /OpenAlex/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /不完整/);
-	assert.equal(nodeVisible({ ...sample, year: 2015 }, { ...filterish(), scrubYear: 2010 }), false);
+	assert.equal(nodeVisible({ ...sample, year: 2015 }, { ...filterish(), scrubYear: 2010 }), true, "种子在年份筛选中保持显示");
+	assert.equal(nodeVisible({ ...sample, isSeed: false, year: 2015 }, { ...filterish(), scrubYear: 2010 }), false);
 
 	const layoutNodes = [
 		{ ...paper("S", "seed", 1000), year: 2015, title: "Seed paper" },
@@ -998,6 +1004,8 @@ async function cursorPaging(): Promise<void> {
 	assert.deepEqual(sampled.rejected.map((work) => work.id), ["W1"]);
 	assert.equal(sampled.rawFetched, 3, "filtered sampling reads the next page");
 	assert.equal(sampled.filtered, 1);
+	assert.equal(sampled.requests, 2);
+	assert.equal(sampled.duplicates, 0);
 	assert.equal(sampled.pages, 2);
 	const partialClient = new OpenAlexClient(async (url) => {
 		const cursor = new URL(url).searchParams.get("cursor");
@@ -1007,7 +1015,17 @@ async function cursorPaging(): Promise<void> {
 	const partial = await partialClient.sampleWorks("cites:W0", 2, 1, undefined, 2, () => true);
 	assert.deepEqual(partial.works.map((work) => work.id), ["W4"], "keep successful pages if a later page fails");
 	assert.equal(partial.error, "page two unavailable");
+	assert.equal(partial.requests, 2, "failed page attempts count as requests");
 	assert.equal(partial.exhausted, false);
+	const duplicateClient = new OpenAlexClient(async (url) => {
+		const cursor = new URL(url).searchParams.get("cursor");
+		return cursor === "*"
+			? { results: [{ id: "W5" }], meta: { next_cursor: "p2" } }
+			: { results: [{ id: "W5" }, { id: "W6" }], meta: { next_cursor: null } };
+	}, { apiKey: "", contactEmail: "" });
+	const uniqueSample = await duplicateClient.sampleWorks("cites:W0", 2, 1, undefined, 2, () => true);
+	assert.deepEqual(uniqueSample.works.map((work) => work.id), ["W5", "W6"]);
+	assert.equal(uniqueSample.duplicates, 1, "duplicate records do not consume sample quota");
 }
 
 main().catch((error: unknown) => {

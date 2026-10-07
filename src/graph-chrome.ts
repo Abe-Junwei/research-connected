@@ -1,7 +1,7 @@
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "timeline" | "staged";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged";
 
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
@@ -36,8 +36,6 @@ export interface GraphChromeOptions {
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
-	/** 引用脉络页签，仅主面板开启。 */
-	timelineButton?: boolean;
 	stagingButton?: boolean;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
@@ -48,6 +46,7 @@ export interface GraphChromeOptions {
 }
 
 export interface GraphChrome {
+	setLayout(mode: LayoutMode): void;
 	setResearchVisible(visible: boolean): void;
 	setYears(min: number, max: number): void;
 	/** 新图没有任何年份时收起滑块行，避免旧范围把节点全部过滤掉。 */
@@ -124,6 +123,17 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			options.onLayout(mode);
 		});
 		button.title = LAYOUT_HINT[mode];
+		button.dataset.layout = mode;
+		button.dataset.icon = mode === "force2d" ? "▦" : mode === "temporal" ? "◷" : "◎";
+		button.setAttribute("aria-label", LAYOUT_LABEL[mode]);
+		const label = document.createElement("span");
+		label.className = "cpo-layout-label";
+		label.textContent = LAYOUT_LABEL[mode];
+		const icon = document.createElement("span");
+		icon.className = "cpo-layout-icon";
+		icon.setAttribute("aria-hidden", "true");
+		icon.textContent = button.dataset.icon;
+		button.replaceChildren(icon, label);
 		layoutButtons.set(mode, button);
 		layoutRow.append(button);
 	}
@@ -182,7 +192,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		["derivative", "衍生工作"],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", "研究脉络"]);
-	if (options.timelineButton) tabs.push(["timeline", "引用脉络"]);
 	if (options.stagingButton) tabs.push(["staged", "暂存"]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {
@@ -215,6 +224,9 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(tabRow, output);
 
 	return {
+		setLayout(mode: LayoutMode): void {
+			layoutButtons.get(mode)?.click();
+		},
 		setResearchVisible(visible: boolean): void {
 			const button = tabButtons.get("research");
 			if (button) button.hidden = !visible;

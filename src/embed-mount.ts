@@ -75,23 +75,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const status = document.createElement("p");
 	status.className = "cpo-status";
 	status.setAttribute("role", "status");
-	bar.append(topLine, status);
+
+	topLine.append(status);
+	bar.append(topLine);
 	shell.append(bar);
 
-	const seedSummary = document.createElement("div");
-	seedSummary.className = "cpo-seed-summary";
-	seedSummary.hidden = true;
-	const seedMark = document.createElement("span");
-	seedMark.className = "cpo-seed-mark";
-	const seedTitle = document.createElement("strong");
-	seedTitle.className = "cpo-seed-title";
-	const seedMeta = document.createElement("span");
-	seedMeta.className = "cpo-seed-meta";
-	seedSummary.append(seedMark, seedTitle, seedMeta);
-	shell.append(seedSummary);
-
 	const body = document.createElement("div");
-	body.className = "cpo-body";
+	body.className = "cpo-body is-rail-collapsed";
 	if (parsed.ok) body.style.height = `${parsed.spec.height}px`;
 	shell.append(body);
 
@@ -101,9 +91,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const railToggle = document.createElement("button");
 	railToggle.type = "button";
 	railToggle.className = "cpo-panel-toggle is-left";
-	railToggle.textContent = "‹";
-	railToggle.setAttribute("aria-label", "折叠左侧栏");
-	railToggle.setAttribute("aria-expanded", "true");
+	railToggle.textContent = "›";
+	railToggle.setAttribute("aria-label", "展开左侧栏");
+	railToggle.setAttribute("aria-expanded", "false");
 	rail.append(layoutHost, railToggle);
 
 	const stage = document.createElement("div");
@@ -210,6 +200,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 	railToggle.addEventListener("click", () => {
 		const on = body.classList.toggle("is-rail-collapsed");
+		layoutHost.classList.toggle("is-icon-only", on);
+		for (const button of Array.from(layoutHost.querySelectorAll(".cpo-tool"))) {
+			const icon = button.querySelector(".cpo-layout-icon") as HTMLElement | null;
+			const label = button.querySelector(".cpo-layout-label") as HTMLElement | null;
+			if (icon) icon.style.display = on ? "inline" : "none";
+			if (label) label.style.display = on ? "none" : "";
+		}
 		railToggle.textContent = on ? "›" : "‹";
 		railToggle.setAttribute("aria-expanded", on ? "false" : "true");
 		railToggle.setAttribute("aria-label", on ? "展开左侧栏" : "折叠左侧栏");
@@ -283,6 +280,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			void exportView(kind);
 		},
 	});
+	layoutHost.classList.add("is-icon-only");
+	for (const button of Array.from(layoutHost.querySelectorAll(".cpo-tool"))) {
+		const icon = button.querySelector(".cpo-layout-icon") as HTMLElement | null;
+		const label = button.querySelector(".cpo-layout-label") as HTMLElement | null;
+		if (icon) icon.style.display = "inline";
+		if (label) label.style.display = "none";
+	}
 
 	const exportView = async (kind: ExportKind): Promise<void> => {
 		if (!currentGraph) return;
@@ -316,7 +320,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		defaultWidth: 260,
 		onResize: () => map.resize(),
 	});
-	const narrowObserver = observeResponsiveMode(shell);
+	const narrowObserver = observeResponsiveMode(shell, () => {
+		if (shell.classList.contains("is-narrow")) sidebar.style.width = "100%";
+		else sidebar.style.removeProperty("width");
+		map.resize();
+	});
 	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
 	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
 	zoomFit.addEventListener("click", () => map.fit(true));
@@ -472,14 +480,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		else chrome?.clearYears();
 		paintLists();
 		const seed = graph.nodes.find((node) => node.isSeed);
-		if (seed) {
-			seedSummary.hidden = false;
-			seedTitle.textContent = seed.title || seed.id;
-			seedMeta.textContent = [seed.authors, seed.year ?? "年份不详", "种子论文"].filter(Boolean).join(" · ");
-		} else {
-			seedSummary.hidden = true;
-		}
-		status.textContent = `${seed?.title ?? "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
+		status.textContent = `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || "图谱"} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
 		}`;
 		if (seed) showDetail(seed, graph, null);
@@ -525,7 +526,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const token = ++generation;
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
-		seedSummary.hidden = true;
 		message.hidden = false;
 		messageText.textContent = STAGE_TEXT.resolving;
 		status.textContent = "正在向 OpenAlex 读取…";

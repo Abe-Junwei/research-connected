@@ -5,6 +5,7 @@ import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import { createVaultNote } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
+import type { ResearchProject } from "./project-state";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
@@ -59,6 +60,11 @@ export class ConnectedPapersView extends ItemView {
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
 			stagePaper: async () => { await this.host.saveSettings(); },
+			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+		saveProject: async (project: ResearchProject) => {
+			this.host.getSettings().researchProjects[project.seedId] = project;
+			await this.host.saveSettings();
+		},
 			initialTarget,
 		});
 	}

@@ -6,7 +6,7 @@ const root = resolve("src");
 // Pure semantic core. Coordinators (neighborhood/paper/citation-evidence) remain
 // outside this list until their source DTO types move out of HTTP adapters.
 const domain = new Set([
-	"aggregates.ts", "citation-timeline.ts", "communities.ts", "community-regions.ts",
+	"aggregates.ts", "communities.ts", "community-regions.ts",
 	"diversity.ts", "doi-path.ts", "graph-filter.ts", "labels.ts", "layout.ts",
 	"layout-modes.ts", "relation.ts", "similarity.ts", "text-similarity.ts",
 	"topic-similarity.ts", "types.ts",
@@ -15,7 +15,7 @@ const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "
 const ui = new Set([
 	"app.ts", "detail-cards.ts", "embed-block.ts", "embed-mount.ts", "filter-controls.ts",
 	"graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
-	"sidebar-resize.ts", "timeline-view.ts", "view.ts", "visual.ts",
+	"sidebar-resize.ts", "view.ts", "visual.ts",
 ]);
 const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts"]);
 const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g;

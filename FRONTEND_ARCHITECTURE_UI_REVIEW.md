@@ -1,5 +1,7 @@
 # 前端架构治理与嵌入/图谱一致性审查
 
+> 状态更新（2026-10-07，基于提交 `3f9d3ea`）：以下是 2026-10-05 的历史审查记录，不能直接视作当前缺陷清单。共享渲染已改为同一 `SimilarityMap` canvas；统一响应式断点、`--rc-*` token、键盘焦点样式、窄屏操作换行和侧栏折叠均已落地；路径高亮已移除。源码只保留 `map-canvas.ts`，Three.js/WebGL 已删除。当前架构有意复用纯逻辑/renderer，而不合并面板和嵌入的 DOM mount 流程。本轮 `npm test` 与 `npm run build` 通过。浏览器视觉矩阵未能执行：本轮浏览器安全提示显示用户拒绝访问本地预览，故窄屏、暗色主题和真实 Obsidian 宿主仍需手工验收。
+
 日期：2026-10-05
 范围：`src/app.ts`、`src/embed-mount.ts`、`src/graph-chrome.ts`、`src/map-canvas.ts`、`styles.css`、`preview/`、UI 验证脚本。
 

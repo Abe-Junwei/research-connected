@@ -19,9 +19,18 @@ const getJson: GetJson = async (url, init) => {
 const demo = new URLSearchParams(window.location.search).has("demo");
 const offline = new URLSearchParams(window.location.search).has("fixture");
 const llm = offline && new URLSearchParams(window.location.search).has("llm");
+const previewSettings = { ...DEFAULT_SETTINGS, researchProjects: { ...DEFAULT_SETTINGS.researchProjects } };
+try {
+	const saved = localStorage.getItem("research-connected-preview-projects");
+	if (saved) previewSettings.researchProjects = JSON.parse(saved);
+} catch { /* Preview remains usable if storage is unavailable or malformed. */ }
 
 mountGraphApp(root, {
-	getSettings: () => ({ ...DEFAULT_SETTINGS, llmEnabled: llm, llmEndpoint: llm ? "https://example.test/chat/completions" : "", llmModel: llm ? "fixture" : "" }),
+	getSettings: () => ({ ...previewSettings, llmEnabled: llm, llmEndpoint: llm ? "https://example.test/chat/completions" : "", llmModel: llm ? "fixture" : "" }),
+	saveProject: (project) => {
+		previewSettings.researchProjects[project.seedId] = project;
+		localStorage.setItem("research-connected-preview-projects", JSON.stringify(previewSettings.researchProjects));
+	},
 	getJson: offline ? fixtureGet : getJson,
 	postJson: offline ? fixturePost : undefined,
 	openExternal: (url) => {

@@ -54,6 +54,8 @@ export interface SimilarityGraph {
 	citationEvidence?: CitationEvidenceStore;
 	/** Book reviews, editorials, and other non-research records dropped from the sample. */
 	skippedNonResearch: number;
+	/** Retracted works removed because excludeRetracted was enabled. */
+	skippedRetracted?: number;
 	/** Per-source sampling counters. Optional to keep offline fixtures backwards-compatible. */
 	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
 	/** Per-node Semantic Scholar cross-check, when reconcile ran. Keyed by OpenAlex id. */
@@ -91,9 +93,11 @@ export interface ExternalReference {
 }
 
 export interface RetrievalStats {
+	requests: number;
 	rawFetched: number;
 	accepted: number;
 	filtered: number;
+	duplicates: number;
 	pages: number;
 	exhausted: boolean;
 	partial: boolean;
@@ -167,7 +171,7 @@ export async function loadNeighborhood(
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
 	const acceptsResearch = (work: RawWork): boolean => {
 		const paper = toPaper(work, "related");
-		return Boolean(paper && paper.id !== seed.id && !nonResearchLabel(paper));
+		return Boolean(paper && paper.id !== seed.id && !nonResearchLabel(paper) && !(settings.excludeRetracted && paper.retracted));
 	};
 	const [references, citations, related] = await Promise.all([
 		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", tier.pages, acceptsResearch)),
@@ -199,6 +203,9 @@ export async function loadNeighborhood(
 		countNonResearch(references.sample.rejected, "reference", seed.id) +
 		countNonResearch(citations.sample.rejected, "citation", seed.id) +
 		countNonResearch(related.sample.rejected, "related", seed.id);
+	const skippedRetracted = settings.excludeRetracted
+		? [references, citations, related].reduce((count, group) => count + group.sample.rejected.filter((work) => work.is_retracted === true).length, 0)
+		: 0;
 	// 候选排序：权威分（log 被引 × 新近度，3.7c）与语义分（标题/concepts/主题，
 	// 摘要此刻尚未补取）各占一半；语义缺失时退回纯权威分。
 	const rankPool = [...refPapers, ...citePapers, ...relatedPapers];
@@ -439,6 +446,7 @@ export async function loadNeighborhood(
 		catalog: [...catalog.values()],
 		citationEvidence,
 		skippedNonResearch,
+		skippedRetracted,
 		retrievalStats: {
 			references: statsFor(references.sample, refPapers.length, tier.references),
 			citations: statsFor(citations.sample, citePapers.length, tier.citations),
@@ -460,9 +468,16 @@ export async function expandAround(
 	hidden: ReadonlySet<string>,
 	settings: ConnectedPapersSettings,
 	slots: number,
-): Promise<{ papers: PaperNode[]; lists: Map<string, readonly string[]> }> {
+): Promise<{
+		papers: PaperNode[];
+		lists: Map<string, readonly string[]>;
+		references: number;
+		citations: number;
+		warnings: string[];
+		noMore: boolean;
+	}> {
 	const cap = Math.min(EXPAND_CAP, Math.max(0, slots));
-	if (cap <= 0) return { papers: [], lists: new Map() };
+	if (cap <= 0) return { papers: [], lists: new Map(), references: 0, citations: 0, warnings: [], noMore: false };
 	const present = new Set(graph.nodes.map((node) => node.id));
 	const fetchN = Math.min(40, Math.max(12, cap * 4));
 	const accept = (work: RawWork): boolean => {
@@ -481,12 +496,18 @@ export async function expandAround(
 		reference: researchOnly(asPapers(references.works, "reference", from.id)),
 		citation: researchOnly(asPapers(citations.works, "citation", from.id)),
 	});
+	const warnings = [
+		references.error ? `参考文献查询失败：${references.error}` : "",
+		citations.error ? `施引文献查询失败：${citations.error}` : "",
+	].filter(Boolean);
 	const have = new Set([...present, ...picked.map((paper) => paper.id)]);
 	const papers = picked.length < cap
 		? [...picked, ...couplingFill(graph, from.id, have, hidden, cap - picked.length)]
 		: picked;
 	const lists = new Map<string, readonly string[]>();
-	if (papers.length === 0) return { papers, lists };
+	const noMore = (!settings.includeReferences || references.sample.exhausted) && (!settings.includeCitations || citations.sample.exhausted);
+	if (papers.length === 0) return { papers, lists, references: 0, citations: 0, warnings, noMore };
+	let detailsFailed = false;
 	try {
 		const detailed = await client.worksByIds(papers.map((paper) => paper.id));
 		for (const raw of detailed) {
@@ -494,9 +515,17 @@ export async function expandAround(
 			if (id) lists.set(id, referenceIds(raw.referenced_works));
 		}
 	} catch {
-		// Scoring can proceed with empty lists for the new papers.
+		detailsFailed = true;
 	}
-	return { papers, lists };
+	if (detailsFailed) warnings.push("部分新增论文的参考文献没有读取到，关系暂不完整");
+	return {
+		papers,
+		lists,
+		references: picked.filter((paper) => paper.origin === "reference").length,
+		citations: picked.filter((paper) => paper.origin === "citation").length,
+		warnings,
+		noMore,
+	};
 }
 
 /** Re-fetch and graft previously deep-dug members after a fresh seed build. */
@@ -639,27 +668,29 @@ async function loadGroup(
 	enabled: boolean,
 	run: () => Promise<SampledWorks>,
 ): Promise<{ works: RawWork[]; sample: SampledWorks; error?: string }> {
-	if (!enabled) return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: true } };
+	if (!enabled) return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, duplicates: 0, requests: 0, pages: 0, exhausted: true } };
 	try {
 		const sample = await run();
 		return { works: sample.works, sample, error: sample.error };
 	} catch (error) {
-		return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
+		return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, duplicates: 0, requests: 1, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : "请求失败" };
 	}
 }
 
 function statsFor(
-	sample: { rawFetched: number; filtered: number; pages: number; exhausted: boolean },
+	sample: { requests: number; rawFetched: number; filtered: number; duplicates: number; pages: number; exhausted: boolean; error?: string },
 	accepted: number,
 	target: number,
 ): RetrievalStats {
 	return {
+		requests: sample.requests,
 		rawFetched: sample.rawFetched,
 		accepted,
 		filtered: sample.filtered,
+		duplicates: sample.duplicates,
 		pages: sample.pages,
 		exhausted: sample.exhausted,
-		partial: sample.pages > 0 && accepted < target,
+		partial: Boolean(sample.error) || sample.pages > 0 && accepted < target,
 	};
 }
 

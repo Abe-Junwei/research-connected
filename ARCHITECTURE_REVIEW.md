@@ -11,8 +11,8 @@
   │ 输入 DOI / OpenAlex ID / 标题，浏览相似关系与引用证据
   ▼
 Research Connected（Obsidian 插件）
-  ├─ 面板：src/view.ts → src/app.ts → 图谱/筛选/时间脉络等模块
-  ├─ 笔记嵌入：src/embed-block.ts → src/embed-mount.ts / src/graph-3d.ts
+  ├─ 面板：src/view.ts → src/app.ts → 图谱/筛选/详情模块
+  ├─ 笔记嵌入：src/embed-block.ts → src/embed-mount.ts / src/map-canvas.ts
   ├─ 数据访问：OpenAlex、Crossref、Semantic Scholar、可选 LLM
   └─ 宿主边界：Obsidian API、插件 settings/data.json、浏览器 DOM/canvas
 ```
@@ -22,17 +22,17 @@ Research Connected（Obsidian 插件）
 | 模块 | 职责（从源码观察） | 依赖/风险 |
 |---|---|---|
 | `main.ts`, `view.ts`, `settings.ts` | 插件生命周期、视图注册、设置、宿主集成 | Obsidian 适配层；适合做唯一宿主入口 |
-| `app.ts`（977 行） | 面板用例编排、请求状态、筛选/详情/引用脉络/UI 事件 | 当前最大耦合点；状态与副作用集中，修改容易产生回归 |
+| `app.ts` | 面板用例编排、请求状态、筛选/详情/UI 事件 | 状态与副作用集中，是当前最大的协调模块 |
 | `openalex.ts`, `obsidian-http.ts`, `llm.ts`, `citation-sources.ts` | 外部数据与 HTTP 访问、来源协调 | 外部 API 可用性/预算决定功能完整度；需保持来源、采样和失败状态显式 |
-| `paper.ts`, `relation.ts`, `similarity.ts`, `aggregates.ts`, `citation-evidence.ts`, `citation-timeline.ts` | 论文规范化、相似关系、聚合、引用证据/脉络 | 这是最接近领域规则的部分；应尽量避免 DOM、Obsidian 与请求细节渗入 |
-| `map-canvas.ts`, `graph-3d.ts`, `embed-mount.ts`, `layout*.ts` | 2D/3D 绘制、布局、嵌入生命周期 | 视图复杂但属展示机制；面板与嵌入部分复用语义逻辑，也有重复控制流程的可能 |
+| `paper.ts`, `relation.ts`, `similarity.ts`, `aggregates.ts`, `citation-evidence.ts` | 论文规范化、相似关系、聚合、引用证据 | 这是最接近领域规则的部分；应尽量避免 DOM、Obsidian 与请求细节渗入 |
+| `map-canvas.ts`, `embed-mount.ts`, `layout*.ts` | 共享 2D canvas 绘制、布局、嵌入生命周期 | 视图复杂但属展示机制；面板与嵌入复用渲染器和领域数据，mount 控制流程仍分开 |
 | `scripts/verify.ts`, `verify-evidence.ts`, `verify-ui.ts`, `perf.ts` | 离线语义/UI/性能检查 | 无测试框架依赖、反馈快；目前需确认关键行为均由可重复用例覆盖 |
 
-源码约 1.4 万行 TypeScript，按模块估算；其中 `graph-3d.ts` 约 1,132 行、`map-canvas.ts` 约 1,094 行、`app.ts` 约 977 行、`embed-mount.ts` 约 882 行。文件大小本身不是重构理由，但这四处是变更耦合和回归定位的优先检查对象。
+审查记录最初于 2026-10-05 撰写。2026-10-07 的当前实现已移除 WebGL/Three.js，并将面板和笔记嵌入统一到 `map-canvas.ts`。当前协调器仍较大：`app.ts` 约 1,304 行、`embed-mount.ts` 约 918 行、`map-canvas.ts` 约 1,219 行；行数只用于定位审查入口，不构成机械拆分理由。
 
 ## 领域与一致性
 
-核心业务对象是论文、相似图及引用证据。`PaperNode`/关系数据是可跨视图使用的共享模型；“相似不代表引用”、引用方向、来源与采样边界属于领域语义，而不应由画布推断。当前无需为简单数据对象强行建立 Aggregate/Repository 层。建议把“构建图谱”“加载引用脉络”“生成摘要”等当作应用用例，以清晰输入/输出组织，但保留现有轻量函数式领域模块。
+核心业务对象是论文、相似图及引用证据。`PaperNode`/关系数据是可跨视图使用的共享模型；“相似不代表引用”、引用方向、来源与采样边界属于领域语义，而不应由画布推断。当前无需为简单数据对象强行建立 Aggregate/Repository 层。建议把“构建图谱”“生成摘要”等当作应用用例，以清晰输入/输出组织，但保留现有轻量函数式领域模块。
 
 一致性边界主要在单次插件会话的数据处理与 Obsidian `saveData` 设置持久化；外部 OpenAlex 等查询不能参与本地事务。调用失败、预算耗尽或来源缺失应以状态/证据呈现，而不是假装获得完整学术图景。多来源协调可接受最终一致，但 UI 必须标明其来源和覆盖范围。
 
@@ -47,7 +47,7 @@ Research Connected（Obsidian 插件）
 ## 建议（按收益/成本排序）
 
 1. **写下并执行依赖方向**：领域计算模块不得依赖 Obsidian、DOM、HTTP；`main/view/app` 可依赖领域和适配器；外部来源与持久化适配器不能反向依赖 UI。先人工约束与 review，只有违规反复出现才引入 lint 规则。
-2. **优先收敛 `app.ts` 的副作用**：按用户动作/用例分组（建图、引用脉络、导出/暂存），把纯计算留在现有函数模块；只有当拆分后各用例有稳定边界时才增加接口，不以行数作为机械拆分目标。
+2. **优先收敛 `app.ts` 的副作用**：按用户动作/用例分组（建图、导出/暂存），把纯计算留在现有函数模块；只有当拆分后各用例有稳定边界时才增加接口，不以行数作为机械拆分目标。
 3. **验证 UI/嵌入生命周期边界**：确认卸载/重建时事件监听、异步请求、canvas/动画资源均清理；面板和嵌入共享领域数据，但不强求共享完整 UI 控制器。
 4. **让离线检查成为架构安全网**：给引用方向、来源冲突/缺失、采样范围、设置合并/边界值以及异步过期响应建立小型确定性验证；改代码后运行 `npm test`，性能变更再跑 `npm run perf`。
 5. **渐进演进**：若暂存列表成为持久化主要功能，再为 `saveData` 增加显式 schema version/migration；若将来出现独立后端或多客户端需求，再重新评估端口/服务边界，而非预先引入。
@@ -56,7 +56,7 @@ Research Connected（Obsidian 插件）
 
 - **可维护性**：功能模块化已有基础；大协调器和大型绘图文件会提升修改风险。按功能小步拆分比重写架构更安全。
 - **可靠性**：插件强依赖网络数据源但可保留旧图并展示失败，这个降级方向合理；关注请求取消/过期结果与来源部分失败。
-- **性能**：图布局/绘制集中在 canvas/Three.js；已有 perf 脚本/基线，建议持续以实测决定优化，避免抽象层增加热路径开销。
+- **性能**：图布局/绘制集中在 canvas；`npm run perf` 覆盖 50/150/300 节点的采样选择、布局与聚合，优化应由实测决定。
 - **安全**：外部 URL 打开与输入需保持 allowlist/校验；LLM endpoint 属用户配置的外部边界，不能把密钥或论文内容默认发送给未配置服务。
 - **可观察性**：桌面插件不需要服务级遥测；面向用户的错误应包含失败来源和可行动信息，调试日志避免记录密钥。
 

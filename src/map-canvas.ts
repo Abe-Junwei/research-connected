@@ -78,6 +78,24 @@ export class SimilarityMap {
 	private pulseFrame: number | null = null;
 	private wheelNeedsModifier = false;
 
+	getViewState(): { zoom: number; centerX: number; centerY: number; selectedId: string | null } {
+		return {
+			zoom: this.k,
+			centerX: (this.cssWidth / 2 - this.tx) / this.k,
+			centerY: (this.cssHeight / 2 - this.ty) / this.k,
+			selectedId: this.selectedId,
+		};
+	}
+
+	setViewState(state: { zoom: number; centerX: number; centerY: number; selectedId: string | null }): void {
+		this.k = clamp(state.zoom, 0.025, 4);
+		this.tx = this.cssWidth / 2 - state.centerX * this.k;
+		this.ty = this.cssHeight / 2 - state.centerY * this.k;
+		this.selectedId = this.nodes.some((node) => node.id === state.selectedId) ? state.selectedId : null;
+		this.refreshFocus();
+		this.draw();
+	}
+
 	/** Headless verify stubs have no rAF; a timeout keeps the loops converging. */
 	private raf(callback: () => void): number {
 		return typeof requestAnimationFrame === "function"
@@ -250,11 +268,8 @@ export class SimilarityMap {
 	resize(): void {
 		const stageRect = this.stage.getBoundingClientRect();
 		const dpr = window.devicePixelRatio || 1;
-		const padX = 8;
-		const padTop = 8;
-		const padBottom = 14;
-		const width = Math.max(1, Math.round(stageRect.width - padX * 2));
-		const height = Math.max(1, Math.round(stageRect.height - padTop - padBottom));
+		const width = Math.max(1, Math.round(stageRect.width));
+		const height = Math.max(1, Math.round(stageRect.height));
 		// Keep world point at the old center; do not refit — panel collapse must not rezoom.
 		const cx = (this.cssWidth / 2 - this.tx) / this.k;
 		const cy = (this.cssHeight / 2 - this.ty) / this.k;
@@ -262,9 +277,6 @@ export class SimilarityMap {
 		this.cssHeight = height;
 		this.tx = width / 2 - cx * this.k;
 		this.ty = height / 2 - cy * this.k;
-		// Drive both CSS and bitmap from the same px — % CSS + attribute size drifts and stretches nodes.
-		this.canvas.style.width = `${width}px`;
-		this.canvas.style.height = `${height}px`;
 		const bw = Math.round(width * dpr);
 		const bh = Math.round(height * dpr);
 		if (this.canvas.width !== bw || this.canvas.height !== bh) {
@@ -703,7 +715,7 @@ export class SimilarityMap {
 			for (const edge of this.edges) {
 				if (!this.kindVisible[relationKind(edge)]) continue;
 				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
-				if (!a || !b || (this.scrubYear !== null && (a.year === null || b.year === null || a.year > this.scrubYear || b.year > this.scrubYear))) continue;
+				if (!a || !b || !this.isShown(a) || !this.isShown(b)) continue;
 				const dx = b.x-a.x, dy = b.y-a.y;
 				const t = Math.max(0, Math.min(1, ((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy || 1)));
 				const d = Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy);
@@ -1053,7 +1065,7 @@ export class SimilarityMap {
 	}
 
 	private isShown(node: PaperNode): boolean {
-		return this.scrubYear === null || (node.year !== null && node.year <= this.scrubYear);
+		return node.isSeed || this.scrubYear === null || (node.year !== null && node.year <= this.scrubYear);
 	}
 
 	private drawLabels(ctx: CanvasRenderingContext2D): void {
@@ -1067,10 +1079,13 @@ export class SimilarityMap {
 		const place = (node: DrawNode, maxWidth: number, alpha: number): void => {
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
-			const x = cx + node.radius + 6;
 			const y = cy;
 			const text = fitText(ctx, authorYear(node), maxWidth);
 			const width = ctx.measureText(text).width;
+			const rightX = cx + node.radius + 6;
+			const leftX = cx - node.radius - 6 - width;
+			const anchor = rightX + width <= this.cssWidth - 4 || leftX < 4 ? "left" : "right";
+			const x = anchor === "left" ? rightX : leftX;
 			const box = { x, y: y - 8, w: width, h: 16 };
 			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
 			if (!must && overlaps(box, boxes)) return;
@@ -1079,6 +1094,7 @@ export class SimilarityMap {
 			ctx.globalAlpha = dimmed ? 0.35 * alpha : alpha;
 			ctx.lineWidth = 3;
 			ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+			ctx.textAlign = anchor;
 			ctx.strokeText(text, x, y);
 			ctx.fillStyle = this.graphText;
 			ctx.fillText(text, x, y);

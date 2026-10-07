@@ -27,13 +27,13 @@
         ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
         ".superdesign/init/components.md": "c26ddd228c0a323f4046fe17daf063f68cbffb778aca8cca9d35a6a78cc9d506",
         ".superdesign/init/layouts.md": "d03ad3a0b2c6198d7cb8289af06c615f32515b0f27372218624b80826350f9c8",
-        "src/app.ts": "286fac5cfa237559ab0b6acae1dc4b9ee34d339b11bb7775dd2a3d7168486fc5",
-        "src/embed-mount.ts": "933603383df42c44b1bb4ccd3ebac99217fbe1bbcfca5fa5d5fbd5f1f750e2af",
-        "src/graph-chrome.ts": "558317eaefef4764ef1e3e6c434b1059d5ce4141bcd8f99985c8ea5c12de8b89",
-        "src/filter-controls.ts": "c81cf4b2d7b2214a9647cda53d44eab74025277ce806c6978e7e1c8567c14531",
-        "src/layout-modes.ts": "49c9346a7a488e9b6e8c6c14d0cb27244b04b881b09afcdf36a370fdcb3b2884",
+        "src/app.ts": "7139298260ecee246969fef0fe2c57f920e3d9613385362464ac5ddc90da8fa1",
+        "src/embed-mount.ts": "310c01036e9d6c30a47cab3b49162c4a3f08fc9538b0c37ca97d003e27acf75b",
+        "src/graph-chrome.ts": "e2766c44fa121e8b250da964b5c6907b947feb657afdb91881216941d0debcd1",
+        "src/filter-controls.ts": "e3c47198047acef2e516037b0c1146ee5fd976f74fa0faceeecebbc54eabe6e2",
+        "src/layout-modes.ts": "a696514131e3787b2c582dad230a23b5372f97f5b78c5f661c5fd6b767f015dc",
         "src/sidebar-resize.ts": "9c077215078692c4edb6e1397bab47fd89423e1519687e8d73e091c5736f1a19",
-        "styles.css": "3bec7303d2a633c72d7537a03c3797b815dae1e47d49fee09aceb55f94dc8a26"
+        "styles.css": "22f767b063a15bce2491c2d9eaf6c44e26edae2784262eba9d922dcee4b090c2"
       },
       "drafts": {
         "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef": {
@@ -48,7 +48,69 @@
           "currentVersion": 1
         }
       },
-      "updatedAt": "2026-10-04T08:09:07Z"
+      "updatedAt": "2026-10-07T04:35:00Z"
+    },
+    "statusbar-redesign": {
+      "targetKind": "existing-ui",
+      "projectId": "adb7b537-229d-4941-b399-a5abd7f959fa",
+      "activeDraftId": "6fef5fd0-2c95-437a-85a1-7817df46a8d1",
+      "baselineDraftId": "6fef5fd0-2c95-437a-85a1-7817df46a8d1",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/app.ts:108:132",
+        "styles.css:180:205"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
+        "src/app.ts": "7139298260ecee246969fef0fe2c57f920e3d9613385362464ac5ddc90da8fa1",
+        "styles.css": "22f767b063a15bce2491c2d9eaf6c44e26edae2784262eba9d922dcee4b090c2"
+      },
+      "drafts": {
+        "6fef5fd0-2c95-437a-85a1-7817df46a8d1": {
+          "title": "Research Connected Editorial Footer Redesign",
+          "visualDirection": "compact theme-matched flat status bar",
+          "currentVersion": 2
+        }
+      },
+      "updatedAt": "2026-10-07T04:35:00Z"
+    },
+    "workspace-chrome-assessment": {
+      "targetKind": "existing-ui",
+      "projectId": "adb7b537-229d-4941-b399-a5abd7f959fa",
+      "baselineDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
+      "activeDraftId": "ebce02fb-3731-4c9f-8d2c-aeeff41730c6",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "src/app.ts:90:197",
+        "styles.css:1:220",
+        "styles.css:370:580",
+        "styles.css:868:976",
+        "styles.css:1116:1160",
+        "styles.css:2014:2190"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
+        "src/app.ts": "7139298260ecee246969fef0fe2c57f920e3d9613385362464ac5ddc90da8fa1",
+        "styles.css": "22f767b063a15bce2491c2d9eaf6c44e26edae2784262eba9d922dcee4b090c2"
+      },
+      "drafts": {
+        "5c76acec-2d83-4a4b-8d06-201fa4d0e571": {
+          "title": "Research Connected Ground Truth Workspace",
+          "visualDirection": "faithful current workspace reproduction",
+          "currentVersion": 1
+        },
+        "ebce02fb-3731-4c9f-8d2c-aeeff41730c6": {
+          "title": "Research Connected Refined Workspace",
+          "visualDirection": "collapsed left rail and calmer top and evidence panel",
+          "parentDraftId": "5c76acec-2d83-4a4b-8d06-201fa4d0e571",
+          "currentVersion": 2
+        }
+      },
+      "updatedAt": "2026-10-07T04:35:00Z"
     }
   }
 }

@@ -1,5 +1,4 @@
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
-import { EXAMPLE_DOI } from "./constants";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
@@ -31,20 +30,7 @@ import {
 	edgePairNeedingS2Context,
 	mergeOpenCitation,
 	mergeS2CitationsForPair,
-	SOURCE_TEXT,
 } from "./citation-evidence";
-import {
-	buildCitationTimeline,
-	LIST_VS_TIMELINE_NOTE,
-	TIMELINE_IMPACT_NOTE,
-	TIMELINE_LOADING_TEXT,
-	TIMELINE_META_LIMIT,
-	TIMELINE_META_NOTE,
-	TIMELINE_SAMPLING_NOTE,
-	TIMELINE_SCOPE_NOTE,
-	missingReferenceIds,
-} from "./citation-timeline";
-import { drawTimeline } from "./timeline-view";
 import { buildNarrativeEvidence, type ResearchNarrative, type NarrativeEvidence } from "./narrative";
 import { summarizeWithLlmPost } from "./llm";
 import {
@@ -62,6 +48,7 @@ import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
 import { groupStagedBySeed, stageKey, stageSourceLabel, toggleStaged } from "./staging";
+import { restoreGraphSnapshot, saveGraphSnapshot, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
 	destroy(): void;
@@ -78,6 +65,8 @@ export interface AppDeps {
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	/** Persist settings (grafted members, staging, …). */
 	persistSettings?: () => Promise<void> | void;
+	loadSavedProject?: () => ResearchProject | null;
+	saveProject?: (project: ResearchProject) => Promise<void> | void;
 	initialDoi?: string;
 	/** Seed to build immediately; wins over initialDoi when both are set. */
 	initialTarget?: { kind: "doi" | "openalex"; value: string };
@@ -115,19 +104,42 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.autocomplete = "off";
 	input.spellcheck = false;
 	input.setAttribute("aria-label", "种子论文");
-	const submit = el(form, "button", "cpo-primary", "构建图谱") as HTMLButtonElement;
+	const submit = el(form, "button", "cpo-primary", "构建") as HTMLButtonElement;
 	submit.type = "submit";
-	const example = el(topLine, "button", "cpo-ghost", "示例") as HTMLButtonElement;
-	example.type = "button";
-	example.title = EXAMPLE_DOI;
+	const projectTools = el(bar, "div", "cpo-project-tools");
+	el(projectTools, "span", "cpo-project-label", "项目");
+	const projectSelect = el(projectTools, "select", "cpo-project-select") as HTMLSelectElement;
+	projectSelect.setAttribute("aria-label", "研究项目");
+	projectSelect.title = "切换研究项目";
+	el(projectTools, "span", "cpo-project-label", "视图");
+	const viewSelect = el(projectTools, "select", "cpo-project-select cpo-view-select") as HTMLSelectElement;
+	viewSelect.setAttribute("aria-label", "保存的视图");
+	viewSelect.title = "恢复保存的视图";
+	viewSelect.disabled = true;
+	const viewNameInput = el(projectTools, "input", "cpo-project-name-input") as HTMLInputElement;
+	viewNameInput.placeholder = "新视图名称";
+	viewNameInput.setAttribute("aria-label", "新视图名称");
+	const saveViewButton = el(projectTools, "button", "cpo-ghost", "保存视图") as HTMLButtonElement;
+	saveViewButton.type = "button";
+	saveViewButton.disabled = true;
+	const renameProjectInput = el(projectTools, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
+	renameProjectInput.placeholder = "项目新名称";
+	renameProjectInput.setAttribute("aria-label", "项目新名称");
+	renameProjectInput.hidden = true;
+	const renameProjectButton = el(projectTools, "button", "cpo-ghost", "重命名") as HTMLButtonElement;
+	renameProjectButton.type = "button";
+	renameProjectButton.disabled = true;
 
-	const status = el(bar, "p", "cpo-status", "从一篇种子论文开始。");
+	const status = document.createElement("p");
+	status.className = "cpo-status";
+	status.textContent = "从一篇种子论文开始。";
 	status.setAttribute("role", "status");
 	const seedSummary = el(root, "div", "cpo-seed-summary");
 	seedSummary.hidden = true;
 	el(seedSummary, "span", "cpo-seed-mark", "");
 	const seedTitle = el(seedSummary, "strong", "cpo-seed-title");
 	const seedMeta = el(seedSummary, "span", "cpo-seed-meta");
+	topLine.append(seedSummary);
 	const results = el(bar, "div", "cpo-results");
 	results.hidden = true;
 
@@ -136,12 +148,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	banner.setAttribute("role", "alert");
 
 	const body = el(root, "div", "cpo-body");
+	body.classList.add("is-rail-collapsed");
+	const statusBar = el(root, "footer", "cpo-statusbar");
+	statusBar.append(status);
+	const undoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", "撤销") as HTMLButtonElement;
+	undoButton.type = "button";
+	undoButton.hidden = true;
+	undoButton.disabled = true;
 	const rail = el(body, "aside", "cpo-rail");
-	const layoutHost = el(rail, "div");
-	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "‹") as HTMLButtonElement;
+	const layoutHost = el(rail, "div", "cpo-rail-layouts");
+	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›") as HTMLButtonElement;
 	railToggle.type = "button";
-	railToggle.setAttribute("aria-label", "折叠左侧栏");
-	railToggle.setAttribute("aria-expanded", "true");
+	railToggle.setAttribute("aria-label", "展开左侧栏");
+	railToggle.setAttribute("aria-expanded", "false");
 
 	const stage = el(body, "div", "cpo-stage");
 	const canvas = el(stage, "canvas");
@@ -213,6 +232,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 	graphKey.paintColor("force2d");
 	let graph: SimilarityGraph | null = null;
+	let undoCheckpoint: { snapshot: ReturnType<typeof saveGraphSnapshot>; view: SavedView; hidden: Set<string>; grafted: Record<string, string[]> } | null = null;
+	let expanding = false;
+	let projectSaveTimer: number | null = null;
+	let persistProjectNow: (current: SimilarityGraph) => void = () => {};
+	const scheduleProjectSave = (): void => {
+		if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
+		projectSaveTimer = window.setTimeout(() => {
+			projectSaveTimer = null;
+			if (graph) persistProjectNow(graph);
+		}, 500);
+	};
 	let tab: GraphTab = "graph";
 	let narrative: ResearchNarrative | null = null;
 	let narrativeInput: NarrativeEvidence | null = null;
@@ -225,13 +255,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const s2EvidenceRequests = new Map<string, Promise<import("./citation-sources").SemanticCitation[]>>();
 	/** 轨道按钮持有的布局；建图后回灌给画布，保持按钮与实际渲染一致。 */
 	let layoutMode: LayoutMode = "force2d";
-	let timelineMetaGraph: SimilarityGraph | null = null;
-	let timelineMetaRequested = false;
-	let timelineMetaLoading = false;
-	let timelineMetaError = "";
-	const timelineExtraMeta = new Map<string, PaperNode>();
-	/** 脉络里被点过的未收录节点，避免同一篇重复单篇补取。 */
-	const timelinePickedMeta = new Set<string>();
 	let generation = 0;
 	let hiddenIds = new Set<string>();
 	let composing = false;
@@ -263,24 +286,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const setBusy = (busy: boolean): void => {
 		input.disabled = busy;
 		submit.disabled = busy;
-		example.disabled = busy;
-		submit.textContent = busy ? "正在构建…" : "构建图谱";
+		submit.textContent = busy ? "正在构建…" : "构建";
 	};
 
 	const shownNodes = (): PaperNode[] => {
 		if (!graph) return [];
-		return graph.nodes.filter((node) => scrubYear === null || (node.year !== null && node.year <= scrubYear));
+		return graph.nodes.filter((node) => node.isSeed || scrubYear === null || (node.year !== null && node.year <= scrubYear));
 	};
 
 	const paintLists = (): void => {
-		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research" || tab === "timeline");
+		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research");
 		detail.hidden = tab !== "graph";
 		if (tab === "research") {
 			paintResearch();
-			return;
-		}
-		if (tab === "timeline") {
-			paintTimeline();
 			return;
 		}
 		if (tab === "staged") {
@@ -302,7 +320,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		copy.className = "cpo-agg-def";
 		copy.textContent = definition;
 		listPanel.append(copy);
-		el(listPanel, "p", "cpo-side-tip", LIST_VS_TIMELINE_NOTE);
 		if (rows.length === 0) {
 			const empty = document.createElement("p");
 			empty.className = "cpo-agg-empty";
@@ -318,96 +335,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			});
 		}
 		listPanel.append(list);
-	};
-
-	/** 引用脉络：只用原始引用记录，不用相似图边。 */
-	const paintTimeline = (): void => {
-		listPanel.hidden = false;
-		listPanel.replaceChildren();
-		el(listPanel, "h3", "cpo-kicker", "引用脉络");
-		el(listPanel, "p", "cpo-side-tip", TIMELINE_SCOPE_NOTE);
-		if (!graph) return;
-		if (timelineMetaGraph !== graph) {
-			timelineMetaGraph = graph;
-			timelineMetaRequested = false;
-			timelineMetaLoading = false;
-			timelineMetaError = "";
-			timelineExtraMeta.clear();
-			timelinePickedMeta.clear();
-		}
-		const timeline = buildCitationTimeline(graph, timelineExtraMeta);
-		const sourceNames = timeline.sources.map((source) => SOURCE_TEXT[source as keyof typeof SOURCE_TEXT] ?? source);
-		el(
-			listPanel,
-			"p",
-			"cpo-side-tip",
-			`引用关系来源：${sourceNames.join(" + ") || "OpenAlex 采样"} · 当前采样 ${graph.nodes.length} 篇节点`,
-		);
-		el(listPanel, "p", "cpo-side-tip", `${TIMELINE_SAMPLING_NOTE}${TIMELINE_IMPACT_NOTE}`);
-		const missingCount = missingReferenceIds(graph, timelineExtraMeta, Number.MAX_SAFE_INTEGER).length;
-		el(listPanel, "p", "cpo-side-tip", `${TIMELINE_META_NOTE}${missingCount > TIMELINE_META_LIMIT ? ` 当前缺少 ${missingCount} 条，先补取前 ${TIMELINE_META_LIMIT} 条。` : ""}`);
-		if (timelineMetaLoading) el(listPanel, "p", "cpo-side-tip", TIMELINE_LOADING_TEXT);
-		if (timelineMetaError) el(listPanel, "p", "cpo-side-tip", `元数据补取失败：${timelineMetaError}；仍显示已有引用记录。`);
-		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-		svg.setAttribute("role", "img");
-		svg.setAttribute("aria-label", "种子论文的引用脉络");
-		const scroll = el(listPanel, "div", "cpo-timeline-scroll");
-		scroll.append(svg);
-		const selection = el(listPanel, "div");
-		drawTimeline(svg, timeline, { width: Math.max(320, scroll.clientWidth), onPick: (node) => {
-			selection.replaceChildren();
-			el(selection, "p", "cpo-meta", `${node.title || node.id} · ${node.year ?? "年份不详"}`);
-			paintEvidenceBadges(selection, node.evidence);
-			const paper = graph?.nodes.find((item) => item.id === node.id);
-			if (paper) {
-				addLink(selection, "在详情中查看", () => {
-					activateGraphTab();
-					showDetail(paper);
-				});
-				return;
-			}
-			// 未收录节点（超出批量补取上限的参考文献）：点击时单篇补取元数据。
-			if (node.missing && graph && !timelinePickedMeta.has(node.id)) {
-				timelinePickedMeta.add(node.id);
-				const picking = graph;
-				el(selection, "p", "cpo-side-tip", TIMELINE_LOADING_TEXT);
-				void (async () => {
-					try {
-						const works = await client().workSummaries([node.id]);
-						if (disposed || graph !== picking) return;
-						const meta = works.map((raw) => toPaper(raw, "reference")).find((item) => item?.id === node.id);
-						if (meta) timelineExtraMeta.set(meta.id, meta);
-					} catch {
-						timelinePickedMeta.delete(node.id);
-					} finally {
-						if (!disposed && graph === picking && tab === "timeline") paintTimeline();
-					}
-				})();
-			}
-		} });
-		if (!timelineMetaRequested && missingCount > 0) {
-			timelineMetaRequested = true;
-			timelineMetaLoading = true;
-			void (async () => {
-				try {
-					const ids = missingReferenceIds(graph!, timelineExtraMeta, TIMELINE_META_LIMIT);
-					const works = await client().workSummaries(ids);
-					if (disposed || graph !== timelineMetaGraph) return;
-					for (const raw of works) {
-						const paper = toPaper(raw, "reference");
-						if (paper) timelineExtraMeta.set(paper.id, paper);
-					}
-					timelineMetaError = "";
-				} catch (error) {
-					if (graph === timelineMetaGraph) timelineMetaError = error instanceof Error ? error.message : "请求未完成";
-				} finally {
-					if (graph === timelineMetaGraph) {
-						timelineMetaLoading = false;
-						if (!disposed && tab === "timeline") paintTimeline();
-					}
-				}
-			})();
-		}
 	};
 
 	const paintStaged = (): void => {
@@ -575,7 +502,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
 		stagingButton: Boolean(deps.stagePaper),
-		timelineButton: true,
 		actionsHost: actionsBar,
 		layoutHost,
 		scrubHost: graphActions,
@@ -583,11 +509,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			layoutMode = mode;
 			map.setLayout(mode);
 			map.setColorMode(defaultColorMode(mode));
+			scheduleProjectSave();
 			graphKey.paintColor(mode);
 		},
 		onScrub: (year) => {
 			scrubYear = year;
 			map.setScrubYear(year);
+			scheduleProjectSave();
 			paintLists();
 		},
 		onTab: (next) => {
@@ -728,7 +656,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		doiAction.onclick = doi ? () => deps.openExternal(doi) : null;
 	};
 
-	map.onSelect = (paper) => showDetail(paper);
+	map.onSelect = (paper) => { showDetail(paper); scheduleProjectSave(); };
 	map.onNodeMenu = (paper, x, y) => {
 		if (!paper || !graph) {
 			nodeMenu.hidden = true;
@@ -827,7 +755,171 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		delete nodeMenu.dataset.paperId;
 	};
 
+	const persistProject = (current: SimilarityGraph): void => {
+		const seed = current.nodes.find((node) => node.isSeed);
+		if (!seed || !deps.saveProject) return;
+		const prior = deps.getSettings().researchProjects[seed.id];
+		const project: ResearchProject = {
+			version: 1,
+			seedId: seed.id,
+			name: prior?.name ?? (seed.title || seed.id),
+			updatedAt: Date.now(),
+			snapshot: saveGraphSnapshot(current),
+			currentView: { name: "当前视图", layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now() },
+			views: prior?.views ?? [],
+		};
+		void Promise.resolve(deps.saveProject(project)).catch((error) => {
+			status.textContent = error instanceof Error ? `项目保存失败：${error.message}` : "项目保存失败";
+		});
+		refreshProjectSelect(seed.id);
+	};
+	persistProjectNow = persistProject;
+	const saveCurrentViewOnGesture = (): void => scheduleProjectSave();
+	canvas.addEventListener("pointerup", saveCurrentViewOnGesture);
+	canvas.addEventListener("wheel", saveCurrentViewOnGesture, { passive: true });
+	canvas.addEventListener("keyup", saveCurrentViewOnGesture);
+
+	const refreshProjectSelect = (selectedId = currentSeedId()): void => {
+		const projects = Object.values(deps.getSettings().researchProjects ?? {}).sort((a, b) => b.updatedAt - a.updatedAt);
+		projectSelect.replaceChildren();
+		if (projects.length === 0) {
+			const option = document.createElement("option");
+			option.textContent = "研究项目";
+			projectSelect.append(option);
+			projectSelect.disabled = true;
+			renameProjectButton.disabled = true;
+			viewSelect.disabled = true;
+			viewNameInput.disabled = true;
+			return;
+		}
+		for (const project of projects) {
+			const option = document.createElement("option");
+			option.value = project.seedId;
+			option.textContent = project.name;
+			projectSelect.append(option);
+		}
+		projectSelect.disabled = false;
+		projectSelect.value = projects.some((project) => project.seedId === selectedId) ? selectedId! : projects[0]!.seedId;
+		renameProjectButton.disabled = false;
+		viewNameInput.disabled = false;
+		saveViewButton.disabled = !graph || !viewNameInput.value.trim();
+		refreshViews();
+	};
+
+	const refreshViews = (): void => {
+		const project = deps.getSettings().researchProjects[projectSelect.value];
+		viewSelect.replaceChildren();
+		const current = document.createElement("option");
+		current.value = "";
+		current.textContent = "当前视图";
+		viewSelect.append(current);
+		for (const [index, view] of (project?.views ?? []).entries()) {
+			const option = document.createElement("option");
+			option.value = String(index);
+			option.textContent = view.name;
+			viewSelect.append(option);
+		}
+		viewSelect.disabled = !project?.views.length;
+	};
+
+	projectSelect.addEventListener("change", () => {
+		const project = deps.getSettings().researchProjects[projectSelect.value];
+		const snapshot = project && restoreGraphSnapshot(project.snapshot);
+		if (!project || !snapshot) return;
+		clearUndo();
+		generation += 1;
+		applyGraph(snapshot, project.currentView, false);
+		refreshProjectSelect(project.seedId);
+		status.textContent = `已切换到研究项目「${project.name}」`;
+	});
+
+	viewNameInput.addEventListener("input", () => {
+		saveViewButton.disabled = !graph || !viewNameInput.value.trim();
+	});
+	viewNameInput.addEventListener("keydown", (event) => {
+		if (event.key === "Enter") { event.preventDefault(); saveViewButton.click(); }
+	});
+
+	renameProjectButton.addEventListener("click", async () => {
+		const project = deps.getSettings().researchProjects[projectSelect.value];
+		if (!project) return;
+		if (renameProjectInput.hidden) {
+			renameProjectInput.hidden = false;
+			renameProjectInput.value = project.name;
+			renameProjectButton.textContent = "确认";
+			renameProjectInput.focus();
+			return;
+		}
+		const name = renameProjectInput.value.trim();
+		if (!name) { status.textContent = "项目名称不能为空"; renameProjectInput.focus(); return; }
+		project.name = name.slice(0, 120);
+		project.updatedAt = Date.now();
+		try {
+			await deps.saveProject?.(project);
+			renameProjectInput.hidden = true;
+			renameProjectButton.textContent = "重命名";
+			refreshProjectSelect(project.seedId);
+			status.textContent = `项目已重命名为「${project.name}」`;
+		} catch (error) {
+			status.textContent = error instanceof Error ? error.message : "项目名称保存失败";
+		}
+	});
+	renameProjectInput.addEventListener("keydown", (event) => {
+		if (event.key === "Enter") { event.preventDefault(); renameProjectButton.click(); }
+		if (event.key === "Escape") { renameProjectInput.hidden = true; renameProjectButton.textContent = "重命名"; }
+	});
+
+	viewSelect.addEventListener("change", () => {
+		const project = deps.getSettings().researchProjects[projectSelect.value];
+		const view = viewSelect.value === "" ? project?.currentView : project?.views[Number(viewSelect.value)];
+		if (view) restoreNamedView(view);
+	});
+
+	saveViewButton.addEventListener("click", async () => {
+		if (!graph) return;
+		const name = viewNameInput.value.trim();
+		if (!name) { status.textContent = "先输入视图名称"; viewNameInput.focus(); return; }
+		const seedId = currentSeedId();
+		if (!seedId) return;
+		const prior = deps.getSettings().researchProjects[seedId];
+		const now = Date.now();
+		const view: SavedView = { name: name.trim().slice(0, 80), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: now };
+		const views = [...(prior?.views ?? []).filter((item) => item.name !== view.name), view].slice(-30);
+		try {
+			await deps.saveProject?.({
+				version: 1,
+				seedId,
+				name: prior?.name ?? graph.nodes.find((node) => node.isSeed)?.title ?? seedId,
+				updatedAt: now,
+				snapshot: saveGraphSnapshot(graph),
+				currentView: view,
+				views,
+			});
+			viewNameInput.value = "";
+			saveViewButton.disabled = true;
+			refreshViews();
+			status.textContent = `已保存视图「${view.name}」`;
+		} catch (error) {
+			status.textContent = error instanceof Error ? error.message : "视图保存失败";
+		}
+	});
+
+	function clearUndo(): void {
+		undoCheckpoint = null;
+		undoButton.hidden = true;
+		undoButton.disabled = true;
+	}
 	const applyEdit = (next: SimilarityGraph, note: string, nearId?: string): void => {
+		if (graph) {
+			undoCheckpoint = {
+				snapshot: JSON.parse(JSON.stringify(saveGraphSnapshot(graph))) as ReturnType<typeof saveGraphSnapshot>,
+				view: { name: "当前视图", layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now() },
+				hidden: new Set(hiddenIds),
+				grafted: Object.fromEntries(Object.entries(deps.getSettings().graftedBySeed ?? {}).map(([id, ids]) => [id, [...ids]])),
+			};
+			undoButton.hidden = false;
+			undoButton.disabled = false;
+		}
 		graph = next;
 		map.adoptGraph(next.nodes, next.edges, next.seedScore, nearId);
 		graphKey.setStats(next.nodes, next.edges);
@@ -845,7 +937,28 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			showDetail(seed);
 		}
 		status.textContent = `${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`;
+		persistProject(next);
 	};
+	const undoEdit = (): void => {
+		const checkpoint = undoCheckpoint;
+		if (!checkpoint) return;
+		const previous = restoreGraphSnapshot(checkpoint.snapshot);
+		if (!previous) { clearUndo(); status.textContent = "无法恢复上一步图谱"; return; }
+		clearUndo();
+		deps.getSettings().graftedBySeed = checkpoint.grafted;
+		void deps.persistSettings?.();
+		applyGraph(previous, checkpoint.view, false);
+		hiddenIds = checkpoint.hidden;
+		status.textContent = "已撤销上一步图谱修改";
+	};
+	undoButton.addEventListener("click", undoEdit);
+	root.addEventListener("keydown", (event) => {
+		if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z" || event.shiftKey) return;
+		if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
+		if (!undoCheckpoint) return;
+		event.preventDefault();
+		undoEdit();
+	});
 
 	const currentSeedId = (): string | null => graph?.nodes.find((node) => node.isSeed)?.id ?? null;
 
@@ -861,12 +974,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!next) return;
 		hiddenIds.add(paper.id);
 		const seedId = currentSeedId();
-		if (seedId) void persistGrafted(forgetGrafted(deps.getSettings().graftedBySeed ?? {}, seedId, paper.id));
 		applyEdit(refreshDerived(next), "已去掉 1 篇");
+		if (seedId) void persistGrafted(forgetGrafted(deps.getSettings().graftedBySeed ?? {}, seedId, paper.id));
 	};
 
 	const expandPaper = async (paper: PaperNode): Promise<void> => {
-		if (!graph) return;
+		if (!graph || expanding) return;
 		hideNodeMenu();
 		const settings = deps.getSettings();
 		const slots = Math.min(EXPAND_CAP, settings.maxNodes - graph.nodes.length);
@@ -877,22 +990,29 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const token = generation;
 		const host = graph;
 		const seedId = currentSeedId();
+		expanding = true;
+		expandItem.disabled = true;
 		status.textContent = `正在从「${paper.title.slice(0, 24)}」扩展…`;
 		try {
 			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
-			const { papers, lists } = await expandAround(oa, host, paper, hiddenIds, settings, slots);
+			const result = await expandAround(oa, host, paper, hiddenIds, settings, slots);
+			const { papers, lists } = result;
 			if (disposed || token !== generation || graph !== host) return;
 			if (papers.length === 0) {
-				status.textContent = "没有可并入的新文献";
+				status.textContent = result.warnings[0] ?? (result.noMore ? "没有更多可并入的新文献" : "当前候选已在图中或已排除；本轮没有新增文献");
 				return;
 			}
-			applyEdit(refreshDerived(graftNodes(host, papers, lists)), `已并入 ${papers.length} 篇`, paper.id);
+			const directions = [`参考 ${result.references}`, `施引 ${result.citations}`];
+			applyEdit(refreshDerived(graftNodes(host, papers, lists)), `已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, paper.id);
 			if (seedId) {
-				void persistGrafted(rememberGrafted(settings.graftedBySeed ?? {}, seedId, papers.map((item) => item.id)));
+				void persistGrafted(rememberGrafted(deps.getSettings().graftedBySeed ?? {}, seedId, papers.map((item) => item.id)));
 			}
 		} catch (error) {
 			if (disposed || token !== generation || graph !== host) return;
 			status.textContent = error instanceof Error ? error.message : "深挖失败。";
+		} finally {
+			expanding = false;
+			expandItem.disabled = false;
 		}
 	};
 
@@ -905,16 +1025,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (paper) void expandPaper(paper);
 	});
 
-	const applyGraph = (next: SimilarityGraph): void => {
+	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true): void => {
 		graph = next;
 		hiddenIds = new Set();
 		hideNodeMenu();
-		timelineMetaGraph = null;
-		timelineMetaRequested = false;
-		timelineMetaLoading = false;
-		timelineMetaError = "";
-		timelineExtraMeta.clear();
-		timelinePickedMeta.clear();
 		narrative = null;
 		narrativeInput = null;
 		narrativeError = "";
@@ -926,6 +1040,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			seedTitle.textContent = seed.title || seed.id;
 			seedMeta.textContent = [seed.authors, seed.year ?? "年份不详", "种子论文"].filter(Boolean).join(" · ");
 		}
+		saveViewButton.disabled = !seed || !viewNameInput.value.trim();
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
 		graphKey.setStats(next.nodes, next.edges);
@@ -936,7 +1051,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years));
 		else chrome?.clearYears();
-		scrubYear = null;
+		scrubYear = restoreView?.scrubYear ?? null;
+		if (restoreView) {
+			layoutMode = restoreView.layout;
+			chrome?.setLayout(layoutMode);
+			if (!chrome) map.setLayout(layoutMode);
+			map.setScrubYear(scrubYear);
+			map.setViewState(restoreView);
+			selectedPaper = next.nodes.find((node) => node.id === restoreView.selectedId) ?? seed;
+			if (selectedPaper) showDetail(selectedPaper);
+		}
 		paintLists();
 		const strategyNames = [
 			next.strategies.references ? "参考文献" : "",
@@ -949,9 +1073,25 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			: "";
 		status.textContent = `${next.nodes.length} 篇 · ${next.edges.length} 条关系 · ${strategyNames.join("、")}${
 			next.skippedNonResearch ? ` · 滤除书评等非研究记录 ${next.skippedNonResearch} 条` : ""
-		}${sampleNote}${warning ? ` · ${warning}` : ""}`;
-		void enrichOpenCitations(next);
+		}${next.skippedRetracted ? ` · 排除已撤稿作品 ${next.skippedRetracted} 条` : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`;
+		status.title = status.textContent;
+		persistProject(next);
+		refreshProjectSelect(seed?.id);
+		if (enrich) void enrichOpenCitations(next);
 	};
+
+	function restoreNamedView(view: SavedView): void {
+		if (!graph) return;
+		layoutMode = view.layout;
+		chrome?.setLayout(view.layout);
+		if (!chrome) map.setLayout(view.layout);
+		scrubYear = view.scrubYear;
+		map.setScrubYear(scrubYear);
+		map.setViewState(view);
+		selectedPaper = graph.nodes.find((node) => node.id === view.selectedId) ?? graph.nodes.find((node) => node.isSeed) ?? null;
+		if (selectedPaper) showDetail(selectedPaper);
+		status.textContent = `已恢复视图「${view.name}」`;
+	}
 
 	const enrichOpenCitations = async (next: SimilarityGraph): Promise<void> => {
 		const token = generation;
@@ -983,6 +1123,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		else showDetail(selectedPaper);
 		paintLists();
 		status.textContent += ` · OpenCitations 检查 ${completed}/${papers.length} 篇，失败 ${failed}；当前 ${next.edges.length} 条关系`;
+		persistProject(next);
 	};
 	const client = (): OpenAlexClient => {
 		const settings = deps.getSettings();
@@ -999,6 +1140,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }): Promise<void> => {
+		clearUndo();
 		const token = ++generation;
 		setBusy(true);
 		clearError();
@@ -1112,10 +1254,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.addEventListener("compositionend", () => {
 		composing = false;
 	});
-	example.addEventListener("click", () => {
-		input.value = EXAMPLE_DOI;
-		void buildResolved({ kind: "doi", value: EXAMPLE_DOI });
-	});
 	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
 	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
 	fit.addEventListener("click", () => map.fit(true));
@@ -1152,13 +1290,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	window.addEventListener("research-connected-theme", onTheme);
 
 	const observer = observeResponsiveMode(root, () => {
+		if (root.classList.contains("is-narrow")) sidebar.style.width = "100%";
+		else sidebar.style.removeProperty("width");
 		map.resize();
 	});
 	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
 
 	const initial = deps.initialTarget ?? (deps.initialDoi ? { kind: "doi" as const, value: deps.initialDoi } : null);
-	if (initial) {
+	const saved = initial ? null : deps.loadSavedProject?.() ?? null;
+	const restored = saved ? restoreGraphSnapshot(saved.snapshot) : null;
+	if (restored) {
+		applyGraph(restored, saved?.currentView, false);
+		status.textContent = `已恢复本地研究项目「${saved?.name ?? "未命名"}」 · ${restored.nodes.length} 篇 · 可随时更新数据`;
+	} else if (initial) {
 		input.value = initial.value;
 		void buildResolved(initial);
 	}
@@ -1251,6 +1396,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		destroy: () => {
 			disposed = true;
 			generation += 1;
+			if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
+			canvas.removeEventListener("pointerup", saveCurrentViewOnGesture);
+			canvas.removeEventListener("wheel", saveCurrentViewOnGesture);
+			canvas.removeEventListener("keyup", saveCurrentViewOnGesture);
 			chrome?.destroy();
 			sheet.destroy();
 			stopSidebarResize();
@@ -1266,8 +1415,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 }
 
-function samplingText(stats: { accepted: number; pages: number; partial: boolean }, label: string): string {
-	return `${label}${stats.accepted}${stats.partial ? `/${stats.pages}页` : ""}`;
+function samplingText(stats: { accepted: number; requests: number; pages: number; filtered: number; duplicates: number; partial: boolean }, label: string): string {
+	return `${label}${stats.accepted}/${stats.pages}页·${stats.requests}次${stats.filtered ? `·滤${stats.filtered}` : ""}${stats.duplicates ? `·重${stats.duplicates}` : ""}${stats.partial ? "·未满" : ""}`;
 }
 
 async function copyPane(text: string): Promise<void> {

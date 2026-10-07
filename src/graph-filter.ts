@@ -30,7 +30,7 @@ export function emptyFilter(): GraphFilter {
 }
 
 export function nodeVisible(node: PaperNode, filter: GraphFilter): boolean {
-	if (filter.scrubYear !== null && (node.year === null || node.year > filter.scrubYear)) return false;
+	if (!node.isSeed && filter.scrubYear !== null && (node.year === null || node.year > filter.scrubYear)) return false;
 	if (node.isSeed) return true;
 	let yearFrom = filter.yearFrom;
 	let yearTo = filter.yearTo;

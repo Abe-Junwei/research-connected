@@ -32,6 +32,8 @@ export interface SampledWorks {
 	rejected: RawWork[];
 	rawFetched: number;
 	filtered: number;
+	duplicates: number;
+	requests: number;
 	pages: number;
 	exhausted: boolean;
 	error?: string;
@@ -122,10 +124,13 @@ export class OpenAlexClient {
 		url.searchParams.set("select", LIST_SELECT);
 		if (maxPages > 1) url.searchParams.set("cursor", "*");
 
-		const works: RawWork[] = [];
-		const rejected: RawWork[] = [];
-		let rawFetched = 0;
+	const works: RawWork[] = [];
+	const rejected: RawWork[] = [];
+	const seen = new Set<string>();
+	let rawFetched = 0;
 	let filtered = 0;
+	let duplicates = 0;
+	let requests = 0;
 	let pages = 0;
 	let nextCursor: string | null = "*";
 	let error: string | undefined;
@@ -133,6 +138,7 @@ export class OpenAlexClient {
 		if (pages > 0) url.searchParams.set("cursor", nextCursor);
 		let page: { results: RawWork[]; nextCursor: string | null };
 		try {
+			requests += 1;
 			page = await this.getPage(url);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : "请求失败";
@@ -141,16 +147,20 @@ export class OpenAlexClient {
 			pages += 1;
 			rawFetched += page.results.length;
 			for (const work of page.results) {
-				if (accept(work)) works.push(work);
-				else {
+				if (!accept(work)) {
 					filtered += 1;
 					rejected.push(work);
+				} else {
+					const identity = sampledIdentity(work);
+					if (seen.has(identity)) { duplicates += 1; continue; }
+					seen.add(identity);
+					works.push(work);
 				}
 			}
 			nextCursor = page.nextCursor;
 			if (page.results.length === 0) break;
 		}
-		return { works: works.slice(0, target), rejected, rawFetched, filtered, pages, exhausted: !error && !nextCursor, error };
+		return { works: works.slice(0, target), rejected, rawFetched, filtered, duplicates, requests, pages, exhausted: !error && !nextCursor, error };
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {
@@ -163,22 +173,6 @@ export class OpenAlexClient {
 			url.searchParams.set("filter", `openalex:${chunk.join("|")}`);
 			url.searchParams.set("per_page", String(chunk.length));
 			url.searchParams.set("select", DETAIL_SELECT);
-			all.push(...(await this.getResults(url)));
-		}
-		return all;
-	}
-
-	/** 列表级元数据（标题/年份/被引），给引用脉络按需补取非图节点用。 */
-	async workSummaries(ids: string[]): Promise<RawWork[]> {
-		const unique = [...new Set(ids)];
-		const all: RawWork[] = [];
-		for (let i = 0; i < unique.length; i += 80) {
-			const chunk = unique.slice(i, i + 80);
-			if (chunk.length === 0) continue;
-			const url = new URL(`${OPENALEX_API}/works`);
-			url.searchParams.set("filter", `openalex:${chunk.join("|")}`);
-			url.searchParams.set("per_page", String(chunk.length));
-			url.searchParams.set("select", LIST_SELECT);
 			all.push(...(await this.getResults(url)));
 		}
 		return all;
@@ -255,6 +249,13 @@ export class OpenAlexClient {
 		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 		return headers;
 	}
+}
+
+function sampledIdentity(work: RawWork): string {
+	const doi = work.doi?.trim().toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, "");
+	if (doi) return `doi:${doi}`;
+	const id = work.id?.match(/W\d+/i)?.[0]?.toUpperCase();
+	return `id:${id ?? "unknown"}`;
 }
 
 function encodeDoi(doi: string): string {

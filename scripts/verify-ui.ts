@@ -1,15 +1,6 @@
 import assert from "node:assert/strict";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { CitationEvidenceStore, directEvidence, edgeCitationPairs, evidenceBadges } from "../src/citation-evidence";
-import {
-	buildCitationTimeline,
-	TIMELINE_EMPTY_TEXT,
-	TIMELINE_IMPACT_NOTE,
-	TIMELINE_META_LIMIT,
-	TIMELINE_SAMPLING_NOTE,
-	TIMELINE_SCOPE_NOTE,
-	missingReferenceIds,
-} from "../src/citation-timeline";
 import { evidenceText, focusNodes, SIMILARITY_NOT_CITATION } from "../src/graph-filter";
 import { graphKeyStats } from "../src/filter-controls";
 import {
@@ -22,13 +13,14 @@ import {
 	rememberGrafted,
 } from "../src/graph-edit";
 import { buildCommunityRegions } from "../src/community-regions";
+import { buildSimilarity } from "../src/similarity";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation } from "../src/relation";
-import { layoutTimeline, TIMELINE_MIN_WIDTH, UNKNOWN_LIMIT, ZONE_LIMIT } from "../src/timeline-view";
 import { placeLayout } from "../src/layout-modes";
 import { runForceLayout } from "../src/layout";
 import { applyResponsiveMode } from "../src/responsive";
 import { clampSidebarWidth } from "../src/sidebar-resize";
+import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { syntheticGraph } from "./perf-fixture";
 
@@ -289,116 +281,6 @@ function aggregates(): void {
 	assert.ok(derivativeWorks(synthetic, syntheticVisible).length <= 15);
 }
 
-/** 引用脉络：成员资格只来自 referenceLists/evidence，不看相似边；互引、方向冲突、缺年份、未收录、空态。 */
-function timeline(): void {
-	const seedNode = { ...paper("S", "seed"), year: 2015 };
-	const priorOld = { ...paper("P", "reference"), year: 1990 };
-	const undated = { ...paper("U", "reference"), year: null, citedByCount: 50 };
-	const mutual = { ...paper("M", "citation"), year: 2018 };
-	const conflicted = { ...paper("C", "citation"), year: 2020 };
-	const deriver = { ...paper("D", "citation"), year: 2022 };
-	const similarOnly = { ...paper("X", "related"), year: 2021 };
-	const evidence = new CitationEvidenceStore();
-	evidence.set(directEvidence(seedNode, priorOld, true, true));
-	evidence.set(directEvidence(seedNode, mutual, true, false));
-	evidence.set(directEvidence(mutual, seedNode, true, false));
-	evidence.set(directEvidence(seedNode, conflicted, true, false));
-	evidence.set({ ...directEvidence(conflicted, seedNode, false, true), confidence: "low" });
-	evidence.set(directEvidence(deriver, seedNode, true, false));
-	const graph: SimilarityGraph = {
-		nodes: [seedNode, priorOld, undated, mutual, conflicted, deriver, similarOnly],
-		edges: [edge({ source: "S", target: "X", weight: 0.9 })],
-		seedScore: new Map([["S", 1], ["X", 0.9]]),
-		warnings: [],
-		strategies: { references: true, citations: true, related: true },
-		referenceLists: new Map([
-			["S", ["P", "U", "V", "M", "C"]],
-			["M", ["S"]],
-			["C", ["S"]],
-			["D", ["S"]],
-			["X", []],
-		]),
-		catalog: [seedNode, priorOld, undated, mutual, conflicted, deriver, similarOnly],
-		citationEvidence: evidence,
-		skippedNonResearch: 0,
-	};
-	const view = buildCitationTimeline(graph);
-	assert.equal(view.seed?.id, "S");
-	assert.deepEqual(
-		view.prior.map((node) => node.id),
-		["P", "M", "C", "U", "V"],
-		"前置区按年份升序，无年份在后",
-	);
-	assert.deepEqual(view.derivative.map((node) => node.id), ["D"], "右区只有采样到且记录引用种子的论文");
-	const all = [...view.prior, ...view.derivative];
-	assert.equal(all.some((node) => node.id === "X"), false, "相似但无引用记录的节点不出现");
-	const m = view.prior.find((node) => node.id === "M");
-	assert.equal(m?.mutual, true, "双向记录且置信度相同 → 互引，置于前置区");
-	const c = view.prior.find((node) => node.id === "C");
-	assert.equal(c?.conflict, true, "双向记录置信度不同 → 按高置信归区并标记");
-	assert.equal(c?.zone, "prior");
-	const v = view.prior.find((node) => node.id === "V");
-	assert.equal(v?.missing, true, "catalog 外的参考文献 id 标记未收录");
-	assert.equal(v?.title, "");
-	assert.equal(v?.year, null);
-	assert.deepEqual(v?.evidence?.sources, ["openalex"], "未收录论文仍保留已确认引用记录的来源");
-	assert.equal(view.prior.find((node) => node.id === "U")?.year, null, "无年份进年份未知区");
-	const links = view.links.map((link) => `${link.citingId}->${link.citedId}`);
-	for (const expected of ["S->P", "S->U", "S->V", "S->M", "M->S", "S->C", "D->S"]) {
-		assert.ok(links.includes(expected), `缺少箭头 ${expected}`);
-	}
-	assert.equal(links.includes("C->S"), false, "方向冲突时不画低置信方向的箭头");
-	assert.deepEqual(view.sources, ["openalex", "opencitations"], "来源按证据动态汇总");
-	assert.equal(view.empty, false);
-	const laidOut = layoutTimeline(view, 260);
-	assert.equal(laidOut.width, TIMELINE_MIN_WIDTH, "窄面板保持可读最小画布宽度");
-	assert.equal(laidOut.unknownRows[0]?.node.id, "U", "无年份节点也获得可连线坐标");
-	assert.ok(laidOut.points.every((point) => point.x >= 0 && point.x <= laidOut.width), "年份节点不会溢出画布");
-	const completed = { ...graph, referenceLists: new Map([["S", Array.from({ length: 150 }, (_, i) => `W${i + 1}`)]]) };
-	assert.equal(missingReferenceIds(completed, new Map()).length, TIMELINE_META_LIMIT, "补取元数据有 100 条硬上限");
-	const withExtra = buildCitationTimeline(graph, new Map([["V", { ...paper("V", "reference"), title: "Recovered title", year: 2001 }]]));
-	assert.equal(withExtra.prior.find((node) => node.id === "V")?.title, "Recovered title", "补取元数据进入脉络节点");
-	assert.equal(missingReferenceIds(graph, new Map([["V", paper("V", "reference")]])).includes("V"), false);
-	const s2Backfill = buildCitationTimeline({
-		...graph,
-		referenceLists: new Map([["S", ["V"]]]),
-		catalog: [seedNode],
-		crossCheck: new Map([["S", { s2Citations: null, s2References: 1, refsAdded: 1, mismatched: false }]]),
-		citationEvidence: new CitationEvidenceStore(),
-	});
-	assert.deepEqual(s2Backfill.prior[0]?.evidence?.sources, ["semantic-scholar"], "未收录的回填参考文献保留正确来源");
-	assert.deepEqual(s2Backfill.sources, ["semantic-scholar"]);
-
-	const emptyGraph: SimilarityGraph = { ...graph, referenceLists: new Map([["S", []]]), citationEvidence: new CitationEvidenceStore() };
-	const emptyView = buildCitationTimeline(emptyGraph);
-	assert.equal(emptyView.empty, true, "没有任何直接引用证据时是空态");
-	assert.equal(emptyView.prior.length + emptyView.derivative.length, 0);
-	assert.match(TIMELINE_EMPTY_TEXT, /没有与种子的直接引用记录/);
-	assert.match(TIMELINE_SCOPE_NOTE, /不含相似关系/);
-	assert.match(TIMELINE_SAMPLING_NOTE, /高被引/);
-	assert.match(TIMELINE_IMPACT_NOTE, /不等于受种子实质影响/);
-
-	const synthetic = syntheticGraph(60, 7);
-	const syntheticView = buildCitationTimeline(synthetic);
-	const syntheticIds = new Set([...syntheticView.prior, ...syntheticView.derivative].map((node) => node.id));
-	const seedRefs = new Set(synthetic.referenceLists.get(syntheticView.seed?.id ?? "") ?? []);
-	const backRefs = new Set<string>();
-	for (const [id, refs] of synthetic.referenceLists) {
-		if (refs.includes(syntheticView.seed?.id ?? "")) backRefs.add(id);
-	}
-	for (const id of syntheticIds) {
-		assert.ok(seedRefs.has(id) || backRefs.has(id), "合成图上每个脉络成员都有原始引用记录");
-	}
-	const crowded = buildCitationTimeline({
-		...synthetic,
-		nodes: synthetic.nodes.map((node) => node.isSeed ? node : { ...node, year: null }),
-		catalog: synthetic.catalog.map((node) => node.isSeed ? node : { ...node, year: null }),
-	});
-	const compact = layoutTimeline(crowded, 700);
-	assert.ok(compact.unknownRows.length <= UNKNOWN_LIMIT, "年份未知区限制可见行数");
-	assert.ok(compact.points.length <= ZONE_LIMIT * 2, "有年份节点分区限量展示");
-}
-
 function keyStats(): void {
 	const stats = graphKeyStats(
 		[paper("S", "seed"), paper("A", "reference"), paper("B", "citation")],
@@ -424,9 +306,26 @@ function graphEdits(): void {
 	assert.equal(omitNode(graph, seed.id), null);
 	const gone = omitNode(graph, other.id);
 	assert.ok(gone && !gone.nodes.some((node) => node.id === other.id));
+	const retained = gone.nodes.find((node) => !node.isSeed);
+	assert.ok(retained);
+	gone.semanticScores = new Map([[retained.id, 0.91]]);
 	const next = refreshDerived(gone);
 	assert.equal(next.edges.some((edge) => edge.source === other.id || edge.target === other.id), false);
 	assert.ok(next.nodes.some((node) => node.isSeed));
+	assert.equal(next.semanticScores?.get(retained.id), 0.91);
+	const referenceLists = new Map(gone.nodes.map((node) => [node.id, new Set(gone.referenceLists.get(node.id) ?? [])]));
+	const structural = buildSimilarity({
+		ids: gone.nodes.map((node) => node.id),
+		seedId: seed.id,
+		references: referenceLists,
+		contexts: [...gone.referenceLists.values()].filter((list) => list.length > 0).map((list) => new Set(list)),
+	}).seedScore.get(retained.id) ?? 0;
+	assert.ok(Math.abs((next.seedScore.get(retained.id) ?? 0) - (0.55 * structural + 0.45 * 0.91)) < 1e-9);
+	const restored = restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(next))));
+	assert.ok(restored);
+	assert.equal(restored.nodes.length, next.nodes.length);
+	assert.deepEqual([...restored.seedScore], [...next.seedScore]);
+	assert.deepEqual([...restored.referenceLists], [...next.referenceLists]);
 	const hidden = new Set([other.id]);
 	const present = new Set(graph.nodes.map((node) => node.id));
 	const picked = chooseExpand(present, hidden, EXPAND_CAP, {
@@ -453,6 +352,5 @@ export function verifyUi(): void {
 	evidenceSidebarSizing();
 	embedDefaultWidthKeepsStandardLayout();
 	aggregates();
-	timeline();
 	console.log("ui checks passed");
 }

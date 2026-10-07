@@ -100,6 +100,16 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName("排除已撤稿作品")
+			.setDesc("开启后，新建图谱时跳过 OpenAlex 标记为已撤稿的作品；关闭时保留警告并在候选排序中降权。")
+			.addToggle((toggle) => {
+				toggle.setValue(this.store.settings.excludeRetracted).onChange(async (value) => {
+					this.store.settings.excludeRetracted = value;
+					await this.store.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
 			.setName("OpenCitations 访问令牌")
 			.setDesc("可选。用于补充 OpenAlex 缺失的引用关系。令牌只保存在本机。")
 			.addText((text) => {

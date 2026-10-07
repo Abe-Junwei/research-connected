@@ -8,9 +8,8 @@ export function allowedExternalUrl(url: string): string | null {
 	} catch {
 		return null;
 	}
-	if (parsed.protocol !== "https:") return null;
+	if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.port) return null;
 	const host = parsed.hostname.toLowerCase();
 	if (ALLOWED_HOSTS.has(host)) return parsed.toString();
-	if (host.endsWith(".doi.org") || host.endsWith(".openalex.org")) return parsed.toString();
 	return null;
 }

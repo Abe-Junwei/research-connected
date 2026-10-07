@@ -8,6 +8,7 @@ import {
 	type ConnectedPapersSettings,
 } from "./settings";
 import { normalizeStagedList, wrapStagedList } from "./staging";
+import { normalizeProjects } from "./project-state";
 import { clamp } from "./visual";
 import { ConnectedPapersView } from "./view";
 
@@ -75,6 +76,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
 		this.settings.stagedPapers = normalizeStagedList(stored?.stagedPapers);
 		this.settings.graftedBySeed = normalizeGrafted(stored?.graftedBySeed);
+		this.settings.researchProjects = normalizeProjects(stored?.researchProjects);
 	}
 
 	async saveSettings(): Promise<void> {

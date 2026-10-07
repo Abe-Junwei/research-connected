@@ -1,4 +1,7 @@
 import { buildSimilarity } from "./similarity";
+import { buildSemanticScorer } from "./text-similarity";
+import type { SelectionRank } from "./neighborhood";
+import type { CitationEvidenceStore } from "./citation-evidence";
 import type { GraphEdge, PaperNode } from "./types";
 
 export const EXPAND_CAP = 8;
@@ -14,6 +17,10 @@ export interface EditableGraph {
 	seedScore: Map<string, number>;
 	referenceLists: ReadonlyMap<string, readonly string[]>;
 	catalog: readonly PaperNode[];
+	semanticScores?: ReadonlyMap<string, number | null>;
+	semanticMode?: "embedding" | "local";
+	selectionRank?: ReadonlyMap<string, SelectionRank>;
+	citationEvidence?: CitationEvidenceStore;
 }
 
 export function omitNode<T extends EditableGraph>(graph: T, id: string): T | null {
@@ -54,13 +61,28 @@ export function refreshDerived<T extends EditableGraph>(graph: T): T {
 	const contexts = [...graph.referenceLists.values()]
 		.filter((list) => list.length > 0)
 		.map((list) => new Set(list));
-	const { edges, seedScore } = buildSimilarity({
+	const { edges, seedScore: structuralScore } = buildSimilarity({
 		ids: graph.nodes.map((node) => node.id),
 		seedId: seed.id,
 		references,
 		contexts,
 	});
-	return { ...graph, edges, seedScore };
+	const semanticScorer = buildSemanticScorer(seed, graph.nodes);
+	const semanticScores = new Map<string, number | null>();
+	const seedScore = new Map(structuralScore);
+	for (const node of graph.nodes) {
+		if (node.isSeed) continue;
+		// Keep decision-time scores for existing nodes (including SPECTER2 scores).
+		// Deep-dug nodes have no vector, so use the same local fallback as missing-vector candidates.
+		const semantic = graph.semanticScores?.has(node.id)
+			? graph.semanticScores.get(node.id) ?? null
+			: semanticScorer.score(node);
+		semanticScores.set(node.id, semantic);
+		if (semantic !== null) {
+			seedScore.set(node.id, Math.min(1, 0.55 * (structuralScore.get(node.id) ?? 0) + 0.45 * semantic));
+		}
+	}
+	return { ...graph, edges, seedScore, semanticScores, selectionRank: graph.selectionRank };
 }
 
 export function chooseExpand(
