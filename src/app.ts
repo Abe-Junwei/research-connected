@@ -218,7 +218,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const evidenceTools = el(evidenceHeader, "div", "cpo-evidence-tools");
 	evidenceTools.setAttribute("role", "toolbar");
 	evidenceTools.setAttribute("aria-label", "论文操作");
-	const diagnoseButton = el(evidenceTools, "button", "cpo-text-btn cpo-diagnose", "") as HTMLButtonElement;
+	const diagnoseButton = el(evidenceTools, "button", "cpo-diagnose", "") as HTMLButtonElement;
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.type = "button";
 	diagnoseButton.disabled = true;

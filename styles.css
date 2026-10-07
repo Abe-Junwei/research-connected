@@ -291,7 +291,7 @@
 .cpo-statusbar .cpo-status { flex: 1; }
 .cpo-statusbar .cpo-undo { flex: none; padding: 3px 8px; font-size: 11px; }
 .cpo-statusbar .cpo-undo[hidden] { display: none !important; }
-.cpo-evidence-header .cpo-diagnose { flex: none; margin-top: 7px; padding: 3px 8px; font-size: 11px; }
+.cpo-evidence-header .cpo-diagnose { flex: none; margin: 0; padding: 3px 8px; font-size: 11px; }
 
 .cpo-diagnose-form { display: flex; gap: 7px; margin: 10px 0; }
 .cpo-diagnose-form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
@@ -2133,8 +2133,14 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	box-sizing: border-box;
 	flex: none;
-	padding: 10px 12px 9px;
+	min-height: 40px;
+	padding: 5px 12px;
 	background: var(--background-secondary);
 	border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -2144,8 +2150,9 @@ button.cpo-agg-item {
 }
 
 .cpo-evidence-header h2 {
-	color: var(--text-accent, var(--cpo-accent));
-	font-size: 13px;
+	min-width: 0;
+	color: var(--text-normal);
+	font-size: 12px;
 	font-weight: 650;
 }
 
@@ -2154,7 +2161,7 @@ button.cpo-agg-item {
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 6px;
-	margin-top: 7px;
+	margin: 0;
 }
 .cpo-root .cpo-evidence-tools button.cpo-diagnose,
 .cpo-embed .cpo-evidence-tools button.cpo-diagnose {
@@ -2163,21 +2170,22 @@ button.cpo-agg-item {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	gap: 6px;
+	gap: 5px;
 	height: 28px;
 	min-height: 28px;
-	padding: 0 9px;
-	border: 1px solid color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 25%, transparent);
-	border-radius: 6px;
-	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 8%, var(--background-secondary));
-	color: var(--text-accent, var(--cpo-accent));
+	padding: 0 2px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
 	font-size: 11px;
-	font-weight: 550;
+	font-weight: 500;
 	box-shadow: none;
 }
 .cpo-root .cpo-evidence-tools button.cpo-diagnose:hover,
 .cpo-embed .cpo-evidence-tools button.cpo-diagnose:hover {
-	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 14%, var(--background-secondary));
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 .cpo-evidence-tools .cpo-diagnose .cpo-icon-glyph {
 	width: 13px;
@@ -2441,9 +2449,8 @@ button.cpo-agg-item {
 /* Unified paper identity and action row for graph pane + embed. */
 .cpo-detail .cpo-card.cpo-paper-identity {
 	gap: 7px;
-	padding: 3px 0 10px;
+	padding: 3px 8px 0;
 	border: 0;
-	border-bottom: 1px solid var(--background-modifier-border);
 	border-radius: 0;
 	background: transparent;
 }
@@ -2475,16 +2482,16 @@ button.cpo-agg-item {
 .cpo-paper-topic,
 .cpo-paper-topic-more {
 	display: inline-flex;
-	min-height: 22px;
+	min-height: 20px;
 	align-items: center;
-	padding: 1px 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 999px;
-	background: var(--background-secondary);
+	padding: 3px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--text-normal) 5%, transparent);
 	color: var(--text-muted);
 	font: inherit;
 	font-size: 10px;
-	line-height: 1.3;
+	line-height: 1;
 }
 .cpo-paper-topic-more {
 	cursor: pointer;
@@ -2496,8 +2503,10 @@ button.cpo-agg-item {
 	min-width: 0;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
+	margin: 0 8px 8px;
 	padding: 2px 0 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 .cpo-paper-sources {
 	display: flex;
@@ -2527,6 +2536,7 @@ button.cpo-agg-item {
 .cpo-root .cpo-detail button.cpo-paper-stage,
 .cpo-embed .cpo-detail button.cpo-paper-stage {
 	min-width: 116px;
+	height: 30px;
 	border: 1px solid color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 28%, var(--background-modifier-border));
 	background: color-mix(in srgb, var(--text-accent, var(--cpo-accent)) 7%, var(--background-primary));
 	color: var(--text-accent, var(--cpo-accent));
@@ -3152,6 +3162,34 @@ button.cpo-agg-item {
 .cpo-root .cpo-evidence-sidebar .cpo-detail > .cpo-card + .cpo-card,
 .cpo-embed .cpo-evidence-sidebar .cpo-detail > .cpo-card + .cpo-card {
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Keep metadata flat; the divider belongs after the paper actions. */
+.cpo-root .cpo-evidence-sidebar .cpo-detail > .cpo-card.cpo-paper-identity,
+.cpo-embed .cpo-evidence-sidebar .cpo-detail > .cpo-card.cpo-paper-identity {
+	padding: 3px 8px 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+.cpo-root .cpo-detail .cpo-paper-topics .cpo-paper-topic,
+.cpo-embed .cpo-detail .cpo-paper-topics .cpo-paper-topic,
+.cpo-root .cpo-detail .cpo-paper-topics .cpo-paper-topic-more,
+.cpo-embed .cpo-detail .cpo-paper-topics .cpo-paper-topic-more {
+	flex: none;
+	min-height: 20px;
+	padding: 3px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--text-normal) 5%, transparent);
+	color: var(--text-muted);
+	font-size: 10px;
+	line-height: 1;
+}
+.cpo-root .cpo-detail .cpo-paper-topics .cpo-paper-topic-more,
+.cpo-embed .cpo-detail .cpo-paper-topics .cpo-paper-topic-more {
+	background: transparent;
+	color: var(--text-muted);
 }
 
 @media (max-width: 779px) {

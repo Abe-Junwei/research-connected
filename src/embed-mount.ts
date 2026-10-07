@@ -151,7 +151,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	evidenceTools.setAttribute("aria-label", "论文操作");
 	const diagnoseButton = document.createElement("button");
 	diagnoseButton.type = "button";
-	diagnoseButton.className = "cpo-text-btn cpo-diagnose";
+	diagnoseButton.className = "cpo-diagnose";
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode("诊断候选"));
 	diagnoseButton.disabled = true;
 	evidenceTools.append(diagnoseButton);
