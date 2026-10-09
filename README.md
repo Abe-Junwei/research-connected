@@ -58,33 +58,33 @@ Loadable plugin files:
    <vault>/.obsidian/plugins/research-connected/
    ```
 
-3. Reload Obsidian (or restart it). If a previous copy failed with **加载失败**, replace `main.js` and `manifest.json` with this build, reload, then turn the plugin off and on again.
+3. Reload Obsidian (or restart it). If a previous copy failed to load, replace `main.js` and `manifest.json` with this build, reload, then turn the plugin off and on again.
 4. Settings → Community plugins → turn on **Research Connected**.
 
 Restricted mode must be off, or Obsidian will not load community plugins.
 
 ## Usage
 
-1. Command palette → **打开 Research Connected** (Chinese interface) or **Open Research Connected** (English interface).
+1. Command palette → **Open Research Connected** (the command name follows Obsidian's interface language).
    The same command is on the ribbon (git-fork icon).
    The view opens as a **main-area tab** titled “Research Connected”, not in the sidebars.
 2. In the pane, enter a seed:
    - DOI (`10.1038/nature14539` or `https://doi.org/...`)
    - OpenAlex work id (`W2919115771`) or an `openalex.org` work URL
    - or a title. Title search shows up to 8 hits; click one to make it the seed.
-3. Press **构建** to load the map.
+3. Press **Build** to load the map.
 4. The seed sits in the middle with a double ring and a halo. Other papers are placed by similarity:
-   - in **平面**, node colors identify detected citation-structure groups; in **时间** and **放射**, color shows topic similarity to the seed
+   - in **Planar**, node colors identify detected citation-structure groups; in **Timeline** and **Radial**, color shows topic similarity to the seed
    - node size follows year-normalized citation counts; classics in the sampled graph receive a subtle glow
    - line weight follows the relation score
-5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / 适配** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
-6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **在 OpenAlex 中打开**, and **打开 DOI** when a DOI exists.
+5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / Fit to view** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
+6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **OpenAlex**, and **DOI** when a DOI exists.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
 7. Chinese titles render with the interface font plus a CJK fallback stack. Controls and command names follow Obsidian's interface language.
 
-The project and view controls beneath the search box save the current graph and camera position locally. The bottom status bar has **撤销** after a node deletion or deep expansion, and **诊断候选** for looking up a DOI or OpenAlex ID. Diagnosis uses this map's retained sample: it can identify filtered or unselected candidates, but cannot determine why a work outside the sample was absent from OpenAlex results.
+The project and view controls beneath the search box save the current graph and camera position locally. The bottom status bar has **Undo** after a node exclusion or deep expansion, and **Inspect** for looking up a DOI or OpenAlex ID. Inspection uses this map's retained sample: it can identify filtered or unselected candidates, but cannot determine why a work outside the sample was absent from OpenAlex results.
 
-While a request is in flight the button reads **正在构建…**. Failures (unknown id, exhausted budget, network) show a banner and leave the previous map in place.
+While a request is in flight the button reads **Building…**. Failures (unknown id, exhausted budget, network) show a banner and leave the previous map in place.
 
 ## Embed a graph in a note
 
@@ -120,65 +120,65 @@ depth: 1
 | `yearFrom:` / `yearTo:` | no | Inclusive year range for the other papers. The seed stays. If both are set and reversed, they are swapped. |
 | `language:` / `type:` / `concept:` | no | Preset filters. They apply only when OpenAlex included that field (`language`, `type`, `concepts`). |
 | `minCoCite:` / `minShared:` | no | Hide co-citation edges below that count, and coupling edges below that shared-reference count. Default 1. |
-| `layout:` | no | `temporal` (default; year on X), `radial` (distance from seed = similarity), or `force2d` (平面 force layout grouped by detected citation communities). Legacy `kumu` / `community` and `force3d` values map to `force2d`. |
-| `color:` | no | `topic` (default outside 平面), `community` (default in 平面), `graph` (citation-count ramp), or `year`. |
+| `layout:` | no | `temporal` (default; year on X), `radial` (distance from seed = similarity), or `force2d` (Planar force layout grouped by detected citation communities). Legacy `kumu` / `community` and `force3d` values map to `force2d`. |
+| `color:` | no | `topic` (default outside Planar), `community` (default in Planar), `graph` (citation-count ramp), or `year`. |
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
 
-Nodes show **author + year** by default. The full title is the hover tooltip and the evidence panel. Both surfaces use a left rail for layout choices and the graph key/filter controls, a central canvas, and a right-side **Paper details & evidence** panel. The panel also contains prior/derivative lists, staging, and optional research narrative. The left and right rails can collapse; in narrow panes the evidence panel moves below the graph. Export actions are grouped under **导出**. The note embed keeps a compact detail sheet to preserve reading width.
+Nodes show **author + year** by default. The full title is the hover tooltip and the evidence panel. Both surfaces use a left rail for layout choices and the graph key/filter controls, a central canvas, and a right-side **Paper details & evidence** panel. The panel also contains prior/derivative lists, staging, and optional research narrative. The left and right rails can collapse; in narrow panes the evidence panel moves below the graph. Export actions are grouped under **Export**. The note embed keeps a compact detail sheet to preserve reading width.
 
-Drag pans the graph. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The embed grip at the bottom-right changes the graph area’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane fills its tab and has no grip.
+Drag pans the graph. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / Fit to view**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The embed grip at the bottom-right changes the graph area’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane fills its tab and has no grip.
 
-**重新加载** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **在 OpenAlex 中打开** / **打开 DOI**. Inside Obsidian the detail also offers **在图谱面板中打开此图**, which jumps to the full graph pane on the same seed. Hover or click an edge for that pair’s explanation.
+**Reload** fetches again and skips the short in-memory cache. Click a node for its title, year, citation count, why it connects to the seed, a short abstract, and **OpenAlex** / **DOI** source buttons. Inside Obsidian the detail also offers **Open in graph**, which jumps to the full graph pane on the same seed. Hover or click an edge for that pair’s explanation.
 
-Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation and coupling stay undirected. Thickness is three steps, **弱 / 中 / 强**, matching the graph key. Weak edges start hidden. Hovering or selecting a node highlights its visible one-hop neighbors; press **Shift + arrow** to select a nearby node by direction. Right-click a node for **删除**, **深挖**, or **设为种子**. Deep-dug members are remembered per seed and restored on rebuild. Hover or click an edge for the evidence detail: shared-reference count, co-citation count, sources, and the caveat that citation lists can be incomplete.
+Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation and coupling stay undirected. Thickness is three steps, **weak / medium / strong**, matching the graph key. Weak edges start hidden. Hovering or selecting a node highlights its visible one-hop neighbors; press **Shift + arrow** to select a nearby node by direction. Right-click a node for **Exclude**, **Deep dive**, or **Set as seed**. Deep-dug members are remembered per seed and restored on rebuild. Hover or click an edge for the evidence detail: shared-reference count, co-citation count, sources, and the caveat that citation lists can be incomplete.
 
 After the graph loads, language, work type, and concept filters appear only when at least one paper has that OpenAlex field. Node size is normalized by publication year and citation count. Author–year labels stay.
 
-The layout modes are **平面**, **时间**, and **放射**. **时间** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **放射** places papers closer to the seed when their sampled structural similarity score is higher. **平面** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside 平面, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses citations normalized by publication year. The year scrubber filters papers after the chosen year; **播放** advances one year at a time.
+The layout modes are **Planar**, **Timeline**, and **Radial**. **Timeline** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **Radial** places papers closer to the seed when their sampled structural similarity score is higher. **Planar** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside Planar, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses citations normalized by publication year. The year scrubber filters papers after the chosen year; **Play** advances one year at a time.
 
-**先验工作** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **衍生工作** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out.
+**Prior work** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **Later work** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out.
 
 Edges stay thin neutral gray by default; when you hover or select a node, its links take the color of the sharpest relation, not a blend. The graph key lists them:
 
 | Color | Relation | What the text counts |
 | --- | --- | --- |
-| Gold | 引用 citing | One paper lists the other, or they cite each other. |
-| Teal | 共被引 co-citation | How many sampled citing papers list both. |
-| Indigo | 文献耦合 coupling | How many referenced works they share. |
-| Gray | 弱连线 | A fallback link with none of the counts above. |
+| Gold | Direct citation | One paper lists the other, or they cite each other. |
+| Teal | Co-citation | How many sampled citing papers list both. |
+| Indigo | Bibliographic coupling | How many referenced works they share. |
+| Gray | Weak link | A fallback link with none of the counts above. |
 
-Thickness is the same three steps as the graph key (弱 / 中 / 强), not a continuous score. The same OpenAlex API key from settings is sent; without a key the small daily budget still applies, and a 429 is shown inside the block instead of freezing the editor.
+Thickness is the same three steps as the graph key (weak / medium / strong), not a continuous score. The same OpenAlex API key from settings is sent; without a key the small daily budget still applies, and a 429 is shown inside the block instead of freezing the editor.
 
 `depth: 2` costs a few extra OpenAlex calls. If that second hop fails, the block keeps the depth-1 graph and says so.
 
 ## Settings
 
-### 多源证据与可选 LLM
+### Multiple evidence sources and optional LLM
 
-OpenCitations 检查、Semantic Scholar 和 Crossref 回退同时用于图谱面板与笔记内嵌。可选 LLM 研究脉络仅在图谱面板中提供。
+OpenCitations checks and the Semantic Scholar and Crossref fallbacks work in both the graph pane and note embeds. The optional LLM research narrative is available only in the graph pane.
 
-- **OpenCitations**：建图后顺序检查最多 20 篇有 DOI 的图内论文的参考文献，只补当前节点之间的引用边。仅在 OpenAlex 同样记录了该方向引用时显示双源。状态栏显示已检查数和失败数；这不是全量覆盖。可在设置中填写访问令牌。
-- **Semantic Scholar**：建图时批量核对每篇的被引数与参考文献数，差异悬殊的节点在详情中标注；OpenAlex 缺失的参考文献列表会回填并参与连线，标记 Semantic Scholar 来源。当 OpenAlex 没有某篇论文的摘要时（Nature 等出版商不寄存摘要），打开该论文详情会自动向 Semantic Scholar 查询一次摘要作为回退，取到后标注“摘要来源：Semantic Scholar”；两个源都没有时如实说明。回退按论文触发、会话内缓存，不会批量预取。API key 可选。
-- **Crossref**：作为额外回退，只对 DOI 可识别且 OpenAlex / Semantic Scholar 仍没有参考文献列表的图内论文查询已登记参考文献，每张图最多尝试 12 篇；只将能映射到当前图内 DOI 的条目纳入相似度和引用边，并标记 Crossref 来源。打开缺摘要论文详情时，也会在 Semantic Scholar 没找到后按需查询 Crossref 摘要。Crossref 没登记 DOI 或摘要时不影响主图；这不是完整参考文献补全。
-- **LLM 默认关闭**：关闭时没有“研究脉络”入口、生成内容或模型请求。开启并填写完整 Endpoint、模型后才出现入口。支持兼容 chat/completions 的 JSON 响应接口；HTTPS 为默认要求，本机 HTTP 服务允许使用。API 密钥保存在插件本地 data.json 中，不是加密密钥库。
-- **手动生成**：只在点击生成时发送种子、最多 8 篇直接参考文献、8 篇直接施引文献，以及已取得的引用证据。摘要发送默认关闭；已获取的引用上下文仍属于证据包。总结针对整张采样图，不跟随年份滑块。未访问全文，不声称完整学术史。
-- **输出检查**：校验 JSON 结构、论文 ID 和引用方向；拒绝输入之外的论文。该校验无法证明模型每一句叙述正确，“模型自评”也不是统计置信度。证据快照可展开核对，支持复制或另建笔记。关闭功能不会删除用户已经导出的笔记。
+- **OpenCitations:** After building a graph, the plugin checks reference lists for up to 20 papers with DOIs, one at a time, and adds citation edges only between nodes already on the graph. It shows two sources only when OpenAlex also records a citation in the same direction. The status bar reports checks and failures; this is not exhaustive coverage. An access token can be entered in settings.
+- **Semantic Scholar:** During graph construction, the plugin compares citation and reference counts in batches and flags large discrepancies in paper details. When an OpenAlex reference list is missing, Semantic Scholar references can fill it and contribute to edges, with their source identified. Opening a paper without an OpenAlex abstract triggers one Semantic Scholar abstract request; the result is labeled with its source. If neither service has an abstract, the detail says so. Requests are made per paper and cached for the session, without bulk abstract prefetching. An API key is optional.
+- **Crossref:** For papers with DOIs whose reference lists remain empty after OpenAlex and Semantic Scholar, the plugin checks registered references for up to 12 papers per graph. Only references that match DOIs already on the graph contribute to similarity and citation edges, with Crossref identified as the source. If Semantic Scholar cannot supply an abstract, opening that paper can trigger a Crossref abstract request. Missing Crossref data does not affect the main graph; this is not complete reference recovery.
+- **LLM disabled by default:** The research narrative control, generated content, and model requests are absent until you enable the feature and configure an endpoint and model. It supports JSON responses compatible with `chat/completions`. HTTPS is required by default; a local HTTP service is allowed. The API key is stored in the plugin's local `data.json`, not in an encrypted keychain.
+- **Manual generation:** Only clicking Generate sends the seed, up to eight directly referenced papers, up to eight directly citing papers, and available citation evidence. Abstract sharing is off by default; retrieved citation context remains part of the evidence package. The narrative covers the sampled graph and does not follow the year slider. The plugin does not read full texts or claim a complete scholarly history.
+- **Output checks:** The plugin validates JSON structure, paper IDs, and citation direction, and rejects papers outside the submitted evidence. This cannot prove every model statement correct; model self-assessment is not a statistical confidence score. The evidence snapshot can be opened for review, copied, or written to a new note. Disabling the feature does not delete notes you exported earlier.
 
-数据源查询使用会话内五分钟缓存与串行限速，失败不清空主图。模型结果只在当前图谱会话保留；重新生成会再次调用模型。切换种子、修改设置或关闭视图后，旧结果不会替换当前总结。Obsidian 的 requestUrl 无法物理中止已发送请求；等待有超时，失效结果会被丢弃。
+Source queries use a five-minute session cache and serial rate limiting. A failed query leaves the existing graph in place. Model output stays in the current graph session; generating again calls the model again. Changing the seed or settings, or closing the view, prevents an older result from replacing the current narrative. Obsidian's `requestUrl` cannot physically cancel a request already sent, so requests have timeouts and stale results are discarded.
 
-开发验证：`npm test` 运行离线回归（不联网、不消耗模型额度）；`npm run verify` 还包含 OpenAlex 实时检查。构建预览后，`preview/index.html?fixture=1` 使用离线数据，增加 `&llm=1` 可演示模拟总结，均不会请求实际模型。
+For development, `npm test` runs offline checks without network or model usage; `npm run verify` also checks OpenAlex live. After building the preview, `preview/index.html?fixture=1` uses offline data, and `&llm=1` shows a simulated narrative without calling a real model.
 
 Settings → Research Connected.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| OpenAlex API 密钥 | empty | Sent as `Authorization: Bearer`. Stored only in local plugin data. |
-| 联系邮箱（mailto） | empty | OpenAlex 不再因此提高额度；有效邮箱会作为 Crossref 的联系信息。 |
-| 最大节点数 | 50 (range 20–300) | Cap including the seed. 40–60 is the intended range; larger maps benefit from extended/deep sampling. Applied on the next build. |
-| 纳入参考文献 | on | Seed’s outgoing references. |
-| 纳入施引文献 | on | Works that cite the seed, also used as co-citation context. |
-| 纳入相关作品 | on | OpenAlex `related_works` as extra candidate nodes. |
+| OpenAlex API key | empty | Sent as `Authorization: Bearer`. Stored only in local plugin data. |
+| Contact email (`mailto`) | empty | No longer raises the OpenAlex limit; a valid address is sent to Crossref as contact information. |
+| Maximum nodes | 50 (range 20–300) | Cap including the seed. 40–60 is the intended range; larger maps benefit from extended/deep sampling. Applied on the next build. |
+| Include references | on | Seed's outgoing references. |
+| Include citing works | on | Works that cite the seed, also used as co-citation context. |
+| Include related works | on | OpenAlex `related_works` as extra candidate nodes. |
 
 Turn off every neighbor toggle and the pane asks you to enable one. The next build uses the new toggles; the current map is not rebuilt automatically.
 
@@ -197,11 +197,11 @@ One map on standard sampling is a handful of calls: one work lookup, up to three
 Connected Papers builds a similarity map from co-citation and bibliographic coupling over a large citation graph. This plugin approximates that with a **sampled** OpenAlex neighborhood. It is not a citation tree and not a ranked list.
 
 1. Resolve the seed work.
-2. Sample candidates (most-cited first when a sort applies). The **采样深度** setting picks the tier:
+2. Sample candidates (most-cited first when a sort applies). The **Sampling depth** setting picks the tier:
    - **standard** — up to 80 works the seed cites, 40 that cite it, 20 related works; about 5 requests per map
    - **extended** — one full 200-per-page list of references and citing works, 50 related; about 7 requests
    - **deep** — references and citing works cursor-paged up to 1000 each, 100 related; about 20 requests, so set an OpenAlex API key first
-3. Keep at most `最大节点数 − 1` neighbors (20–300; pair anything above ~80 with extended or deep sampling so the pools can fill the slots):
+3. Keep at most `Maximum nodes − 1` neighbors (20–300; pair anything above ~80 with extended or deep sampling so the pools can fill the slots):
    - records whose OpenAlex `type` is non-research (**book-review**, editorial, correction/erratum, letter, retraction, peer-review, paratext) are dropped first — a book review's title embeds the book ("…By Author. Publisher, year. Pp. …") and citations meant for the book land on the review, which would bend the map toward the wrong record; the status line reports how many were filtered. The seed itself is kept regardless of type, with a note in its detail sheet
    - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure
    - remaining slots split between references and citing works
@@ -239,7 +239,7 @@ OpenAlex is the best free citation index, but published audits have found recurr
 | **Retracted articles** stay in citation graphs and keep accumulating citations | `is_retracted` is fetched for every node; the detail sheet shows a prominent retraction warning. Retracted works are kept on the map (they are part of citation history) but flagged |
 | **Missing abstracts** on a large share of records | Abstracts are reconstructed from `abstract_inverted_index` when present; otherwise the sheet asks Semantic Scholar once, and says so when neither source has one |
 | **Incomplete reference lists** — OpenAlex captures fewer references than the original articles list (audits report roughly a fifth to a quarter missing on average, worse for older and non-English works) | When Semantic Scholar reports references for a node whose OpenAlex list is empty, the missing list is backfilled from S2 and takes part in scoring (the detail sheet says so, and the edge evidence credits Semantic Scholar). Coupling and co-citation remain approximations over whatever the two sources have |
-| **Misattributed citation counts** — the book-review trap and merged/split records make one record inherit another work's citations | Each node's OpenAlex citation count is bulk-compared against Semantic Scholar's (one POST per map). Counts an order of magnitude apart get a ⚠ warning in the detail sheet. Turn this off with the Semantic Scholar 交叉比对 setting |
+| **Misattributed citation counts** — the book-review trap and merged/split records make one record inherit another work's citations | Each node's OpenAlex citation count is bulk-compared against Semantic Scholar's (one POST per map). Counts an order of magnitude apart get a ⚠ warning in the detail sheet. Turn this off with the Semantic Scholar cross-check setting |
 | **Language field is auto-detected** from title and abstract, with published error rates around one in seven records | The language facet and filter are shown as OpenAlex reports them; treat them as best-effort |
 | **Author and institution disambiguation errors** — names are merged or split incorrectly, especially for non-English names | Authors are displayed exactly as OpenAlex sends them. Verify authorship through the DOI link before citing |
 | **Duplicate and versioned records** (preprint vs published version, merging mistakes) | De-duplication is by OpenAlex work id only; a preprint and its published version are separate OpenAlex records and can both appear on one map |
@@ -292,7 +292,7 @@ Official sample-plugin shape: `src/main.ts` bundled by esbuild to `main.js`, plu
 - `src/map-canvas.ts` — shared 2D canvas renderer and graph interactions
 - `src/graph-edit.ts` — graph edits and persisted deep-dug members
 - `src/labels.ts` — node labels
-- `src/relation.ts` — edge kind and the Chinese explanation
+- `src/relation.ts` — edge kind and localized explanations
 - `src/app.ts` — pane orchestration, search, node edits, and detail panels
 - `src/neighborhood.ts` — sampling and OpenAlex orchestration
 - `src/similarity.ts` — coupling / co-citation scores
