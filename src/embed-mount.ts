@@ -468,11 +468,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		defaultWidth: 260,
 		onResize: () => map.resize(),
 	});
-	const narrowObserver = observeResponsiveMode(shell, () => {
-		if (shell.classList.contains("is-narrow")) sidebar.style.width = "100%";
-		else sidebar.style.removeProperty("width");
-		map.resize();
-	});
+	const narrowObserver = observeResponsiveMode(shell, () => map.resize());
 	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
 	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
 	zoomFit.addEventListener("click", () => map.fit(true));
@@ -842,6 +838,7 @@ const PLACEMENT_CLASSES = [
 	"cpo-align-center",
 	"cpo-align-right",
 	"cpo-span",
+	"cpo-user-resized",
 ];
 
 function placementAnchor(root: HTMLElement): HTMLElement {
@@ -858,12 +855,10 @@ function applyPlacement(root: HTMLElement, anchor: HTMLElement, spec: EmbedSpec)
 	const classes = [`cpo-pos-${spec.position}`, `cpo-align-${spec.align}`, ...(span ? ["cpo-span"] : [])];
 	anchor.classList.add("cpo-embed-anchor", ...classes);
 	anchor.style.width = span ? "" : spec.width;
-	if (anchor !== root) root.style.width = "100%";
 	return () => {
 		anchor.classList.remove(...PLACEMENT_CLASSES);
 		anchor.style.width = previousWidth;
 		anchor.style.maxWidth = previousMaxWidth;
-		if (anchor !== root) root.style.width = "";
 	};
 }
 
@@ -883,7 +878,7 @@ function mountResizeHandle(graphArea: HTMLElement, anchor: HTMLElement, onResize
 	const applySize = (width: number, height: number): void => {
 		const clampedWidth = Math.min(EMBED_WIDTH_LIMIT.max, Math.max(EMBED_WIDTH_LIMIT.min, Math.round(width)));
 		const clampedHeight = Math.min(EMBED_HEIGHT_LIMIT.max, Math.max(EMBED_HEIGHT_LIMIT.min, Math.round(height)));
-		anchor.style.maxWidth = "none";
+		anchor.classList.add("cpo-user-resized");
 		anchor.style.width = `${clampedWidth}px`;
 		graphArea.style.height = `${clampedHeight}px`;
 		onResize();

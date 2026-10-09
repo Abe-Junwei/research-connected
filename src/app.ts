@@ -1586,11 +1586,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	window.addEventListener("research-connected-theme", onTheme);
 
-	const observer = observeResponsiveMode(root, () => {
-		if (root.classList.contains("is-narrow")) sidebar.style.width = "100%";
-		else sidebar.style.removeProperty("width");
-		map.resize();
-	});
+	const observer = observeResponsiveMode(root, () => map.resize());
 	observer.observe(stage);
 	requestAnimationFrame(() => map.resize());
 

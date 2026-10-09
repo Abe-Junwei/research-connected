@@ -1,7 +1,7 @@
 {
 	"id": "research-connected",
 	"name": "Research Connected",
-	"version": "1.8.2",
+	"version": "1.8.3",
 	"minAppVersion": "1.14.4",
 	"description": "Explore a paper's citation neighborhood as an interactive similarity map in a graph pane or note.",
 	"author": "Bai Junwei",

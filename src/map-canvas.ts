@@ -79,6 +79,11 @@ export class SimilarityMap {
 	private pulseFrame: number | null = null;
 	private wheelNeedsModifier = false;
 
+	private setCursor(cursor: "grab" | "grabbing" | "pointer"): void {
+		this.canvas.classList.toggle("is-pointer", cursor === "pointer");
+		this.canvas.classList.toggle("is-grabbing", cursor === "grabbing");
+	}
+
 	getViewState(): { zoom: number; centerX: number; centerY: number; selectedId: string | null } {
 		return {
 			zoom: this.k,
@@ -654,7 +659,7 @@ export class SimilarityMap {
 				this.refreshFocus();
 				this.draw();
 			}
-			this.canvas.style.cursor = hit ? "pointer" : "grab";
+			this.setCursor(hit ? "pointer" : "grab");
 			this.placeTooltip(hit, local.x, local.y);
 			return;
 		}
@@ -665,7 +670,7 @@ export class SimilarityMap {
 		if (dragging.kind === "pan") {
 			this.tx = dragging.tx + (local.x - dragging.px);
 			this.ty = dragging.ty + (local.y - dragging.py);
-			this.canvas.style.cursor = "grabbing";
+			this.setCursor("grabbing");
 		} else {
 			const node = this.nodes.find((item) => item.id === dragging.id);
 			if (node) {
@@ -674,7 +679,7 @@ export class SimilarityMap {
 				node.y = world.y + dragging.dy;
 				this.reheat(0.55);
 			}
-			this.canvas.style.cursor = "grabbing";
+			this.setCursor("grabbing");
 		}
 		this.hideTooltip();
 		this.draw();
@@ -686,7 +691,7 @@ export class SimilarityMap {
 		if (this.pinch) {
 			if (this.pointers.size >= 2) return;
 			this.pinch = null;
-			this.canvas.style.cursor = "grab";
+			this.setCursor("grab");
 			// One finger still down: resume panning from its current spot, no click fires.
 			const remaining = this.pointers.values().next().value;
 			if (remaining) {
@@ -702,7 +707,7 @@ export class SimilarityMap {
 		const wasDrag = this.moved;
 		this.dragging = null;
 		if (!dragging || wasDrag) {
-			this.canvas.style.cursor = "grab";
+			this.setCursor("grab");
 			if (wasDrag && dragging?.kind === "node") this.reheat(0.32);
 			return;
 		}

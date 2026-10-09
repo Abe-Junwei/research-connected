@@ -397,6 +397,9 @@
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
 }
 
+.cpo-stage canvas.is-pointer { cursor: pointer; }
+.cpo-stage canvas.is-grabbing { cursor: grabbing; }
+
 .cpo-stage canvas:focus-visible {
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: -2px;
@@ -1481,6 +1484,8 @@
 	max-width: 100%;
 }
 
+.cpo-embed-anchor:not(.cpo-embed-host) .cpo-embed-host { width: 100%; }
+
 .cpo-embed-anchor.cpo-pos-float-right {
 	float: right;
 	clear: right;
@@ -1494,6 +1499,8 @@
 	max-width: calc(100% - 1em);
 	margin: 0.2em 1em 0.8em 0;
 }
+
+.cpo-embed-anchor.cpo-user-resized { max-width: none; }
 
 .cpo-embed-anchor.cpo-pos-inline.cpo-align-center,
 .cpo-embed-anchor.cpo-pos-full.cpo-align-center:not(.cpo-span) {

@@ -53,10 +53,6 @@ export default class ConnectedPapersPlugin extends Plugin {
 		registerConnectedPapersEmbed(this);
 	}
 
-	onunload(): void {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE);
-	}
-
 	getSettings(): ConnectedPapersSettings {
 		return this.settings;
 	}
