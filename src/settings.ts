@@ -26,7 +26,6 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		new Setting(containerEl).setName("Research Connected").setHeading();
 
 		new Setting(containerEl)
 			.setName(tr("OpenAlex API 密钥", "OpenAlex API key"))
