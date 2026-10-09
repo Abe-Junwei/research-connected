@@ -1,6 +1,8 @@
+import { tr } from "./i18n";
 import { createChromeIcon } from "./graph-chrome";
 import type { CitationEvidence } from "./citation-evidence";
-import { stageKey, stageSourceLabel, toggleStaged, type StagedPaper } from "./staging";
+import { stageSourceLabel } from "./staging";
+import type { ProjectPaperState } from "./project-state";
 import { allowedExternalUrl } from "./safe-url";
 import type { GraphEdge, PaperNode } from "./types";
 
@@ -12,47 +14,48 @@ export function paintPaperActions(
 	edge: GraphEdge | null,
 	evidence: CitationEvidence | null,
 	options: {
-		getStaged: () => StagedPaper[];
-		setStaged: (items: StagedPaper[]) => void;
+		getPaperState: (seedId: string, paperId: string) => ProjectPaperState | undefined;
+		setStaged: (paper: PaperNode, seedId: string, staged: boolean, source: string) => void;
 		persist?: (source: string) => Promise<void> | void;
 		openExternal: (url: string) => void;
 	},
 ): void {
-	const row = document.createElement("div");
-	row.className = "cpo-paper-actions";
+	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
+	const row = card.querySelector<HTMLElement>(":scope > .cpo-paper-actions") ?? document.createElement("div");
+	row.classList.add("cpo-paper-actions");
+	if (!row.parentElement) card.append(row);
 	const sources = document.createElement("div");
 	sources.className = "cpo-paper-sources";
-	if (seedId && options.persist && !paper.isSeed) {
+	if (seedId && options.persist) {
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "cpo-paper-action cpo-paper-stage";
 		const paintStage = (): void => {
-			const staged = options.getStaged().some((item) => stageKey(item) === `${seedId}\0${paper.id}`);
-			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"), document.createTextNode(staged ? "已暂存" : "加入暂存列表"));
+			const staged = Boolean(options.getPaperState(seedId, paper.id)?.staged);
+			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"), document.createTextNode(staged ? tr("已暂存", "Saved") : tr("暂存", "Save")));
 			button.setAttribute("aria-pressed", String(staged));
 		};
 		paintStage();
 		button.onclick = async () => {
-			const before = options.getStaged();
+			const before = Boolean(options.getPaperState(seedId, paper.id)?.staged);
 			const source = stageSourceLabel(paper, seedId, edge, evidence);
-			options.setStaged(toggleStaged(before, paper, seedId, source));
+			options.setStaged(paper, seedId, !before, source);
 			button.disabled = true;
 			button.removeAttribute("title");
 			try {
 				await options.persist?.(source);
-				options.setStaged(toggleStaged(before, paper, seedId, source));
 				paintStage();
 			} catch {
-				options.setStaged(before);
+				options.setStaged(paper, seedId, before, source);
 				paintStage();
 				let error = row.querySelector<HTMLElement>(".cpo-paper-action-error");
 				if (!error) {
 					error = document.createElement("span");
 					error.className = "cpo-paper-action-error";
 					error.setAttribute("role", "status");
-					row.append(error);
+					card.append(error);
 				}
-				error.textContent = "保存失败，请重试";
+				error.textContent = tr("保存失败，请重试", "Could not save. Try again.");
 			} finally {
 				button.disabled = false;
 			}
@@ -70,5 +73,4 @@ export function paintPaperActions(
 		sources.append(button);
 	}
 	if (sources.childElementCount) row.append(sources);
-	if (row.childElementCount) parent.append(row);
 }

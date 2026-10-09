@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { GetJson } from "./openalex";
 import { cleanAbstractText, normalizeDoi } from "./paper";
 
@@ -23,9 +24,9 @@ export class CrossrefClient {
 		const url = new URL(`https://api.crossref.org/works/${encodedDoi}`);
 		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.contactEmail)) url.searchParams.set("mailto", this.contactEmail);
 		const json = await cachedGet(this.getJson, url.toString(), { headers: { Accept: "application/json" } });
-		if (!json || typeof json !== "object") throw new CitationSourceError("Crossref 返回格式错误。");
+		if (!json || typeof json !== "object") throw new CitationSourceError(tr("Crossref 返回格式错误。", "Crossref returned an invalid response."));
 		const message = (json as { message?: unknown }).message;
-		if (!message || typeof message !== "object") throw new CitationSourceError("Crossref 未返回作品元数据。");
+		if (!message || typeof message !== "object") throw new CitationSourceError(tr("Crossref 未返回作品元数据。", "Crossref returned no work metadata."));
 		return message as CrossrefWork;
 	}
 
@@ -51,17 +52,17 @@ export class CrossrefClient {
 
 export class CitationSourceError extends Error {}
 
-const S2_QUOTA_TEXT = "Semantic Scholar 额度已用完或请求过快。可在设置中填写 API 密钥，或稍后再试。";
+const S2_QUOTA_TEXT = tr("Semantic Scholar 额度已用完或请求过快。可在设置中填写 API 密钥，或稍后再试。", "Semantic Scholar rate limit reached. Add an API key in settings or try again later.");
 const S2_QUOTA_MESSAGE = /too many requests|rate.?limit|quota|throttl/i;
 
 /** Compact description of an unexpected Semantic Scholar payload, for diagnostics. */
 function describeS2Shape(json: unknown): string {
 	if (json === null) return "null";
-	if (Array.isArray(json)) return `数组(${json.length} 条)`;
+	if (Array.isArray(json)) return tr(`数组(${json.length} 条)`, `Array (${json.length} items)`);
 	if (typeof json === "object") {
 		const keys = Object.keys(json as Record<string, unknown>).slice(0, 6).join(", ");
 		const message = (json as { message?: unknown }).message;
-		return `{${keys}}${typeof message === "string" ? `，message="${message.slice(0, 160)}"` : ""}`;
+		return `{${keys}}${typeof message === "string" ? tr(`，message="${message.slice(0, 160)}"`, `, message="${message.slice(0, 160)}"`) : ""}`;
 	}
 	return typeof json;
 }
@@ -72,10 +73,10 @@ function describeS2Shape(json: unknown): string {
  * map recognizable quota messages back to the quota wording.
  */
 function s2FormatError(context: string, json: unknown): CitationSourceError {
-	console.warn(`[research-connected] Semantic Scholar ${context}返回了非预期结构：${describeS2Shape(json)}`, json);
+	console.warn(tr(`[research-connected] Semantic Scholar ${context}返回了非预期结构：${describeS2Shape(json)}`, `[research-connected] Semantic Scholar ${context} returned an unexpected structure: ${describeS2Shape(json)}`), json);
 	const message = json && typeof json === "object" ? (json as { message?: unknown }).message : undefined;
 	if (typeof message === "string" && S2_QUOTA_MESSAGE.test(message)) return new CitationSourceError(S2_QUOTA_TEXT);
-	return new CitationSourceError(`Semantic Scholar ${context}返回格式错误。`);
+	return new CitationSourceError(tr(`Semantic Scholar ${context}返回格式错误。`, `Semantic Scholar ${context} returned an invalid response.`));
 }
 
 function pause(ms: number): Promise<void> {
@@ -96,7 +97,7 @@ export class OpenCitationsClient {
 				...(this.token ? { authorization: this.token } : {}),
 			},
 		});
-		if (!Array.isArray(json)) throw new CitationSourceError("OpenCitations 返回格式错误。");
+		if (!Array.isArray(json)) throw new CitationSourceError(tr("OpenCitations 返回格式错误。", "OpenCitations returned an invalid response."));
 		return json as OpenCitationRow[];
 	}
 }
@@ -156,7 +157,7 @@ export class SemanticScholarClient {
 			const body = JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) });
 			let json: unknown = null;
 			let ok = false;
-			let lastError: unknown = new CitationSourceError("Semantic Scholar 批量接口返回格式错误。");
+			let lastError: unknown = new CitationSourceError(tr("Semantic Scholar 批量接口返回格式错误。", "Semantic Scholar bulk API returned an invalid response."));
 			const attempt = async (fieldSet: string): Promise<boolean> => {
 				const url = new URL(base);
 				url.searchParams.set("fields", fieldSet);
@@ -170,7 +171,7 @@ export class SemanticScholarClient {
 						body,
 					});
 					if (Array.isArray(json)) return true;
-					lastError = s2FormatError("批量接口", json);
+					lastError = s2FormatError(tr("批量接口", "bulk API"), json);
 				} catch (error) {
 					lastError = error;
 				}
@@ -212,7 +213,7 @@ export class SemanticScholarClient {
 		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}/references`);
 		url.searchParams.set("fields", "externalIds");
 		url.searchParams.set("limit", "1000");
-		const result = await this.getList<{ citedPaper?: { externalIds?: Record<string, string | null> | null } | null }>(url.toString(), "参考文献接口");
+		const result = await this.getList<{ citedPaper?: { externalIds?: Record<string, string | null> | null } | null }>(url.toString(), tr("参考文献接口", "reference API"));
 		const dois: string[] = [];
 		for (const row of result.data) {
 			const ref = row?.citedPaper?.externalIds?.DOI?.toLowerCase();
@@ -229,10 +230,10 @@ export class SemanticScholarClient {
 			url.searchParams.set("fields", "contexts,intents,isInfluential,title,year,externalIds");
 			url.searchParams.set("limit", "1000");
 			url.searchParams.set("offset", String(offset));
-			const result = await this.getList<SemanticCitation>(url.toString(), "引用语义接口");
+			const result = await this.getList<SemanticCitation>(url.toString(), tr("引用语义接口", "citation intent API"));
 			data.push(...result.data);
 			if (typeof result.next !== "number") return { data, partial: false };
-			if (result.next <= offset) throw new CitationSourceError("Semantic Scholar 分页无进展。");
+			if (result.next <= offset) throw new CitationSourceError(tr("Semantic Scholar 分页无进展。", "Semantic Scholar pagination made no progress."));
 			offset = result.next;
 		}
 		return { data, partial: true };
@@ -252,7 +253,7 @@ export class SemanticScholarClient {
 	 * answer 200 with an error body, which a fresh request usually fixes.
 	 */
 	private async getList<T>(url: string, context: string): Promise<{ data: T[]; next?: number }> {
-		let lastError: unknown = new CitationSourceError(`Semantic Scholar ${context}返回格式错误。`);
+		let lastError: unknown = new CitationSourceError(tr(`Semantic Scholar ${context}返回格式错误。`, `Semantic Scholar ${context} returned an invalid response.`));
 		for (let attempt = 0; attempt < 2; attempt++) {
 			if (attempt > 0) await pause(1200);
 			let result: unknown;
@@ -272,7 +273,7 @@ export class SemanticScholarClient {
 
 	private async get(url: string): Promise<unknown> {
 		const json = await cachedGet(this.getJson, url, { headers: this.headers() });
-		if (!json || typeof json !== "object") throw s2FormatError("接口", json);
+		if (!json || typeof json !== "object") throw s2FormatError(tr("接口", "API"), json);
 		return json;
 	}
 

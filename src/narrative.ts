@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { derivativeWorks, priorWorks } from "./aggregates";
 import type { CitationEvidence } from "./citation-evidence";
 import type { SimilarityGraph } from "./neighborhood";
@@ -41,7 +42,7 @@ export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: bo
 	const allKnown = new Map([...graph.catalog, ...graph.nodes].map((paper) => [paper.id, paper]));
 	const visible = new Set(graph.nodes.map((paper) => paper.id));
 	const seed = graph.nodes.find((paper) => paper.isSeed) ?? graph.nodes[0];
-	if (!seed) throw new Error("当前图谱没有种子论文。");
+	if (!seed) throw new Error(tr("当前图谱没有种子论文。", "The current graph has no seed paper."));
 	const seedRefs = new Set(graph.referenceLists?.get(seed.id) ?? []);
 	const make = (paper: PaperNode): NarrativeEvidencePaper => ({
 		id: paper.id,
@@ -73,19 +74,19 @@ export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: bo
 		derivativeWorks: derivatives,
 		citations,
 		caveats: [
-			"当前总结基于 OpenAlex 采样到的图谱，引用列表可能不完整。",
-			"引用关系不等同于真实学术影响；Influential 或方法继承需要可用的引用上下文支持。",
-			allKnown.size > graph.nodes.length ? "部分施引论文只作为引用上下文存在，没有进入主图谱。" : "",
+			tr("当前总结基于 OpenAlex 采样到的图谱，引用列表可能不完整。", "This summary uses an OpenAlex sample; reference lists may be incomplete."),
+			tr("引用关系不等同于真实学术影响；Influential 或方法继承需要可用的引用上下文支持。", "A citation does not prove scholarly influence; Influential labels or method inheritance require citation context."),
+			allKnown.size > graph.nodes.length ? tr("部分施引论文只作为引用上下文存在，没有进入主图谱。", "Some citing papers provide citation context but are not shown in the main graph.") : "",
 		].filter(Boolean),
 	};
 }
 
 export function validateNarrative(value: unknown, allowedIds: ReadonlySet<string>): ResearchNarrative {
-	if (!value || typeof value !== "object") throw new Error("LLM 返回的研究脉络不是对象。");
+	if (!value || typeof value !== "object") throw new Error(tr("LLM 返回的研究脉络不是对象。", "The LLM research narrative is not an object."));
 	const input = value as Record<string, unknown>;
 	if (typeof input.synthesis !== "string" || input.synthesis.length > 8000 ||
 		!["basedOn", "influenced", "importantWorks", "caveats"].every(key => Array.isArray(input[key]))) {
-		throw new Error("研究脉络结构不完整，请重新生成。");
+		throw new Error(tr("研究脉络结构不完整，请重新生成。", "The research narrative is incomplete. Generate it again."));
 	}
 	const items = (input.basedOn ?? []) as unknown[];
 	const influenced = (input.influenced ?? []) as unknown[];
@@ -93,19 +94,19 @@ export function validateNarrative(value: unknown, allowedIds: ReadonlySet<string
 	const parse = (list: unknown[]): NarrativeItem[] => list.slice(0, 12).flatMap((raw) => {
 		if (!raw || typeof raw !== "object") return [];
 		const item = raw as Record<string, unknown>;
-		if (typeof item.paperId !== "string" || !allowedIds.has(item.paperId)) throw new Error("模型引用了证据包之外的论文，结果已拒绝。");
+		if (typeof item.paperId !== "string" || !allowedIds.has(item.paperId)) throw new Error(tr("模型引用了证据包之外的论文，结果已拒绝。", "The model cited a paper outside the evidence set; the result was rejected."));
 		if (typeof item.claim !== "string" || item.claim.length > 4000 || !Array.isArray(item.evidence) || !item.evidence.length ||
-			!item.evidence.every(e => typeof e === "string" && e.length <= 2000)) throw new Error("模型条目缺少有效证据。");
+			!item.evidence.every(e => typeof e === "string" && e.length <= 2000)) throw new Error(tr("模型条目缺少有效证据。", "A model entry lacks valid evidence."));
 		return [{
 			paperId: item.paperId,
 			role: typeof item.role === "string" ? item.role : "unclear",
-			claim: typeof item.claim === "string" ? item.claim : "证据不足，无法总结。",
+			claim: typeof item.claim === "string" ? item.claim : tr("证据不足，无法总结。", "Insufficient evidence to summarize."),
 			evidence: Array.isArray(item.evidence) ? item.evidence.filter((x): x is string => typeof x === "string").slice(0, 4) : [],
 			confidence: item.confidence === "high" || item.confidence === "medium" ? item.confidence : "low",
 		}];
 	});
 	return {
-		synthesis: typeof input.synthesis === "string" ? input.synthesis : "模型没有提供总体总结。",
+		synthesis: typeof input.synthesis === "string" ? input.synthesis : tr("模型没有提供总体总结。", "The model did not provide an overview."),
 		basedOn: parse(items),
 		influenced: parse(influenced),
 		importantWorks: parse(important),
@@ -114,5 +115,5 @@ export function validateNarrative(value: unknown, allowedIds: ReadonlySet<string
 }
 
 export function narrativePrompt(evidence: NarrativeEvidence): string {
-	return `你是学术文献综述助手。只能使用下面 JSON 中的论文和证据。不要补造论文、作者、年份、方法或影响关系。引用关系不等于学术影响；证据不足时必须明确说明。只返回 JSON，字段为 synthesis、basedOn、influenced、importantWorks、caveats。每个条目的 paperId 必须来自输入，claim 必须由 evidence 支持，confidence 只能是 high、medium 或 low。\n\n${JSON.stringify(evidence)}`;
+	return tr(`你是学术文献综述助手。只能使用下面 JSON 中的论文和证据。不要补造论文、作者、年份、方法或影响关系。引用关系不等于学术影响；证据不足时必须明确说明。只返回 JSON，字段为 synthesis、basedOn、influenced、importantWorks、caveats。每个条目的 paperId 必须来自输入，claim 必须由 evidence 支持，confidence 只能是 high、medium 或 low。自然语言字段使用简体中文。\n\n${JSON.stringify(evidence)}`, `You are an academic literature review assistant. Use only the papers and evidence in the JSON below. Do not invent papers, authors, years, methods, or influence relationships. A citation does not by itself prove scholarly influence; state clearly when evidence is insufficient. Return JSON only, with synthesis, basedOn, influenced, importantWorks, and caveats. Each entry's paperId must occur in the input, its claim must be supported by evidence, and confidence must be high, medium, or low. Write natural-language values in English.\n\n${JSON.stringify(evidence)}`);
 }

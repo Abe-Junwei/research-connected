@@ -14,6 +14,7 @@ const mode = process.argv[2] ?? "dev";
 if (mode === "verify") {
 	await esbuild.build({
 		entryPoints: ["scripts/verify.ts"],
+		alias: { obsidian: "./preview/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -26,6 +27,7 @@ if (mode === "verify") {
 if (mode === "perf") {
 	await esbuild.build({
 		entryPoints: ["scripts/perf.ts"],
+		alias: { obsidian: "./preview/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -38,6 +40,7 @@ if (mode === "perf") {
 if (mode === "sweep") {
 	await esbuild.build({
 		entryPoints: ["scripts/mmr-sweep.ts"],
+		alias: { obsidian: "./preview/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -50,6 +53,7 @@ if (mode === "sweep") {
 if (mode === "preview") {
 	await esbuild.build({
 		entryPoints: ["preview/main.ts"],
+		alias: { obsidian: "./preview/obsidian-stub.ts" },
 		bundle: true,
 		platform: "browser",
 		format: "iife",
@@ -58,6 +62,7 @@ if (mode === "preview") {
 	});
 	await esbuild.build({
 		entryPoints: ["preview/embed-main.ts"],
+		alias: { obsidian: "./preview/obsidian-stub.ts" },
 		bundle: true,
 		platform: "browser",
 		format: "iife",

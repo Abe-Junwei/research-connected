@@ -2,6 +2,8 @@
 
 An Obsidian plugin that draws a **similarity map** for one seed paper, in the spirit of [Connected Papers](https://www.connectedpapers.com/). The product is an interactive 2D canvas graph in its own pane and inside notes.
 
+This release supports **Obsidian desktop 1.14.4 or newer**. Mobile support will be enabled after testing on mobile devices.
+
 It is not a sidebar of citation cards. Reference Map / Literature Flow–style index lists are an explicit non-goal. This project is not affiliated with Connected Papers.
 
 ## Rename
@@ -18,6 +20,18 @@ Plugin settings (the OpenAlex API key) live in that folder’s `data.json`. Copy
 
 The graph is built from the public [OpenAlex](https://openalex.org/) works API.
 
+## Network use and local data
+
+Building a graph or searching for a paper sends its DOI, OpenAlex ID, or search text to OpenAlex. The plugin also queries Semantic Scholar to cross-check metadata and fill missing references or abstracts, Crossref for remaining DOI-based gaps, and OpenCitations for citation evidence between papers on the graph. These requests send paper identifiers and, if configured, the relevant service's API key or token. A contact email, if provided, is sent to Crossref and as a legacy `mailto` parameter to OpenAlex. External links open OpenAlex or DOI pages in the browser.
+
+The optional research narrative is off by default. Only when you click Generate does it send the selected papers and their available citation evidence to the LLM endpoint you configure; abstracts are included only if you enable that setting. Research projects, reading and exclusion states, saved views, and service credentials are stored in this vault's plugin `data.json`; credentials are not encrypted. The plugin does not send usage telemetry. See [Settings](#settings) for the limits and behavior of each service.
+
+The source code is available under the [MIT License](LICENSE).
+
+## Interface language
+
+The graph pane, note embeds, settings, controls, and plugin messages follow Obsidian's interface language. Simplified Chinese is used for Chinese locales; English is used for other locales. Reload the plugin after changing Obsidian's language. Paper titles, author names, abstracts, and saved user content retain their original language.
+
 ## Build
 
 ```bash
@@ -31,7 +45,7 @@ Loadable plugin files:
 
 | File | Role |
 | --- | --- |
-| `main.js` | Bundled plugin (generated, gitignored) |
+| `main.js` | Bundled plugin (generated) |
 | `manifest.json` | Plugin id `research-connected` |
 | `styles.css` | Pane styles |
 
@@ -51,7 +65,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
 
 ## Usage
 
-1. Command palette → **Open Research Connected**.
+1. Command palette → **打开 Research Connected** (Chinese interface) or **Open Research Connected** (English interface).
    The same command is on the ribbon (git-fork icon).
    The view opens as a **main-area tab** titled “Research Connected”, not in the sidebars.
 2. In the pane, enter a seed:
@@ -66,7 +80,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
 5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / 适配** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
 6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **在 OpenAlex 中打开**, and **打开 DOI** when a DOI exists.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
-7. Chinese titles render with the interface font plus a CJK fallback stack. In-pane labels are Chinese; the command name stays English.
+7. Chinese titles render with the interface font plus a CJK fallback stack. Controls and command names follow Obsidian's interface language.
 
 The project and view controls beneath the search box save the current graph and camera position locally. The bottom status bar has **撤销** after a node deletion or deep expansion, and **诊断候选** for looking up a DOI or OpenAlex ID. Diagnosis uses this map's retained sample: it can identify filtered or unselected candidates, but cannot determine why a work outside the sample was absent from OpenAlex results.
 
@@ -111,7 +125,7 @@ depth: 1
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
 
-Nodes show **author + year** by default. The full title is the hover tooltip and the evidence panel. Both surfaces use a left rail for layout choices and the graph key/filter controls, a central canvas, and a right-side **论文与关系证据** panel. The panel also contains prior/derivative lists, staging, and optional research narrative. The left and right rails can collapse; in narrow panes the evidence panel moves below the graph. Export actions are grouped under **导出**. The note embed keeps a compact detail sheet to preserve reading width.
+Nodes show **author + year** by default. The full title is the hover tooltip and the evidence panel. Both surfaces use a left rail for layout choices and the graph key/filter controls, a central canvas, and a right-side **Paper details & evidence** panel. The panel also contains prior/derivative lists, staging, and optional research narrative. The left and right rails can collapse; in narrow panes the evidence panel moves below the graph. Export actions are grouped under **导出**. The note embed keeps a compact detail sheet to preserve reading width.
 
 Drag pans the graph. A plain scroll wheel scrolls the note past the graph; hold **⌘/Ctrl** and scroll — or pinch on a trackpad — to zoom, as do **+ / − / 适配**. On touch screens one finger scrolls the note and a two-finger pinch zooms and pans. The embed grip at the bottom-right changes the graph area’s width and height after it opens (with the grip focused, the arrow keys resize in steps, faster with Shift); `width` and `height` in the fence are only the starting size. The command pane fills its tab and has no grip.
 
@@ -142,7 +156,7 @@ Thickness is the same three steps as the graph key (弱 / 中 / 强), not a cont
 
 ### 多源证据与可选 LLM
 
-OpenCitations 检查和可选 LLM 仅在命令面板图谱中提供；Crossref 回退同时用于命令面板与笔记内嵌。图谱面板另有暂存工作流。
+OpenCitations 检查、Semantic Scholar 和 Crossref 回退同时用于图谱面板与笔记内嵌。可选 LLM 研究脉络仅在图谱面板中提供。
 
 - **OpenCitations**：建图后顺序检查最多 20 篇有 DOI 的图内论文的参考文献，只补当前节点之间的引用边。仅在 OpenAlex 同样记录了该方向引用时显示双源。状态栏显示已检查数和失败数；这不是全量覆盖。可在设置中填写访问令牌。
 - **Semantic Scholar**：建图时批量核对每篇的被引数与参考文献数，差异悬殊的节点在详情中标注；OpenAlex 缺失的参考文献列表会回填并参与连线，标记 Semantic Scholar 来源。当 OpenAlex 没有某篇论文的摘要时（Nature 等出版商不寄存摘要），打开该论文详情会自动向 Semantic Scholar 查询一次摘要作为回退，取到后标注“摘要来源：Semantic Scholar”；两个源都没有时如实说明。回退按论文触发、会话内缓存，不会批量预取。API key 可选。

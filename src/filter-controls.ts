@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { classicNodeIds } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import type { GraphFilter } from "./graph-filter";
@@ -76,6 +77,7 @@ export function mountGraphKey(
 ): {
 	paintColor: (mode: LayoutMode) => void;
 	setStats: (nodes: readonly { id: string; year: number | null; isSeed?: boolean }[], edges: readonly GraphEdge[]) => void;
+	setKinds: (selected: GraphFilter["kinds"]) => void;
 } {
 	const key = document.createElement("div");
 	key.className = "cpo-graph-key";
@@ -84,8 +86,8 @@ export function mountGraphKey(
 	const kindCounts = buildLegend(kinds, read, write);
 	const marks = document.createElement("div");
 	marks.className = "cpo-graph-key-marks";
-	const seed = markRow("cpo-graph-key-seed", "种子文献");
-	const classic = markRow("cpo-graph-key-classic", "经典文献");
+	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
+	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
 	marks.append(seed.row, classic.row);
 	const color = document.createElement("span");
 	color.className = "cpo-graph-key-color";
@@ -98,7 +100,7 @@ export function mountGraphKey(
 		dots.append(dot);
 	}
 	const label = document.createElement("span");
-	label.textContent = "引用团";
+	label.textContent = tr("引用团", "Citation clusters");
 	const groupN = document.createElement("span");
 	groupN.className = "cpo-graph-key-n";
 	groupN.textContent = "0";
@@ -121,5 +123,13 @@ export function mountGraphKey(
 		classic.n.textContent = String(stats.classics);
 		groupN.textContent = String(stats.groups);
 	};
-	return { paintColor, setStats };
+	const setKinds = (selected: GraphFilter["kinds"]): void => {
+		for (const kind of KIND_ORDER) {
+			const button = Array.from(kinds.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.title === RELATION_LABEL[kind]);
+			if (!button) continue;
+			button.classList.toggle("is-on", selected[kind]);
+			button.setAttribute("aria-pressed", String(selected[kind]));
+		}
+	};
+	return { paintColor, setStats, setKinds };
 }

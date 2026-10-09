@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { tokenize } from "./text-similarity";
 
 export interface CommunityPoint {
@@ -68,7 +69,7 @@ export function buildCommunityCircles(
 			return {
 				community,
 				members: members.length,
-				label: labels.get(community)?.trim() || `社区 ${community + 1}`,
+				label: labels.get(community)?.trim() || tr(`社区 ${community + 1}`, `Community ${community + 1}`),
 				cx: pack.cx,
 				cy: pack.cy,
 				radius: pack.radius,
@@ -107,7 +108,7 @@ export function buildCommunityRegions(
 			return {
 				community,
 				members: members.length,
-				label: labels.get(community)?.trim() || `社区 ${community + 1}`,
+				label: labels.get(community)?.trim() || tr(`社区 ${community + 1}`, `Community ${community + 1}`),
 				points: expanded,
 				cx: center.x,
 				cy: center.y,
@@ -276,7 +277,7 @@ export function communityTopicLabels(
 		labels.set(community, clipLabel(pick.name));
 	}
 	for (const community of [...members.keys()].sort((a, b) => a - b)) {
-		if (!labels.has(community)) labels.set(community, `社区 ${community + 1}`);
+		if (!labels.has(community)) labels.set(community, tr(`社区 ${community + 1}`, `Community ${community + 1}`));
 	}
 	return labels;
 }

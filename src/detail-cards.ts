@@ -1,8 +1,10 @@
+import { tr } from "./i18n";
 import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, type CrossCheckLike } from "./citation-evidence";
 import type { RankedWork } from "./aggregates";
 import { relationFacts } from "./graph-filter";
-import { paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
+import { createChromeIcon, paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
 import type { SelectionRank } from "./neighborhood";
+import type { ProjectPaperState, ReadingStatus } from "./project-state";
 import { nonResearchLabel } from "./paper";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { formatCount } from "./visual";
@@ -10,10 +12,10 @@ import { formatCount } from "./visual";
 /** Sidebar detail cards shared by the main pane and the note embed. */
 
 export const ORIGIN_TEXT: Record<Origin, string> = {
-	seed: "种子论文",
-	reference: "种子的参考文献",
-	citation: "引用了种子",
-	related: "OpenAlex 相关作品",
+	seed: tr("种子论文", "Seed paper"),
+	reference: tr("种子的参考文献", "Seed references"),
+	citation: tr("引用了种子", "Cites the seed"),
+	related: tr("OpenAlex 相关作品", "OpenAlex related works"),
 };
 
 /** Cross-check fields the metadata card reads; both graphs carry this shape. */
@@ -29,90 +31,137 @@ export interface RelationSectionOptions {
 	semanticHint?: string;
 }
 
-const AUTHOR_CHIP_LIMIT = 6;
+export function paintPaperWorkflowState(
+	parent: HTMLElement, paper: PaperNode, state: ProjectPaperState,
+	onReading: (reading: ReadingStatus, previous: ReadingStatus) => void, onExclude?: () => void,
+): void {
+	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
+	const row = el(card, "div", "cpo-paper-actions");
+	const readingSelect = el(row, "select", "cpo-paper-reading-select") as HTMLSelectElement;
+	readingSelect.setAttribute("aria-label", tr(`阅读状态：${paper.title || paper.id}`, `Reading status: ${paper.title || paper.id}`));
+	let currentReading = state.reading;
+	const labels: Record<ReadingStatus, string> = { unread: tr("未读", "Unread"), "to-read": tr("待读", "To read"), read: tr("已读", "Read") };
+	for (const reading of ["unread", "to-read", "read"] as const) {
+		const option = document.createElement("option");
+		option.value = reading;
+		option.textContent = labels[reading];
+		readingSelect.append(option);
+	}
+	readingSelect.value = currentReading;
+	readingSelect.title = tr("阅读状态", "Reading status");
+	readingSelect.addEventListener("change", async () => {
+		const next = readingSelect.value as ReadingStatus;
+		if (next === currentReading) return;
+		const previous = currentReading;
+		readingSelect.disabled = true;
+		try {
+			await onReading(next, previous);
+			currentReading = next;
+		} catch {
+			readingSelect.value = currentReading;
+			readingSelect.title = tr("保存失败，请重试", "Could not save. Try again.");
+		} finally {
+			readingSelect.disabled = false;
+		}
+	});
+	if (onExclude || paper.isSeed) {
+		const exclude = el(row, "button", "cpo-paper-action cpo-paper-exclude", tr("排除", "Exclude")) as HTMLButtonElement;
+		exclude.type = "button";
+		exclude.prepend(createChromeIcon("exclude"));
+		exclude.disabled = paper.isSeed;
+		exclude.title = paper.isSeed ? tr("种子论文不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
+		if (onExclude) exclude.onclick = onExclude;
+	}
+}
 
 /** 语义 meter 的 hint 文案：向量通道与本地通道分开标注。 */
 export function semanticHintFor(mode?: "embedding" | "local"): string {
-	return mode === "embedding" ? "SPECTER2 语义向量 + 主题" : "标题 / 摘要 / 主题，本地计算";
+	return mode === "embedding" ? tr("SPECTER2 语义向量 + 主题", "SPECTER2 embeddings and topics") : tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally");
 }
 
 /** Author chips from the structured list; falls back to the joined string. */
 export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
 	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
-	el(row, "span", "cpo-chip-label", "主要作者");
-	const names = paper.authorList.length > 0 ? paper.authorList : [paper.authors];
-	for (const name of names.slice(0, AUTHOR_CHIP_LIMIT)) el(row, "span", "cpo-chip cpo-chip-author", name);
-	if (names.length > AUTHOR_CHIP_LIMIT) el(row, "span", "cpo-chip", `等 ${names.length} 位`);
+	el(row, "span", "cpo-chip-label", tr("作者", "Authors"));
+	const names = paper.authorList?.length ? paper.authorList : paper.authors ? [paper.authors] : [];
+	for (const name of names.slice(0, 5)) el(row, "span", "cpo-chip cpo-chip-author", name);
+	if (names.length > 5) {
+		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`) as HTMLButtonElement;
+		more.type = "button";
+		more.setAttribute("aria-expanded", "false");
+		more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
+		more.onclick = () => {
+			const expanded = more.getAttribute("aria-expanded") !== "true";
+			more.setAttribute("aria-expanded", String(expanded));
+			if (expanded) {
+				for (const name of names.slice(5)) {
+					const chip = document.createElement("span");
+					chip.className = "cpo-chip cpo-chip-author cpo-author-extra";
+					chip.textContent = name;
+					more.before(chip);
+				}
+				more.textContent = tr("收起", "Collapse");
+				more.setAttribute("aria-label", tr("收起其余作者", "Collapse other authors"));
+			} else {
+				row.querySelectorAll(".cpo-author-extra").forEach((chip) => chip.remove());
+				more.textContent = `+${names.length - 5}`;
+				more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
+			}
+		};
+	}
 }
 
 /** 出处行：期刊名/书名 chip，悬停显示全文。元数据卡与聚合卡共用。 */
 export function paintVenueRow(parent: HTMLElement, paper: PaperNode): void {
 	if (!paper.venue) return;
 	const row = el(parent, "div", "cpo-badge-row cpo-venue-row");
-	el(row, "span", "cpo-chip-label", "出处");
+	el(row, "span", "cpo-chip-label", tr("出处", "Venue"));
 	const venue = el(row, "span", "cpo-chip cpo-chip-venue", paper.venue);
 	venue.title = paper.venue;
 }
 
 /** 聚合列表（先验/衍生）单条：与元数据卡同一体系的迷你卡，整条可点击。 */
-export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: string, onPick: (paper: PaperNode) => void): void {
+export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: string, onPick: (paper: PaperNode) => void, onActions?: (card: HTMLElement, paper: PaperNode) => void): void {
 	const item = el(parent, "li", "cpo-agg-entry");
 	const card = el(item, "div", "cpo-card cpo-agg-card");
-	card.setAttribute("role", "button");
-	card.tabIndex = 0;
 	const badges = el(card, "div", "cpo-badge-row");
-	el(badges, "span", "cpo-chip cpo-chip-accent", `${noun} ${row.count} 次`);
-	el(badges, "span", "cpo-chip", row.paper.year === null ? "年份不详" : `${row.paper.year} 年`);
-	el(badges, "span", "cpo-chip cpo-chip-muted", `被引 ${formatCount(row.paper.citedByCount)}`);
-	el(card, "h3", "cpo-card-title", row.paper.title || row.paper.id);
+	el(badges, "span", "cpo-chip cpo-chip-accent", tr(`${noun} ${row.count} 次`, `${noun} ${row.count} times`));
+	el(badges, "span", "cpo-chip", row.paper.year === null ? tr("年份不详", "Year unknown") : tr(`${row.paper.year} 年`, `${row.paper.year}`));
+	el(badges, "span", "cpo-chip cpo-chip-muted", tr(`被引 ${formatCount(row.paper.citedByCount)}`, `Cited ${formatCount(row.paper.citedByCount)} times`));
+	const heading = el(card, "h3", "cpo-card-title");
+	const open = el(heading, "button", "cpo-agg-open", row.paper.title || row.paper.id) as HTMLButtonElement;
+	open.type = "button";
+	open.setAttribute("aria-label", tr(`查看论文：${row.paper.title || row.paper.id}`, `View paper: ${row.paper.title || row.paper.id}`));
 	paintAuthorChips(card, row.paper);
 	paintVenueRow(card, row.paper);
 	const run = () => onPick(row.paper);
-	card.addEventListener("click", run);
-	card.addEventListener("keydown", (event) => {
-		if (event.key === "Enter" || event.key === " ") {
-			event.preventDefault();
-			run();
-		}
+	open.addEventListener("click", run);
+	card.addEventListener("click", (event) => {
+		if (!(event.target as HTMLElement).closest("button, select")) run();
 	});
+	onActions?.(card, row.paper);
 }
 
 /** 元数据卡：origin/年份/类型/被引徽章行 + 标题 + 作者 chips + 状态徽章与警告 + 主题 chips。 */
 export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: DetailCrossCheck | null | undefined): void {
 	const card = el(parent, "section", "cpo-card cpo-paper-identity");
+	const badges = el(card, "div", "cpo-badge-row");
+	el(badges, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
+	el(badges, "span", "cpo-chip", paper.year === null ? tr("年份不详", "Year unknown") : tr(`${paper.year} 年`, `${paper.year}`));
+	el(badges, "span", "cpo-chip cpo-chip-muted", tr(`被引 ${formatCount(paper.citedByCount)}`, `Cited ${formatCount(paper.citedByCount)} times`));
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
-	const authors = el(card, "div", "cpo-paper-authors");
-	const authorNames = paper.authorList.length ? paper.authorList : paper.authors ? [paper.authors] : [];
-	if (authorNames.length) {
-		const author = el(authors, "span", undefined, authorNames.join(", "));
-		author.title = authorNames.join(", ");
-	}
-	if (paper.year !== null) {
-		el(authors, "span", authorNames.length ? "cpo-paper-author-year" : "cpo-paper-year", authorNames.length ? `· ${paper.year}` : String(paper.year));
-	}
-	const publication = [
-		paper.venue,
-		paper.bibliography?.volume ? `${paper.bibliography.volume}${paper.bibliography.issue ? `(${paper.bibliography.issue})` : ""}` : null,
-		paper.bibliography?.firstPage ? `${paper.bibliography.firstPage}${paper.bibliography.lastPage ? `–${paper.bibliography.lastPage}` : ""}` : null,
-	].filter(Boolean);
-	if (publication.length) {
-		const row = el(card, "div", "cpo-paper-publication");
-		row.setAttribute("aria-label", "出处与页码");
-		publication.forEach((part, index) => {
-			if (index) el(row, "span", "cpo-paper-separator", "·");
-			el(row, "span", undefined, part!);
-		});
-	}
+	paintAuthorChips(card, paper);
+	paintVenueRow(card, paper);
 	paintPaperStateBadges(card, paper, check);
 	if (paper.concepts.length > 0) {
 		const topics = el(card, "div", "cpo-paper-topics");
-		topics.setAttribute("aria-label", "论文主题");
+		topics.setAttribute("aria-label", tr("论文主题", "Paper topics"));
 		for (const name of paper.concepts.slice(0, 3)) el(topics, "span", "cpo-paper-topic", name);
 		if (paper.concepts.length > 3) {
 			const more = el(topics, "button", "cpo-paper-topic-more", `+${paper.concepts.length - 3}`) as HTMLButtonElement;
 			more.type = "button";
 			more.setAttribute("aria-expanded", "false");
-			more.setAttribute("aria-label", `显示其余 ${paper.concepts.length - 3} 个主题`);
+			more.setAttribute("aria-label", tr(`显示其余 ${paper.concepts.length - 3} 个主题`, `Show ${paper.concepts.length - 3} more topics`));
 			more.onclick = () => {
 				const expanded = more.getAttribute("aria-expanded") !== "true";
 				more.setAttribute("aria-expanded", String(expanded));
@@ -123,7 +172,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 						chip.textContent = name;
 						more.before(chip);
 					}
-					more.textContent = "收起";
+					more.textContent = tr("收起", "Collapse");
 				} else {
 					topics.querySelectorAll(".cpo-paper-topic-extra").forEach((chip) => chip.remove());
 					more.textContent = `+${paper.concepts.length - 3}`;
@@ -132,15 +181,15 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 		}
 	}
 	if (paper.retracted) {
-		el(card, "p", "cpo-side-tip", "⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。");
+		el(card, "p", "cpo-side-tip", tr("⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。", "⚠ OpenAlex marks this work as retracted (is_retracted). Check the reason before citing it."));
 	}
 	const flagged = nonResearchLabel(paper);
 	if (flagged) {
-		el(card, "p", "cpo-side-tip", `OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`);
+		el(card, "p", "cpo-side-tip", tr(`OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`, `OpenAlex marks this record as “${flagged}”. Book review titles may include the original book; citations to the review may belong to the book. The author field reflects the review author. This is a property of the OpenAlex data, not the plugin mapping.`));
 	}
 	if (check?.mismatched) {
-		const s2 = check.s2Citations === null || check.s2Citations === undefined ? "无记录" : formatCount(check.s2Citations);
-		el(card, "p", "cpo-side-tip", `⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`);
+		const s2 = check.s2Citations === null || check.s2Citations === undefined ? tr("无记录", "No record") : formatCount(check.s2Citations);
+		el(card, "p", "cpo-side-tip", tr(`⚠ 数据源差异悬殊：OpenAlex 被引 ${formatCount(paper.citedByCount)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`, `⚠ Large source discrepancy: OpenAlex reports ${formatCount(paper.citedByCount)} citations; Semantic Scholar reports ${s2}. This often indicates a record mismatch, such as a review inheriting the book’s citations. Verify through the DOI before citing.`));
 	}
 }
 
@@ -150,8 +199,8 @@ export function paintMeter(parent: HTMLElement, label: string, value: number | n
 	const head = el(meter, "div", "cpo-meter-head");
 	el(head, "span", "cpo-meter-label", label);
 	if (value === null) {
-		el(head, "span", "cpo-meter-na", "不可用");
-		el(meter, "p", "cpo-meter-hint", "当前缺少可比较数据");
+		el(head, "span", "cpo-meter-na", tr("不可用", "Unavailable"));
+		el(meter, "p", "cpo-meter-hint", tr("当前缺少可比较数据", "No comparable data is available"));
 		return;
 	}
 	el(head, "span", "cpo-meter-value", value.toFixed(2));
@@ -172,22 +221,22 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 	const card = el(parent, "section", "cpo-card");
 	const info = relationFacts(edge, a, b, options.sources);
 	el(card, "p", "cpo-fact-lead", info.lead);
-	if (options.seedScore !== undefined) paintMeter(card, "图谱综合相似度", options.seedScore, "结构 + 语义信号");
+	if (options.seedScore !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), options.seedScore, tr("结构 + 语义信号", "Structure and semantic signals"));
 	if (edge.structuralSimilarity !== undefined) {
-		paintMeter(card, "文献结构相似度", edge.structuralSimilarity, "共享参考文献 / 共被引", true);
+		paintMeter(card, tr("文献结构相似度", "Structural similarity"), edge.structuralSimilarity, tr("共享参考文献 / 共被引", "Shared references / co-citations"), true);
 	}
 	if (options.semanticScore !== undefined) {
-		paintMeter(card, "文本相似度", options.semanticScore, options.semanticHint ?? "标题 / 摘要 / 主题，本地计算", true);
+		paintMeter(card, tr("文本相似度", "Text similarity"), options.semanticScore, options.semanticHint ?? tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally"), true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
-	paintStat(grid, "共享参考文献", `${edge.sharedRefs} 篇`);
-	paintStat(grid, "共被引", `${edge.coCitedBy} 次`);
-	paintStat(grid, "来源", options.sources);
+	paintStat(grid, tr("共享参考文献", "Shared references"), tr(`${edge.sharedRefs} 篇`, `${edge.sharedRefs} papers`));
+	paintStat(grid, tr("共被引", "Co-citations"), tr(`${edge.coCitedBy} 次`, `${edge.coCitedBy} times`));
+	paintStat(grid, tr("来源", "Source"), options.sources);
 	for (const pair of edgeCitationPairs(edge)) {
 		const evidence = options.getEvidence(pair.citingId, pair.citedId);
 		paintEvidenceBadges(card, evidence);
 		if (evidence) {
-			el(card, "p", "cpo-evidence", `证据：${evidenceLabel(evidence)}`);
+			el(card, "p", "cpo-evidence", tr(`证据：${evidenceLabel(evidence)}`, `Evidence: ${evidenceLabel(evidence)}`));
 			for (const context of evidence.contexts.slice(0, 5)) el(card, "blockquote", "cpo-side-tip", context);
 		}
 	}
@@ -198,26 +247,26 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstractText: (paper: PaperNode) => string): void {
 	const card = el(parent, "section", "cpo-card");
 	const head = el(card, "div", "cpo-card-head");
-	el(head, "h3", "cpo-kicker", "摘要");
+	el(head, "h3", "cpo-kicker", tr("摘要", "Abstract"));
 	const wrap = el(card, "div", "cpo-abstract-wrap");
 	const para = el(wrap, "p", "cpo-abstract", abstractText(paper));
 	if (!paper.abstract) return;
 	para.classList.add("cpo-abstract-clamp");
 	const fade = el(wrap, "div", "cpo-abstract-fade");
-	const copy = el(head, "button", "cpo-text-btn", "复制") as HTMLButtonElement;
+	const copy = el(head, "button", "cpo-text-btn", tr("复制", "Copy")) as HTMLButtonElement;
 	copy.type = "button";
 	copy.addEventListener("click", () => {
 		void navigator.clipboard.writeText(paper.abstract).then(() => {
-			copy.textContent = "已复制";
-			window.setTimeout(() => { copy.textContent = "复制"; }, 1600);
+			copy.textContent = tr("已复制", "Copied");
+			window.setTimeout(() => { copy.textContent = tr("复制", "Copy"); }, 1600);
 		}, () => undefined);
 	});
-	const toggle = el(card, "button", "cpo-text-btn cpo-abstract-toggle", "展开全文") as HTMLButtonElement;
+	const toggle = el(card, "button", "cpo-text-btn cpo-abstract-toggle", tr("展开全文", "Show full abstract")) as HTMLButtonElement;
 	toggle.type = "button";
 	toggle.addEventListener("click", () => {
 		const collapsed = para.classList.toggle("cpo-abstract-clamp");
 		fade.hidden = !collapsed;
-		toggle.textContent = collapsed ? "展开全文" : "收起摘要";
+		toggle.textContent = collapsed ? tr("展开全文", "Show full abstract") : tr("收起摘要", "Collapse abstract");
 	});
 }
 
@@ -227,10 +276,10 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 	const info = el(strip, "div", "cpo-jump-info");
 	const head = el(info, "div", "cpo-badge-row");
 	el(head, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
-	el(head, "span", "cpo-chip cpo-chip-muted", `${paper.year ?? "年份不详"} · 被引 ${formatCount(paper.citedByCount)}`);
+	el(head, "span", "cpo-chip cpo-chip-muted", tr(`${paper.year ?? tr("年份不详", "Year unknown")} · 被引 ${formatCount(paper.citedByCount)}`, `${paper.year ?? tr("年份不详", "Year unknown")} · cited ${formatCount(paper.citedByCount)} times`));
 	el(info, "p", "cpo-jump-title", paper.title || paper.id);
 	el(info, "p", "cpo-jump-meta", paper.authors);
-	const go = el(strip, "button", "cpo-text-btn", "查看 →") as HTMLButtonElement;
+	const go = el(strip, "button", "cpo-text-btn", tr("查看 →", "View →")) as HTMLButtonElement;
 	go.type = "button";
 	go.addEventListener("click", () => onJump(paper));
 }
@@ -238,7 +287,7 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 /** Distinct evidence sources behind an edge's directed citation pairs. */
 export function edgeSourcesText(edge: GraphEdge, getEvidence: (citingId: string, citedId: string) => CitationEvidence | null): string {
 	const sources = new Set(edgeCitationPairs(edge).flatMap((pair) => getEvidence(pair.citingId, pair.citedId)?.sources ?? []));
-	return sources.size ? [...sources].map((source) => SOURCE_TEXT[source]).join(" + ") : "OpenAlex 采样";
+	return sources.size ? [...sources].map((source) => SOURCE_TEXT[source]).join(" + ") : tr("OpenAlex 采样", "OpenAlex sample");
 }
 
 /** 「入选原因」折叠区：候选选择时的真实分数快照（仅 picked 节点有）。 */
@@ -246,15 +295,15 @@ export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, 
 	const details = document.createElement("details");
 	details.className = "cpo-card cpo-why";
 	const summary = document.createElement("summary");
-	summary.textContent = "入选原因";
+	summary.textContent = tr("入选原因", "Why selected");
 	details.append(summary);
-	paintMeter(details, "权威分", rank.authority, "log 被引 × 新近度，候选池内归一", true);
-	paintMeter(details, "选择时语义分", rank.semantic, "标题 / 主题，本地计算（选择时摘要尚未补取）", true);
-	paintMeter(details, "选择时相关性", rank.relevance, "0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分；撤稿作品进一步降权", true);
+	paintMeter(details, tr("权威分", "Authority score"), rank.authority, tr("log 被引 × 新近度，候选池内归一", "Log citations × recency, normalized within the candidate pool"), true);
+	paintMeter(details, tr("选择时语义分", "Semantic score at selection"), rank.semantic, tr("标题 / 主题，本地计算（选择时摘要尚未补取）", "Title and topics, computed locally (abstract not yet fetched at selection)"), true);
+	paintMeter(details, tr("选择时相关性", "Relevance at selection"), rank.relevance, tr("0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分；撤稿作品进一步降权", "0.5 × authority + 0.5 × selection-time semantics; uses authority if semantics are unavailable; retracted works are penalized further"), true);
 	if (currentScore !== undefined) {
-		paintMeter(details, "建图后当前综合分", currentScore, "结构 + 语义信号；未参与候选入选");
+		paintMeter(details, tr("建图后当前综合分", "Current overall score"), currentScore, tr("结构 + 语义信号；未参与候选入选", "Structure and semantic signals; not used for candidate selection"));
 	}
-	el(details, "p", "cpo-fact-note", "入选还受来源配额与多样性（MMR）影响。");
+	el(details, "p", "cpo-fact-note", tr("入选还受来源配额与多样性（MMR）影响。", "Selection also depends on source quotas and diversity (MMR)."));
 	parent.append(details);
 }
 

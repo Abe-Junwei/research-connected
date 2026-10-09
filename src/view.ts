@@ -9,7 +9,7 @@ import type { ResearchProject } from "./project-state";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
-	saveSettings(): Promise<void>;
+	saveSettings(notify?: boolean): Promise<void>;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -54,16 +54,16 @@ export class ConnectedPapersView extends ItemView {
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.appHandle = mountGraphApp(this.contentEl, {
 			getSettings: () => this.host.getSettings(),
-			persistSettings: () => this.host.saveSettings(),
+			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
 			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
-			stagePaper: async () => { await this.host.saveSettings(); },
-			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+			stagePaper: async () => { await this.host.saveSettings(false); },
+			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
 		saveProject: async (project: ResearchProject) => {
 			this.host.getSettings().researchProjects[project.seedId] = project;
-			await this.host.saveSettings();
+			await this.host.saveSettings(false);
 		},
 			initialTarget,
 		});

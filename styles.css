@@ -221,7 +221,8 @@
 	appearance: none;
 }
 
-.cpo-root button.cpo-primary {
+.cpo-root button.cpo-primary,
+.cpo-embed button.cpo-primary {
 	flex: none;
 	height: 36px;
 	padding: 0 14px;
@@ -233,11 +234,13 @@
 	cursor: pointer;
 }
 
-.cpo-root button.cpo-primary:hover {
+.cpo-root button.cpo-primary:hover,
+.cpo-embed button.cpo-primary:hover {
 	background: var(--cpo-accent-hover);
 }
 
 .cpo-root button.cpo-primary:disabled,
+.cpo-embed button.cpo-primary:disabled,
 .cpo-root button.cpo-ghost:disabled,
 .cpo-embed button.cpo-ghost:disabled {
 	opacity: 0.55;
@@ -295,6 +298,7 @@
 
 .cpo-diagnose-form { display: flex; gap: 7px; margin: 10px 0; }
 .cpo-diagnose-form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
+.cpo-embed .cpo-diagnose-form button.cpo-primary { height: 28px; padding-inline: 10px; }
 .cpo-diagnose-result { padding-top: 8px; border-top: 1px solid var(--background-modifier-border); }
 
 .cpo-banner {
@@ -320,7 +324,7 @@
 	background: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
-	box-shadow: 0 16px 40px rgba(60, 64, 70, 0.2);
+	box-shadow: 0 16px 40px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.2));
 }
 
 .cpo-results-label {
@@ -409,6 +413,7 @@
 	padding: 32px 24px;
 	text-align: center;
 	pointer-events: none;
+	transform: translateY(-12px);
 }
 
 .cpo-empty-title {
@@ -421,7 +426,9 @@
 .cpo-empty p {
 	max-width: 440px;
 	margin: 0;
-	color: #6b7280;
+	color: var(--text-muted);
+	font-size: 12px;
+	font-weight: 500;
 	line-height: 1.55;
 }
 
@@ -433,7 +440,7 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	background: var(--background-primary);
-	box-shadow: 0 8px 24px rgba(60, 64, 70, 0.16);
+	box-shadow: 0 8px 24px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.14));
 }
 
 .cpo-node-menu[hidden] {
@@ -453,6 +460,10 @@
 	font-size: 12px;
 	text-align: left;
 	cursor: pointer;
+}
+
+.cpo-node-menu button[hidden] {
+	display: none;
 }
 
 .cpo-node-menu button:hover:not(:disabled) {
@@ -653,7 +664,7 @@
 	font-size: 12px;
 	line-height: 1.4;
 	pointer-events: none;
-	box-shadow: 0 8px 24px rgba(60, 64, 70, 0.16);
+	box-shadow: 0 8px 24px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.14));
 }
 
 .cpo-legend {
@@ -661,7 +672,7 @@
 	flex-wrap: wrap;
 	gap: 10px 14px;
 	align-items: center;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 11px;
 }
 
@@ -701,6 +712,7 @@
 .cpo-zoom button {
 	width: 100%;
 }
+.cpo-zoom button:disabled { opacity: .55; cursor: progress; }
 
 @media (hover: hover) and (pointer: fine) {
 	.cpo-stage .cpo-zoom,
@@ -889,7 +901,7 @@
 }
 
 .cpo-action-link:focus-visible {
-	outline: 2px solid rgba(166, 124, 46, 0.42);
+	outline: 2px solid color-mix(in srgb, var(--cpo-accent) 42%, transparent);
 	outline-offset: 1px;
 }
 
@@ -1203,12 +1215,12 @@
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	border-left: 1px solid rgba(60, 64, 70, 0.1);
+	border-left: 1px solid var(--background-modifier-border);
 }
 
 .cpo-side-tip {
 	margin: 0 0 8px;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 12px;
 	line-height: 1.5;
 }
@@ -1226,24 +1238,24 @@
 .cpo-score,
 .cpo-authors {
 	margin: 0 0 6px;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 13px;
 }
 
 .cpo-authors {
-	color: #3a3f45;
+	color: var(--text-normal);
 }
 
 .cpo-kicker {
 	margin: 16px 0 6px;
-	color: #9aa0a6;
+	color: var(--text-faint, var(--text-muted));
 	font-size: 12px;
 	font-weight: 600;
 }
 
 .cpo-abstract {
 	margin: 0;
-	color: #4b5563;
+	color: var(--text-normal);
 	font-size: 13px;
 	line-height: 1.6;
 }
@@ -1256,23 +1268,23 @@
 	padding: 8px 10px;
 	border: none;
 	border-radius: 8px;
-	background: rgba(60, 64, 70, 0.05);
-	color: #a67c2e;
+	background: color-mix(in srgb, var(--text-normal) 5%, transparent);
+	color: var(--cpo-accent);
 	text-align: left;
 	cursor: pointer;
 }
 
 .cpo-root button.cpo-link:hover,
 .cpo-embed button.cpo-link:hover {
-	background: rgba(60, 64, 70, 0.09);
+	background: var(--background-modifier-hover);
 }
 
 .cpo-root button.cpo-link:active,
 .cpo-root button.cpo-link:focus-visible,
 .cpo-embed button.cpo-link:active,
 .cpo-embed button.cpo-link:focus-visible {
-	background: rgba(166, 124, 46, 0.14);
-	outline: 2px solid rgba(166, 124, 46, 0.38);
+	background: color-mix(in srgb, var(--cpo-accent) 14%, transparent);
+	outline: 2px solid color-mix(in srgb, var(--cpo-accent) 38%, transparent);
 	outline-offset: 1px;
 }
 
@@ -1291,7 +1303,7 @@
 	flex-direction: row;
 	align-items: center;
 	border-right: none;
-	border-bottom: 1px solid rgba(60, 64, 70, 0.1);
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .cpo-root.is-narrow .cpo-rail .cpo-tool-row,
@@ -1426,9 +1438,7 @@
 	min-height: 0;
 }
 
-.cpo-embed .cpo-empty {
-	z-index: 2;
-}
+.cpo-embed .cpo-empty { z-index: 2; }
 
 .cpo-embed-canvas {
 	position: absolute;
@@ -1589,7 +1599,7 @@
 
 .cpo-embed-detail-rel {
 	margin: 0 0 6px;
-	color: #8a6d2f;
+	color: var(--cpo-accent);
 	font-size: 12px;
 	line-height: 1.45;
 	white-space: pre-line;
@@ -1648,9 +1658,10 @@
 	color: #a67c2e;
 }
 
-.cpo-root .cpo-evidence {
+.cpo-root .cpo-evidence,
+.cpo-embed .cpo-evidence {
 	white-space: pre-line;
-	color: #6b7280;
+	color: var(--text-muted);
 	font-size: 12px;
 	line-height: 1.45;
 }
@@ -1773,18 +1784,32 @@
 	flex: none;
 }
 
-.cpo-export-menu > summary {
-	list-style: none;
+.cpo-evidence-sidebar .cpo-tab-row summary.cpo-tool {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	min-height: 30px;
 	padding: 5px 9px;
+	border: 0;
 	border-radius: 6px;
+	background: transparent;
 	color: var(--text-muted);
-	cursor: pointer;
+	font: inherit;
 	font-size: 11px;
+	line-height: 1;
+	list-style: none;
+	cursor: pointer;
+	white-space: nowrap;
 }
 
 .cpo-export-menu > summary::-webkit-details-marker { display: none; }
-.cpo-export-menu > summary::after { content: "⌄"; margin-left: 5px; }
-.cpo-export-menu[open] > summary { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cpo-export-menu > summary::after { content: none; }
+.cpo-export-menu > summary .cpo-icon-glyph:first-child { width: 14px; height: 14px; }
+.cpo-export-menu > summary .cpo-icon-glyph:last-child { width: 12px; height: 12px; }
+.cpo-export-menu[open] > summary,
+.cpo-export-menu > summary:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .cpo-export-items {
 	position: absolute;
 	right: 0;
@@ -1948,7 +1973,7 @@
 .cpo-agg-def,
 .cpo-agg-empty {
 	margin: 0 0 10px;
-	color: #4b5563;
+	color: var(--text-muted);
 	font-size: 12px;
 	line-height: 1.45;
 }
@@ -1980,6 +2005,36 @@
 	outline: 2px solid var(--cpo-accent);
 	outline-offset: 1px;
 }
+.cpo-root .cpo-agg-open,
+.cpo-embed .cpo-agg-open {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	min-height: 0;
+	height: auto;
+	flex: 0 0 auto;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: 1.4;
+	text-align: left;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	box-shadow: none;
+}
+.cpo-root .cpo-agg-card > .cpo-card-title,
+.cpo-embed .cpo-agg-card > .cpo-card-title {
+	display: block;
+	position: static;
+	height: auto;
+	overflow: visible;
+	min-width: 0;
+	flex: 0 0 auto;
+}
+.cpo-agg-open:focus-visible { outline: 2px solid var(--cpo-accent); outline-offset: 2px; }
 
 /* 研究脉络里的论文条目按钮（纯文本行）。 */
 button.cpo-agg-item {
@@ -2007,32 +2062,39 @@ button.cpo-agg-item {
 	background: linear-gradient(
 		135deg,
 		transparent 0 46%,
-		rgba(166, 124, 46, 0.9) 46% 58%,
+		color-mix(in srgb, var(--cpo-accent) 90%, transparent) 46% 58%,
 		transparent 58% 68%,
-		rgba(166, 124, 46, 0.55) 68% 78%,
+		 color-mix(in srgb, var(--cpo-accent) 55%, transparent) 68% 78%,
 		transparent 78%
 	);
 }
 
 .cpo-resize:focus-visible {
-	outline: 2px solid #a67c2e;
+	outline: 2px solid var(--cpo-accent);
 	outline-offset: 1px;
 	border-radius: 2px;
 }
 .cpo-root .cpo-sheet-analysis:not(.is-collapsed) { max-height: 50%; }
 .cpo-root .cpo-sheet-analysis .cpo-sheet-body { max-height: 44vh; }
 .cpo-root .cpo-sheet-analysis .cpo-agg { max-height: none; overflow: visible; }
-.cpo-root button[hidden] { display: none !important; }
+.cpo-root button[hidden],
+.cpo-embed button[hidden] { display: none !important; }
 
 /* Theme-aware finishing layer for legacy component rules. */
 .cpo-root .cpo-empty p,
 .cpo-embed .cpo-empty p,
 .cpo-root .cpo-legend,
+.cpo-embed .cpo-legend,
 .cpo-root .cpo-side-tip,
+.cpo-embed .cpo-side-tip,
 .cpo-root .cpo-meta,
+.cpo-embed .cpo-meta,
 .cpo-root .cpo-score,
+.cpo-embed .cpo-score,
 .cpo-root .cpo-kicker,
-.cpo-root .cpo-abstract {
+.cpo-embed .cpo-kicker,
+.cpo-root .cpo-abstract,
+.cpo-embed .cpo-abstract {
 	color: var(--text-muted);
 }
 .cpo-meta,
@@ -2044,16 +2106,22 @@ button.cpo-agg-item {
 .cpo-actions-bar {
 	border-color: var(--background-modifier-border);
 }
-.cpo-root .cpo-authors {
+.cpo-root .cpo-authors,
+.cpo-embed .cpo-authors {
 	color: var(--text-normal);
 }
 .cpo-root button.cpo-link,
-.cpo-root button.cpo-embed-link {
+.cpo-root button.cpo-embed-link,
+.cpo-embed button.cpo-link,
+.cpo-embed button.cpo-embed-link {
 	background: var(--background-modifier-hover);
 	color: var(--cpo-accent);
 }
 .cpo-root button.cpo-link:hover,
 .cpo-root button.cpo-icon:hover,
+.cpo-root button.cpo-embed-link:hover,
+.cpo-embed button.cpo-link:hover,
+.cpo-embed button.cpo-icon:hover,
 .cpo-embed button.cpo-embed-link:hover {
 	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
@@ -2061,13 +2129,55 @@ button.cpo-agg-item {
 .cpo-embed-status {
 	color: var(--text-muted);
 }
-.cpo-root .cpo-export-text {
-	color: var(--text-normal);
-	background: var(--background-secondary);
-}
 .cpo-embed .cpo-embed-label {
 	color: var(--text-normal);
 	text-shadow: 0 1px 2px var(--background-primary), 0 0 6px var(--background-primary);
+}
+.cpo-export-feedback {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+	gap: 6px 10px;
+	margin-top: 7px;
+	padding: 7px 9px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 11px;
+}
+.cpo-export-feedback[hidden],
+.cpo-export-text[hidden] { display: none !important; }
+.cpo-export-message { min-width: 0; align-self: center; }
+.cpo-export-clear {
+	margin: 0;
+	padding: 1px 5px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	font: inherit;
+	cursor: pointer;
+}
+.cpo-export-clear:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cpo-root .cpo-export-text,
+.cpo-embed .cpo-export-text {
+	grid-column: 1 / -1;
+	box-sizing: border-box;
+	width: 100%;
+	max-height: 120px;
+	margin: 0;
+	padding: 7px 8px;
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	font-size: 11px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
 .cpo-embed .cpo-embed-tooltip,
 .cpo-root .cpo-tooltip,
@@ -2154,6 +2264,9 @@ button.cpo-agg-item {
 	color: var(--text-normal);
 	font-size: 12px;
 	font-weight: 650;
+	padding: 0;
+	border: 0;
+	box-shadow: none;
 }
 
 .cpo-evidence-tools {
@@ -2333,7 +2446,7 @@ button.cpo-agg-item {
 		min-width: 0;
 		max-width: none;
 		border-left: none;
-		border-top: 1px solid rgba(60, 64, 70, 0.1);
+		border-top: 1px solid var(--background-modifier-border);
 	}
 
 	.cpo-root.is-narrow .cpo-evidence-header,
@@ -2352,6 +2465,29 @@ button.cpo-agg-item {
 	}
 }
 
+.cpo-root select.cpo-paper-reading-select,
+.cpo-embed select.cpo-paper-reading-select {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 64px;
+	min-width: 64px;
+	height: 28px;
+	padding: 2px 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 11px;
+	line-height: 1.2;
+	appearance: auto;
+	box-shadow: none !important;
+}
+.cpo-root select.cpo-paper-reading-select:focus-visible,
+.cpo-embed select.cpo-paper-reading-select:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--cpo-accent) 42%, transparent);
+	outline-offset: 1px;
+}
+
 /* 详情卡片化：元数据 / 关系证据 / 摘要 / 跳转条。灰底白卡，配色走既有主题变量。 */
 .cpo-evidence-sidebar > .cpo-sheet {
 	background: var(--background-secondary);
@@ -2366,7 +2502,7 @@ button.cpo-agg-item {
 	flex-direction: column;
 	gap: 7px;
 	padding: 10px 12px;
-	border: 1px solid rgba(60, 64, 70, 0.1);
+	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
 	background: var(--background-primary);
 }
@@ -2410,19 +2546,19 @@ button.cpo-agg-item {
 	display: inline-flex;
 	align-items: center;
 	padding: 1px 7px;
-	border: 1px solid rgba(60, 64, 70, 0.09);
+	border: 1px solid color-mix(in srgb, var(--text-normal) 9%, transparent);
 	border-radius: 8px;
-	background: rgba(60, 64, 70, 0.05);
-	color: #6b7280;
+	background: color-mix(in srgb, var(--text-normal) 5%, transparent);
+	color: var(--text-muted);
 	font-size: 10px;
 	line-height: 1.6;
 	white-space: nowrap;
 }
 
 .cpo-chip-accent {
-	border-color: rgba(166, 124, 46, 0.28);
-	background: rgba(166, 124, 46, 0.12);
-	color: #6f5019;
+	border-color: color-mix(in srgb, var(--cpo-accent) 28%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--cpo-accent) 12%, var(--background-primary));
+	color: var(--text-normal);
 	font-weight: 600;
 }
 
@@ -2441,18 +2577,18 @@ button.cpo-agg-item {
 	max-width: 240px;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	border-color: rgba(43, 179, 154, 0.3);
-	background: rgba(43, 179, 154, 0.09);
-	color: #1d6e60;
+	border-color: var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-muted);
 }
 
 /* Unified paper identity and action row for graph pane + embed. */
 .cpo-detail .cpo-card.cpo-paper-identity {
 	gap: 7px;
-	padding: 3px 8px 0;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary);
 }
 .cpo-paper-identity .cpo-card-title { font-size: 14px; line-height: 1.45; }
 .cpo-paper-authors {
@@ -2461,27 +2597,6 @@ button.cpo-agg-item {
 	color: var(--text-muted);
 	font-size: 11px;
 	line-height: 1.45;
-}
-.cpo-paper-publication {
-	display: flex;
-	min-width: 0;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 5px;
-	color: var(--text-muted);
-	font-size: 11px;
-	line-height: 1.45;
-}
-.cpo-paper-year { font-variant-numeric: tabular-nums; }
-.cpo-paper-author-year {
-	margin-left: 5px;
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-.cpo-paper-separator { color: var(--text-faint, var(--text-muted)); }
-.cpo-paper-publication > span:not(.cpo-paper-separator):first-child {
-	color: var(--text-normal);
-	font-weight: 550;
 }
 .cpo-paper-topics {
 	display: flex;
@@ -2511,43 +2626,55 @@ button.cpo-agg-item {
 .cpo-paper-topic-more:hover { background: var(--background-modifier-hover); }
 .cpo-paper-actions {
 	display: flex;
+	width: 100%;
 	min-width: 0;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
-	gap: 8px;
-	margin: 0 8px 8px;
-	padding: 2px 0 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	justify-content: space-between;
+	gap: 2px;
+	margin: 2px 0 0;
+	padding: 7px 0 0;
+	border-top: 1px solid var(--background-modifier-border);
+	overflow: hidden;
+	scrollbar-width: none;
+}
+.cpo-paper-actions::-webkit-scrollbar { display: none; }
+.cpo-root select.cpo-paper-reading-select,
+.cpo-embed select.cpo-paper-reading-select {
+	width: 64px;
+	min-width: 64px;
+	max-width: 64px;
+	flex: 0 0 64px;
 }
 .cpo-paper-sources {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	margin-left: auto;
+	display: contents;
 }
-.cpo-root .cpo-detail button.cpo-paper-action,
-.cpo-embed .cpo-detail button.cpo-paper-action {
+.cpo-root button.cpo-paper-action,
+.cpo-embed button.cpo-paper-action {
 	display: inline-flex;
 	min-width: 0;
-	min-height: 30px;
+	min-height: 26px;
 	align-items: center;
 	justify-content: center;
-	gap: 6px;
-	padding: 0 9px;
+	gap: 3px;
+	padding: 0 4px;
 	border: 0;
 	border-radius: 5px;
 	background: transparent;
 	color: var(--text-muted);
-	font-size: 11px;
+	font-size: 10.5px;
 	font-weight: 500;
 	line-height: 1;
 	box-shadow: none;
 	white-space: nowrap;
+	flex: 0 0 auto;
 }
-.cpo-root .cpo-detail button.cpo-paper-action:hover,
-.cpo-embed .cpo-detail button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-.cpo-paper-action .cpo-icon-glyph { width: 13px; height: 13px; flex: none; }
-.cpo-paper-action-error { flex-basis: 100%; color: var(--text-error, #b42318); font-size: 11px; }
+.cpo-root button.cpo-paper-action:hover,
+.cpo-embed button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cpo-root button.cpo-paper-action:disabled,
+.cpo-embed button.cpo-paper-action:disabled { opacity: .48; cursor: default; }
+.cpo-paper-action .cpo-icon-glyph { width: 12px; height: 12px; flex: none; }
+.cpo-paper-action-error { color: var(--text-error, #b42318); font-size: 11px; }
 .cpo-diagnose-back {
 	margin: 0 0 10px;
 	padding: 4px 0;
@@ -2562,9 +2689,9 @@ button.cpo-agg-item {
 .cpo-sheet-tag {
 	flex: none;
 	padding: 0 5px;
-	border: 1px solid rgba(60, 64, 70, 0.12);
+	border: 1px solid color-mix(in srgb, var(--text-normal) 12%, transparent);
 	border-radius: 5px;
-	background: rgba(60, 64, 70, 0.06);
+	background: color-mix(in srgb, var(--text-normal) 6%, transparent);
 	color: var(--text-muted);
 	font-size: 9.5px;
 	font-weight: 650;
@@ -2587,7 +2714,7 @@ button.cpo-agg-item {
 }
 
 .cpo-meter-label {
-	color: #6b7280;
+	color: var(--text-muted);
 }
 
 .cpo-meter-value {
@@ -2597,13 +2724,13 @@ button.cpo-agg-item {
 }
 
 .cpo-meter-na {
-	color: #9aa0a6;
+	color: var(--text-faint, var(--text-muted));
 }
 
 .cpo-meter-track {
 	height: 6px;
 	border-radius: 999px;
-	background: rgba(60, 64, 70, 0.1);
+	background: color-mix(in srgb, var(--text-normal) 10%, transparent);
 	overflow: hidden;
 }
 
@@ -2619,7 +2746,7 @@ button.cpo-agg-item {
 
 .cpo-meter-hint {
 	margin: 0;
-	color: #9aa0a6;
+	color: var(--text-faint, var(--text-muted));
 	font-size: 10px;
 }
 
@@ -2634,13 +2761,13 @@ button.cpo-agg-item {
 	flex-direction: column;
 	gap: 1px;
 	padding: 6px 8px;
-	border: 1px solid rgba(60, 64, 70, 0.07);
+	border: 1px solid color-mix(in srgb, var(--text-normal) 7%, transparent);
 	border-radius: 8px;
-	background: rgba(60, 64, 70, 0.04);
+	background: color-mix(in srgb, var(--text-normal) 4%, transparent);
 }
 
 .cpo-stat-label {
-	color: #9aa0a6;
+	color: var(--text-faint, var(--text-muted));
 	font-size: 10px;
 }
 
@@ -2668,7 +2795,7 @@ button.cpo-agg-item {
 	bottom: 0;
 	left: 0;
 	height: 22px;
-	background: linear-gradient(to bottom, rgba(255, 255, 255, 0), var(--background-primary));
+	background: linear-gradient(to bottom, transparent, var(--background-primary));
 	pointer-events: none;
 }
 
@@ -2680,7 +2807,7 @@ button.cpo-agg-item {
 	border: none;
 	border-radius: 6px;
 	background: transparent;
-	color: #a67c2e;
+	color: var(--cpo-accent);
 	font: inherit;
 	font-size: 11px;
 	cursor: pointer;
@@ -2688,7 +2815,7 @@ button.cpo-agg-item {
 
 .cpo-root button.cpo-text-btn:hover,
 .cpo-embed button.cpo-text-btn:hover {
-	background: rgba(60, 64, 70, 0.07);
+	background: var(--background-modifier-hover);
 }
 
 .cpo-root button.cpo-abstract-toggle,
@@ -2701,7 +2828,7 @@ button.cpo-agg-item {
 	align-items: center;
 	gap: 10px;
 	padding: 9px 12px;
-	border: 1px solid rgba(60, 64, 70, 0.1);
+	border: 1px solid var(--background-modifier-border);
 	border-radius: 10px;
 	background: var(--background-primary);
 }
@@ -2729,13 +2856,13 @@ button.cpo-agg-item {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: #9aa0a6;
+	color: var(--text-muted);
 	font-size: 10.5px;
 }
 
 /* 作者 chips：结构化 authorList 逐人渲染。 */
 .cpo-chip-label {
-	color: #9aa0a6;
+	color: var(--text-faint, var(--text-muted));
 	font-size: 10px;
 }
 
@@ -2743,6 +2870,31 @@ button.cpo-agg-item {
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font-size: 10.5px;
+}
+
+.cpo-root .cpo-author-chips button.cpo-author-more,
+.cpo-embed .cpo-author-chips button.cpo-author-more {
+	display: inline-flex;
+	width: auto;
+	min-height: 0;
+	margin: 0;
+	padding: 1px 7px;
+	border: 1px solid color-mix(in srgb, var(--text-normal) 9%, transparent);
+	border-radius: 8px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font: inherit;
+	font-size: 10.5px;
+	font-weight: 400;
+	line-height: 1.6;
+	box-shadow: none;
+	cursor: pointer;
+}
+
+.cpo-root .cpo-author-chips button.cpo-author-more:hover,
+.cpo-embed .cpo-author-chips button.cpo-author-more:hover {
+	border-color: var(--background-modifier-border);
+	background: var(--background-secondary);
 }
 
 /* 排版修正：压住 Obsidian 主题的 .view-content h3 / p 默认样式，统一卡片内节奏。 */
@@ -2768,7 +2920,7 @@ button.cpo-agg-item {
 	margin: 0;
 	padding: 0;
 	border: none;
-	color: #9aa0a6;
+	color: var(--text-muted);
 	font-size: 12px;
 	font-weight: 600;
 	line-height: 1.3;
@@ -2809,6 +2961,7 @@ button.cpo-agg-item {
 	--rc-sidebar-max: min(480px, 46vw);
 	--cpo-accent: var(--rc-accent);
 	--cpo-accent-hover: var(--rc-accent-hover);
+	--graph-text: var(--text-normal, #4b5563);
 	--cpo-canvas-bg-start: var(--background-primary, var(--rc-surface));
 	--cpo-canvas-bg-end: var(--background-secondary, var(--rc-canvas));
 }
@@ -2843,11 +2996,33 @@ button.cpo-agg-item {
 	overflow-x: visible;
 }
 
-.cpo-actions-bar .cpo-tool-row,
-.cpo-evidence-sidebar .cpo-tab-row {
+.cpo-actions-bar .cpo-tool-row:not(.cpo-tab-row) {
 	min-width: 0;
 	flex-wrap: wrap;
 }
+
+.cpo-evidence-sidebar .cpo-tab-row {
+	min-width: 0;
+	flex-wrap: nowrap;
+	gap: 1px;
+	padding-inline: 3px;
+	overflow-x: visible;
+}
+.cpo-evidence-sidebar .cpo-tab-row > button.cpo-tool,
+.cpo-evidence-sidebar .cpo-tab-row > .cpo-export-menu > summary.cpo-tool {
+	padding: 5px 4px !important;
+	font-size: 10px;
+	white-space: nowrap;
+}
+.cpo-evidence-sidebar .cpo-tab-row > button.cpo-tool {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.cpo-evidence-sidebar .cpo-tab-row > .cpo-export-menu > summary.cpo-tool { gap: 2px; }
+.cpo-evidence-sidebar .cpo-tab-row > .cpo-export-menu > summary.cpo-tool .cpo-icon-glyph:first-child { width: 12px; }
+.cpo-evidence-sidebar .cpo-tab-row > .cpo-export-menu > summary.cpo-tool .cpo-icon-glyph:last-child { width: 10px; }
 
 @media (max-width: 779px) {
 	.cpo-root.is-narrow .cpo-topline,
@@ -2862,8 +3037,8 @@ button.cpo-agg-item {
 		min-height: 150px;
 	}
 
-	.cpo-root.is-narrow .cpo-actions-bar .cpo-tool,
-	.cpo-embed.is-narrow .cpo-actions-bar .cpo-tool {
+	.cpo-root.is-narrow .cpo-actions-bar .cpo-tool-row:not(.cpo-tab-row) .cpo-tool,
+	.cpo-embed.is-narrow .cpo-actions-bar .cpo-tool-row:not(.cpo-tab-row) .cpo-tool {
 		flex: 1 1 auto;
 	}
 }
@@ -3156,18 +3331,186 @@ button.cpo-agg-item {
 	font-size: 11px;
 }
 
+/* Keep action controls inside the same paper-card surface as prior/derivative works. */
+.cpo-root .cpo-library-card,
+.cpo-embed .cpo-library-card { min-width: 0; }
+.cpo-library-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+.cpo-root button.cpo-library-action,
+.cpo-embed button.cpo-library-action {
+	min-height: 25px;
+	padding: 2px 7px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font: inherit;
+	font-size: 10px;
+	line-height: 1.2;
+	box-shadow: none;
+}
+.cpo-root button.cpo-library-action:hover,
+.cpo-embed button.cpo-library-action:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.cpo-root button.cpo-library-action.is-primary,
+.cpo-embed button.cpo-library-action.is-primary {
+	border-color: color-mix(in srgb, var(--cpo-accent) 35%, var(--background-modifier-border));
+	background: color-mix(in srgb, var(--cpo-accent) 9%, var(--background-primary));
+	color: var(--text-accent, var(--cpo-accent));
+}
+.cpo-root button.cpo-library-action.is-quiet,
+.cpo-embed button.cpo-library-action.is-quiet {
+	border-color: transparent;
+	background: transparent;
+}
+.cpo-staged-group-title { margin: 12px 0 4px; font-size: 10px; }
+.cpo-agg .cpo-tool-row { gap: 4px; }
+.cpo-library-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin: 0 0 12px;
+	padding: 0 0 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.cpo-library-heading { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.cpo-library-header > .cpo-library-heading > .cpo-kicker { margin: 0; color: var(--text-normal); font-size: 14px; white-space: nowrap; }
+.cpo-library-count { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.cpo-library-menu { position: relative; flex: none; }
+.cpo-root .cpo-library-menu > summary,
+.cpo-embed .cpo-library-menu > summary {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 32px;
+	height: 32px;
+	padding: 0 9px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 7px;
+	background: var(--background-secondary);
+	color: var(--cpo-accent);
+	font: inherit;
+	font-size: 11px;
+	line-height: 1;
+	list-style: none;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.cpo-library-menu > summary::-webkit-details-marker { display: none; }
+.cpo-library-menu > summary .cpo-icon-glyph:first-child { width: 14px; height: 14px; }
+.cpo-library-menu > summary .cpo-icon-glyph:last-child { width: 12px; height: 12px; }
+.cpo-library-menu[open] > summary,
+.cpo-library-menu > summary:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.cpo-library-menu:focus-within > summary { outline: 2px solid color-mix(in srgb, var(--cpo-accent) 35%, transparent); outline-offset: 1px; }
+.cpo-library-menu-items {
+	position: absolute;
+	top: calc(100% + 5px);
+	right: 0;
+	z-index: 12;
+	min-width: 174px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+	box-shadow: 0 8px 24px var(--background-modifier-box-shadow, rgba(0, 0, 0, .14));
+}
+.cpo-root .cpo-library-menu-item,
+.cpo-embed .cpo-library-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 32px;
+	margin: 0;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--text-normal);
+	font: inherit;
+	font-size: 11px;
+	text-align: left;
+	cursor: pointer;
+}
+.cpo-root .cpo-library-menu-item:hover,
+.cpo-embed .cpo-library-menu-item:hover { background: var(--background-modifier-hover); }
+.cpo-library-menu-item .cpo-icon-glyph { width: 14px; height: 14px; color: var(--text-muted); }
+.cpo-library-menu-divider { height: 1px; margin: 3px 5px; background: var(--background-modifier-border); }
+
+/* On the note embed the heading should have only the shared header divider. */
+.cpo-embed .cpo-evidence-header h2 {
+	background: none !important;
+	background-image: none !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	text-decoration: none !important;
+}
+.cpo-embed .cpo-evidence-header h2::before,
+.cpo-embed .cpo-evidence-header h2::after { content: none !important; display: none !important; }
+
+/* Obsidian themes commonly indent ordered lists; these sidebar lists start flush. */
+.cpo-embed .cpo-evidence-sidebar ol.cpo-agg-list {
+	box-sizing: border-box;
+	width: 100%;
+	margin-inline: 0 !important;
+	padding-inline: 0 !important;
+	align-self: stretch;
+}
+.cpo-embed .cpo-evidence-sidebar ol.cpo-agg-list > li.cpo-agg-entry {
+	box-sizing: border-box;
+	width: 100%;
+	margin-inline: 0 !important;
+	padding-inline: 0 !important;
+}
+.cpo-embed .cpo-evidence-sidebar .cpo-agg-card { width: 100%; margin-inline: 0; }
+
+/* Keep graph-fit and graph-open as one quiet vertical button stack. */
+.cpo-graph-action-buttons {
+	display: flex;
+	flex: none;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+	width: max-content;
+	max-width: 100%;
+	pointer-events: auto;
+}
+.cpo-graph-action-buttons > button { width: 100%; }
+.cpo-root button.cpo-graph-fit,
+.cpo-embed button.cpo-graph-fit {
+	min-width: 70px;
+	justify-content: center;
+	color: var(--text-accent, var(--cpo-accent));
+}
+@media (hover: hover) and (pointer: fine) {
+	.cpo-stage .cpo-graph-action-buttons { opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+	.cpo-stage:hover .cpo-graph-action-buttons,
+	.cpo-stage:focus-within .cpo-graph-action-buttons { opacity: 1; pointer-events: auto; }
+}
+
 .cpo-root .cpo-evidence-sidebar .cpo-detail > .cpo-card + .cpo-card,
 .cpo-embed .cpo-evidence-sidebar .cpo-detail > .cpo-card + .cpo-card {
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-/* Keep metadata flat; the divider belongs after the paper actions. */
+/* Keep the complete paper identity and its workflow actions in one card. */
 .cpo-root .cpo-evidence-sidebar .cpo-detail > .cpo-card.cpo-paper-identity,
 .cpo-embed .cpo-evidence-sidebar .cpo-detail > .cpo-card.cpo-paper-identity {
-	padding: 3px 8px 0;
-	border: 0;
-	border-radius: 0;
-	background: transparent;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary);
 }
 .cpo-root .cpo-detail .cpo-paper-topics .cpo-paper-topic,
 .cpo-embed .cpo-detail .cpo-paper-topics .cpo-paper-topic,

@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { detectCommunities } from "./communities";
 import { runForceLayout, type ForceNode } from "./layout";
 import type { GraphEdge, PaperNode } from "./types";
@@ -14,15 +15,15 @@ export function defaultColorMode(layout: LayoutMode): ColorMode {
 }
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
-	temporal: "时间",
-	radial: "放射",
-	force2d: "平面",
+	temporal: tr("时间", "Timeline"),
+	radial: tr("放射", "Radial"),
+	force2d: tr("平面", "Planar"),
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
-	temporal: "横轴年份，纵轴被引。",
-	radial: "越近越相似。",
-	force2d: "同组相近，边强则近。",
+	temporal: tr("横轴年份，纵轴被引。", "Year on the horizontal axis; citations on the vertical axis."),
+	radial: tr("越近越相似。", "Closer nodes are more similar."),
+	force2d: tr("同组相近，边强则近。", "Papers in the same group and with stronger links are closer."),
 };
 
 export interface PlacedNode {

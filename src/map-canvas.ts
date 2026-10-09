@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { classicInfluence } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import { focusNodes } from "./graph-filter";
@@ -6,7 +7,7 @@ import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
-import { clamp, classicBreath, fitViewScale, yearColor } from "./visual";
+import { citationRadius, clamp, classicBreath, fitViewScale, yearColor, yearNormalizedCitations } from "./visual";
 
 interface DrawNode extends PaperNode {
 	x: number;
@@ -126,7 +127,7 @@ export class SimilarityMap {
 		// Optional-call: the headless verify script stubs a bare canvas object.
 		canvas.setAttribute?.("role", "application");
 		if (!canvas.getAttribute?.("aria-label")) {
-			canvas.setAttribute?.("aria-label", "论文相似度图谱：方向键平移，+/- 缩放，0 或 F 适配");
+			canvas.setAttribute?.("aria-label", tr("论文相似度图谱：方向键平移，+/- 缩放，0 或 F 适配", "Paper similarity graph: arrow keys to pan, +/- to zoom, 0 or F to fit"));
 		}
 		canvas.addEventListener("pointerdown", this.onPointerDown);
 		canvas.addEventListener("pointermove", this.onPointerMove);
@@ -153,8 +154,8 @@ export class SimilarityMap {
 		this.rebuild(nodes, true);
 	}
 
-	/** Keep existing coordinates; park new nodes next to `nearId`. Does not reset the view. */
-	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string): void {
+	/** Keep existing coordinates by default; reflow and fit after removals/restores when requested. */
+	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string, reflow = false): void {
 		const prev = new Map(this.nodes.map((node) => [node.id, node]));
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
@@ -164,21 +165,26 @@ export class SimilarityMap {
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
 		this.classicGlow = classicInfluence(nodes, edges);
 		this.ensurePulse();
-		const placed = new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]));
 		const host = nearId ? prev.get(nearId) : null;
-		this.nodes = nodes.map((node) => {
+		const placed = reflow || !host
+			? new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]))
+			: null;
+		const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year));
+		const minCited = Math.min(...norms);
+		const maxCited = Math.max(...norms);
+		this.nodes = nodes.map((node, index) => {
 			const old = prev.get(node.id);
-			const at = placed.get(node.id);
+			const at = placed?.get(node.id);
 			const parked = host && !old ? parkNear(host.x, host.y, node.id) : null;
-			const x = old?.x ?? parked?.x ?? at?.x ?? 0;
-			const y = old?.y ?? parked?.y ?? at?.y ?? 0;
+			const x = reflow ? at?.x ?? 0 : old?.x ?? parked?.x ?? at?.x ?? 0;
+			const y = reflow ? at?.y ?? 0 : old?.y ?? parked?.y ?? at?.y ?? 0;
 			return {
 				...node,
 				x,
 				y,
 				homeX: x,
 				homeY: y,
-				radius: at?.radius ?? old?.radius ?? 8,
+				radius: at?.radius ?? citationRadius(norms[index] ?? 0, minCited, maxCited, node.isSeed),
 				color: this.colorOf(node),
 				shown: this.isShown(node),
 			};
@@ -190,8 +196,11 @@ export class SimilarityMap {
 			this.onSelect?.(this.nodes.find((node) => node.id === this.selectedId) ?? null);
 		}
 		this.refreshFocus();
-		this.reheat(0.28);
-		this.draw();
+		if (reflow) this.fit(true);
+		else {
+			this.reheat(0.28);
+			this.draw();
+		}
 	}
 
 	/**
@@ -957,7 +966,7 @@ export class SimilarityMap {
 		if (this.nodes.some((node) => node.year === null) && unknownX > 0 && unknownX < this.cssWidth) {
 			ctx.fillStyle = "rgba(95, 105, 116, 0.72)";
 			ctx.textAlign = "center";
-			ctx.fillText("年份未知", unknownX, this.cssHeight - 7);
+			ctx.fillText(tr("年份未知", "Year unknown"), unknownX, this.cssHeight - 7);
 		}
 		ctx.restore();
 	}
@@ -1092,8 +1101,8 @@ export class SimilarityMap {
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
 			ctx.globalAlpha = dimmed ? 0.35 * alpha : alpha;
-			ctx.lineWidth = 3;
-			ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = this.bgStart;
 			ctx.textAlign = anchor;
 			ctx.strokeText(text, x, y);
 			ctx.fillStyle = this.graphText;

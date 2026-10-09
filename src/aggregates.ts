@@ -1,14 +1,15 @@
+import { tr } from "./i18n";
 import type { SimilarityGraph } from "./neighborhood";
 import type { GraphEdge, PaperNode } from "./types";
 
 /** List views. They do not add edge types. */
 export const PRIOR_DEFINITION =
-	"被图内至少 2 篇论文共同引用的文献；引用列表可能不完整。";
+	tr("被图内至少 2 篇论文共同引用的文献；引用列表可能不完整。", "Works cited by at least two papers in this graph; reference lists may be incomplete.");
 
 export const DERIVATIVE_DEFINITION =
-	"引用了至少 2 篇图内论文的后续工作；引用列表可能不完整。";
+	tr("引用了至少 2 篇图内论文的后续工作；引用列表可能不完整。", "Later works that cite at least two papers in this graph; reference lists may be incomplete.");
 
-export const AGGREGATE_EMPTY_TEXT = "当前子图里没有命中至少 2 次的文献。";
+export const AGGREGATE_EMPTY_TEXT = tr("当前子图里没有命中至少 2 次的文献。", "No papers appear at least twice in this subgraph.");
 
 export interface RankedWork {
 	paper: PaperNode;

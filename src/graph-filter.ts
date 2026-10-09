@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { explainRelation, relationKind, type RelationKind } from "./relation";
 import { authorYear } from "./labels";
 import type { GraphEdge, PaperNode } from "./types";
@@ -85,22 +86,22 @@ export function focusNodes(
 }
 
 /** Shown whenever a connection rests on similarity signals without a direct citation record. */
-export const SIMILARITY_NOT_CITATION = "图谱相似关系，不代表直接引用";
+export const SIMILARITY_NOT_CITATION = tr("图谱相似关系，不代表直接引用", "Graph similarity does not imply a direct citation");
 
 /** Counts and the OpenAlex sampling caveat. Shown on edge hover and click. */
 export function evidenceText(
 	edge: GraphEdge,
 	source: Pick<PaperNode, "authors" | "year">,
 	target: Pick<PaperNode, "authors" | "year">,
-	sources = "OpenAlex 采样",
+	sources = tr("OpenAlex 采样", "OpenAlex sample"),
 ): string {
 	return [
 		explainRelation(edge, source, target),
 		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
-		`共享参考文献 ${edge.sharedRefs} 篇`,
-		`共被引 ${edge.coCitedBy} 次`,
-		`来源：${sources}`,
-		"引用列表可能不完整",
+		tr(`共享参考文献 ${edge.sharedRefs} 篇`, `Shared references: ${edge.sharedRefs} papers`),
+		tr(`共被引 ${edge.coCitedBy} 次`, `Co-cited ${edge.coCitedBy} times`),
+		tr(`来源：${sources}`, `Source: ${sources}`),
+		tr("引用列表可能不完整", "Reference lists may be incomplete"),
 	].join("\n");
 }
 
@@ -124,29 +125,29 @@ export function relationFacts(
 	edge: GraphEdge,
 	source: Pick<PaperNode, "authors" | "year">,
 	target: Pick<PaperNode, "authors" | "year">,
-	sources = "OpenAlex 采样",
+	sources = tr("OpenAlex 采样", "OpenAlex sample"),
 ): RelationFacts {
 	const from = authorYear(source);
 	const to = authorYear(target);
-	let lead = "采样邻域里的弱连线";
-	if (edge.direct === "mutual") lead = `${from} 与 ${to} 互相引用`;
-	else if (edge.direct === "source-cites-target") lead = `${from} 引用了 ${to}`;
-	else if (edge.direct === "target-cites-source") lead = `${to} 引用了 ${from}`;
-	else if (edge.coCitedBy > 0 || edge.sharedRefs > 0) lead = "没有直接引用记录";
+	let lead = tr("采样邻域里的弱连线", "Weak link within the sampled neighborhood");
+	if (edge.direct === "mutual") lead = tr(`${from} 与 ${to} 互相引用`, `${from} and ${to} cite each other`);
+	else if (edge.direct === "source-cites-target") lead = tr(`${from} 引用了 ${to}`, `${from} cites ${to}`);
+	else if (edge.direct === "target-cites-source") lead = tr(`${to} 引用了 ${from}`, `${to} cites ${from}`);
+	else if (edge.coCitedBy > 0 || edge.sharedRefs > 0) lead = tr("没有直接引用记录", "No direct citation recorded");
 	const facts: RelationFact[] = [
 		{
-			label: "相似度",
+			label: tr("相似度", "Similarity"),
 			value: edge.structuralSimilarity === null
-				? "不可用（缺少可比较数据）"
+				? tr("不可用（缺少可比较数据）", "Unavailable (no comparable data)")
 				: (edge.structuralSimilarity ?? edge.weight).toFixed(2),
 		},
-		{ label: "共享参考文献", value: `${edge.sharedRefs} 篇` },
-		{ label: "共被引", value: `${edge.coCitedBy} 次` },
-		{ label: "来源", value: sources },
+		{ label: tr("共享参考文献", "Shared references"), value: tr(`${edge.sharedRefs} 篇`, `${edge.sharedRefs} papers`) },
+		{ label: tr("共被引", "Co-citations"), value: tr(`${edge.coCitedBy} 次`, `${edge.coCitedBy} times`) },
+		{ label: tr("来源", "Source"), value: sources },
 	];
 	const caveats = [
 		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
-		"引用列表可能不完整",
+		tr("引用列表可能不完整", "Reference lists may be incomplete"),
 	];
 	return { lead, facts, caveats };
 }

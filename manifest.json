@@ -2,8 +2,8 @@
 	"id": "research-connected",
 	"name": "Research Connected",
 	"version": "1.8.2",
-	"minAppVersion": "1.4.0",
-	"description": "Research Connected: a similarity map of a seed paper from OpenAlex, plus a 3D graph you can embed in a note.",
-	"author": "research-connected",
-	"isDesktopOnly": false
+	"minAppVersion": "1.14.4",
+	"description": "Explore a paper's citation neighborhood as an interactive similarity map in a graph pane or note.",
+	"author": "Bai Junwei",
+	"isDesktopOnly": true
 }

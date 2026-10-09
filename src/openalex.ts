@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
 
 export interface RawWork {
@@ -55,13 +56,13 @@ export class OpenAlexError extends Error {
 }
 
 export function explainStatus(status: number | undefined): string {
-	if (status === 404) return "OpenAlex 里没有找到这篇作品。";
-	if (status === 401 || status === 403) return "OpenAlex 拒绝了 API 密钥。请在设置里检查。";
+	if (status === 404) return tr("OpenAlex 里没有找到这篇作品。", "This work was not found in OpenAlex.");
+	if (status === 401 || status === 403) return tr("OpenAlex 拒绝了 API 密钥。请在设置里检查。", "OpenAlex rejected the API key. Check settings.");
 	if (status === 429 || status === 402 || status === 409) {
-		return "OpenAlex 额度已用完或请求过快。可在设置中填写免费 API 密钥，或等到每日额度重置。";
+		return tr("OpenAlex 额度已用完或请求过快。可在设置中填写免费 API 密钥，或等到每日额度重置。", "OpenAlex rate limit reached. Add a free API key in settings or wait for the daily reset.");
 	}
-	if (status) return `OpenAlex 请求失败（HTTP ${status}）。`;
-	return "无法连接 OpenAlex。";
+	if (status) return tr(`OpenAlex 请求失败（HTTP ${status}）。`, `OpenAlex request failed (HTTP ${status}).`);
+	return tr("无法连接 OpenAlex。", "Could not connect to OpenAlex.");
 }
 
 /**
@@ -142,7 +143,7 @@ export class OpenAlexClient {
 			requests += 1;
 			page = await this.getPage(url);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : "请求失败";
+			error = cause instanceof Error ? cause.message : tr("请求失败", "Request failed");
 			break;
 		}
 			pages += 1;
@@ -179,6 +180,21 @@ export class OpenAlexClient {
 		return all;
 	}
 
+	/** Full metadata is needed when restoring papers that are no longer in the sampled graph. */
+	async papersByIds(ids: string[]): Promise<RawWork[]> {
+		const unique = [...new Set(ids)];
+		const all: RawWork[] = [];
+		for (let i = 0; i < unique.length; i += 80) {
+			const chunk = unique.slice(i, i + 80);
+			const url = new URL(`${OPENALEX_API}/works`);
+			url.searchParams.set("filter", `openalex:${chunk.join("|")}`);
+			url.searchParams.set("per_page", String(chunk.length));
+			url.searchParams.set("select", WORK_SELECT);
+			all.push(...(await this.getResults(url)));
+		}
+		return all;
+	}
+
 	private listFilter(filter: string, perPage: number, sort: string | undefined, pages = 1): Promise<RawWork[]> {
 		const url = new URL(`${OPENALEX_API}/works`);
 		url.searchParams.set("filter", filter);
@@ -205,7 +221,7 @@ export class OpenAlexClient {
 	private async getPage(url: URL): Promise<{ results: RawWork[]; nextCursor: string | null }> {
 		const json = await this.get(url);
 		if (!json || typeof json !== "object" || !("results" in json)) {
-			throw new OpenAlexError("OpenAlex 返回了无法识别的列表。");
+			throw new OpenAlexError(tr("OpenAlex 返回了无法识别的列表。", "OpenAlex returned an unrecognized list."));
 		}
 		const body = json as { results?: unknown; meta?: { next_cursor?: unknown } };
 		const results = Array.isArray(body.results)
@@ -218,7 +234,7 @@ export class OpenAlexClient {
 	private async getObject(url: URL): Promise<RawWork> {
 		const json = await this.get(url);
 		if (!json || typeof json !== "object") {
-			throw new OpenAlexError("OpenAlex 返回了无法识别的作品记录。");
+			throw new OpenAlexError(tr("OpenAlex 返回了无法识别的作品记录。", "OpenAlex returned an unrecognized work record."));
 		}
 		return json as RawWork;
 	}
@@ -226,7 +242,7 @@ export class OpenAlexClient {
 	private async getResults(url: URL): Promise<RawWork[]> {
 		const json = await this.get(url);
 		if (!json || typeof json !== "object" || !("results" in json)) {
-			throw new OpenAlexError("OpenAlex 返回了无法识别的列表。");
+			throw new OpenAlexError(tr("OpenAlex 返回了无法识别的列表。", "OpenAlex returned an unrecognized list."));
 		}
 		const results = (json as { results?: unknown }).results;
 		if (!Array.isArray(results)) return [];

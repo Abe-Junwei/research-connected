@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { authorYear } from "./labels";
 import type { GraphEdge, PaperNode } from "./types";
 
@@ -12,10 +13,10 @@ export const RELATION_COLOR: Record<RelationKind, number> = {
 };
 
 export const RELATION_LABEL: Record<RelationKind, string> = {
-	direct: "引用",
-	cocitation: "共被引",
-	coupling: "文献耦合",
-	weak: "弱连线",
+	direct: tr("引用", "Citation"),
+	cocitation: tr("共被引", "Co-citations"),
+	coupling: tr("文献耦合", "Bibliographic coupling"),
+	weak: tr("弱连线", "Weak link"),
 };
 
 export function relationKind(edge: GraphEdge): RelationKind {
@@ -44,16 +45,16 @@ export function explainRelation(
 	const bits: string[] = [];
 	const from = authorYear(source);
 	const to = authorYear(target);
-	if (edge.direct === "mutual") bits.push(`${from} 与 ${to} 互相引用`);
-	else if (edge.direct === "source-cites-target") bits.push(`${from} 引用了 ${to}`);
-	else if (edge.direct === "target-cites-source") bits.push(`${to} 引用了 ${from}`);
-	if (edge.coCitedBy > 0) bits.push(`共被引 ${edge.coCitedBy} 次`);
-	if (edge.sharedRefs > 0) bits.push(`共享参考文献 ${edge.sharedRefs} 篇`);
-	if (bits.length === 0) bits.push("采样邻域里的弱连线");
+	if (edge.direct === "mutual") bits.push(tr(`${from} 与 ${to} 互相引用`, `${from} and ${to} cite each other`));
+	else if (edge.direct === "source-cites-target") bits.push(tr(`${from} 引用了 ${to}`, `${from} cites ${to}`));
+	else if (edge.direct === "target-cites-source") bits.push(tr(`${to} 引用了 ${from}`, `${to} cites ${from}`));
+	if (edge.coCitedBy > 0) bits.push(tr(`共被引 ${edge.coCitedBy} 次`, `Co-cited ${edge.coCitedBy} times`));
+	if (edge.sharedRefs > 0) bits.push(tr(`共享参考文献 ${edge.sharedRefs} 篇`, `Shared references: ${edge.sharedRefs} papers`));
+	if (bits.length === 0) bits.push(tr("采样邻域里的弱连线", "Weak link within the sampled neighborhood"));
 	const scoreLabel = edge.structuralSimilarity === null
-		? "结构相似度不可用（当前缺少可比较数据）"
+		? tr("结构相似度不可用（当前缺少可比较数据）", "Structural similarity unavailable (no comparable data)")
 		: edge.structuralSimilarity === undefined
-			? `图谱相近度 ${edge.weight.toFixed(2)}`
-			: `结构相似 ${edge.structuralSimilarity.toFixed(2)}`;
+			? tr(`图谱相近度 ${edge.weight.toFixed(2)}`, `Graph similarity ${edge.weight.toFixed(2)}`)
+			: tr(`结构相似 ${edge.structuralSimilarity.toFixed(2)}`, `Structural similarity ${edge.structuralSimilarity.toFixed(2)}`);
 	return `${bits.join(" · ")} · ${scoreLabel}`;
 }

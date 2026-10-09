@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { PaperNode } from "./types";
 
 /** Text shown next to each graph node. */
@@ -5,7 +6,7 @@ export type LabelMode = "author-year" | "title" | "both" | "off";
 
 export function shortAuthor(authors: string): string {
 	const cleaned = authors.trim();
-	if (!cleaned || cleaned === "作者不详") return "佚名";
+	if (!cleaned || cleaned === tr("作者不详", "Author unknown")) return tr("佚名", "Anonymous");
 	const first = cleaned.split(",")[0]?.trim().replace(/\s+等$/, "") || cleaned;
 	const parts = first.split(/\s+/).filter(Boolean);
 	const family = parts[parts.length - 1] ?? first;

@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { RawWork } from "./openalex";
 import type { Origin, PaperNode, SearchHit } from "./types";
 
@@ -134,14 +135,14 @@ export function isPaper(value: PaperNode | null): value is PaperNode {
  * these in `type`, which is the reliable detector.
  */
 export const NON_RESEARCH_TYPES: ReadonlyMap<string, string> = new Map([
-	["book-review", "书评"],
-	["editorial", "编者语"],
-	["erratum", "更正"],
-	["correction", "更正"],
-	["letter", "读者来信"],
-	["retraction", "撤稿"],
-	["peer-review", "评审记录"],
-	["paratext", "附属内容"],
+	["book-review", tr("书评", "Book review")],
+	["editorial", tr("编者语", "Editorial")],
+	["erratum", tr("更正", "Correction")],
+	["correction", tr("更正", "Correction")],
+	["letter", tr("读者来信", "Letter")],
+	["retraction", tr("撤稿", "Retraction")],
+	["peer-review", tr("评审记录", "Peer-review record")],
+	["paratext", tr("附属内容", "Paratext")],
 ]);
 
 export function nonResearchLabel(paper: Pick<PaperNode, "workType">): string | null {
@@ -204,9 +205,9 @@ function authorNames(authorships: RawWork["authorships"]): string[] {
 }
 
 function formatAuthorNames(names: string[]): string {
-	if (names.length === 0) return "作者不详";
+	if (names.length === 0) return tr("作者不详", "Author unknown");
 	if (names.length <= 3) return names.join(", ");
-	return `${names.slice(0, 3).join(", ")} 等`;
+	return tr(`${names.slice(0, 3).join(", ")} 等`, `${names.slice(0, 3).join(", ")} et al.`);
 }
 
 function toDoiUrl(doi: string | null | undefined): string | null {

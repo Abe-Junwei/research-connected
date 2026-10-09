@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { SOURCE_TEXT, type CitationEvidence } from "./citation-evidence";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
@@ -18,10 +19,10 @@ export interface StagedList {
 }
 
 const ORIGIN_FALLBACK: Record<Origin, string> = {
-	seed: "种子论文",
-	reference: "种子的参考文献",
-	citation: "引用了种子",
-	related: "OpenAlex 相关作品",
+	seed: tr("种子论文", "Seed paper"),
+	reference: tr("种子的参考文献", "Seed references"),
+	citation: tr("引用了种子", "Cites the seed"),
+	related: tr("OpenAlex 相关作品", "OpenAlex related works"),
 };
 
 export function stageKey(item: Pick<StagedPaper, "seedId" | "paper">): string {
@@ -48,9 +49,9 @@ export function wrapStagedList(items: readonly StagedPaper[]): StagedList {
 	return { version: STAGED_VERSION, items: [...items] };
 }
 
-export function groupStagedBySeed(items: readonly StagedPaper[]): Array<{ seedId: string; items: StagedPaper[] }> {
+export function groupStagedBySeed<T extends StagedPaper>(items: readonly T[]): Array<{ seedId: string; items: T[] }> {
 	const order: string[] = [];
-	const map = new Map<string, StagedPaper[]>();
+	const map = new Map<string, T[]>();
 	for (const item of items) {
 		const list = map.get(item.seedId);
 		if (list) list.push(item);
@@ -88,10 +89,25 @@ export function stageSourceLabel(
 	if (!edge || edge.direct === "none") return `${ORIGIN_FALLBACK[paper.origin]} · ${sources}`;
 	const seedCites = directedCite(edge, seedId, paper.id);
 	const paperCites = directedCite(edge, paper.id, seedId);
-	if (seedCites && paperCites) return `互引 · ${sources}`;
-	if (seedCites) return `种子引用了它 · ${sources}`;
-	if (paperCites) return `它引用了种子 · ${sources}`;
+	if (seedCites && paperCites) return tr(`互引 · ${sources}`, `Mutual citation · ${sources}`);
+	if (seedCites) return tr(`种子引用了它 · ${sources}`, `Seed cites this paper · ${sources}`);
+	if (paperCites) return tr(`它引用了种子 · ${sources}`, `This paper cites the seed · ${sources}`);
 	return `${ORIGIN_FALLBACK[paper.origin]} · ${sources}`;
+}
+
+/** Render source labels saved by either language version without rewriting project data. */
+export function displayStageSource(source: string): string {
+	const separator = source.indexOf(" · ");
+	const head = separator < 0 ? source : source.slice(0, separator);
+	const tail = separator < 0 ? "" : source.slice(separator);
+	const labels: Array<[string, string]> = [
+		["种子论文", "Seed paper"], ["种子的参考文献", "Seed references"],
+		["引用了种子", "Cites the seed"], ["OpenAlex 相关作品", "OpenAlex related works"],
+		["互引", "Mutual citation"], ["种子引用了它", "Seed cites this paper"],
+		["它引用了种子", "This paper cites the seed"],
+	];
+	const match = labels.find(([zh, en]) => head === zh || head === en);
+	return match ? tr(match[0], match[1]) + tail : source;
 }
 
 function isStagedPaper(value: unknown): value is StagedPaper {

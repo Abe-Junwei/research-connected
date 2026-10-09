@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 const DEFAULT_WIDTH = 320;
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 480;
@@ -21,7 +22,7 @@ export function mountSidebarResize(
 	handle.classList.add("cpo-sidebar-resizer");
 	handle.setAttribute("role", "separator");
 	handle.setAttribute("aria-orientation", "vertical");
-	handle.setAttribute("aria-label", "调整论文与关系证据面板宽度");
+	handle.setAttribute("aria-label", tr("调整论文详情与关联依据面板宽度", "Resize paper details and evidence panel"));
 	handle.tabIndex = 0;
 	let width = initial;
 	let dragging = false;

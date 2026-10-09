@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
 import type { PaperNode } from "./types";
 
@@ -21,7 +22,7 @@ export function toYamlList(nodes: readonly PaperNode[]): string {
 }
 
 export function toMarkdownTable(nodes: readonly PaperNode[]): string {
-	const header = "| 题名 | 作者 | 年份 | 被引 | DOI | OpenAlex |";
+	const header = tr("| 题名 | 作者 | 年份 | 被引 | DOI | OpenAlex |", "| Title | Authors | Year | Citations | DOI | OpenAlex |");
 	const rule = "| --- | --- | --- | --- | --- | --- |";
 	const rows = nodes.map((paper) => {
 		const year = paper.year === null ? "" : String(paper.year);
@@ -46,7 +47,7 @@ export function noteSkeleton(paper: PaperNode): string {
 }
 
 export function noteFilename(paper: PaperNode): string {
-	const year = paper.year === null ? "未标注" : String(paper.year);
+	const year = paper.year === null ? tr("未标注", "Unspecified") : String(paper.year);
 	const title = paper.title.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 72);
 	return `${year} ${title || paper.id}.md`;
 }
@@ -63,7 +64,7 @@ function bibEntry(paper: PaperNode, used: Set<string>): string {
 	const key = citeKey(paper, used);
 	const fields = [
 		`  title = {${bibText(paper.title)}}`,
-		`  author = {${bibText(bibAuthors(paper.authors))}}`,
+		`  author = {${(paper.authorList?.length ? paper.authorList : [paper.authors]).map(bibText).join(" and ")}}`,
 		`  year = {${paper.year ?? ""}}`,
 	];
 	const doi = doiOf(paper);
@@ -87,15 +88,6 @@ function citeKey(paper: PaperNode, used: Set<string>): string {
 	if (used.has(key)) key = `${key}${paper.id.replace(/\D/g, "").slice(-4)}`;
 	used.add(key);
 	return key;
-}
-
-function bibAuthors(authors: string): string {
-	const parts = authors
-		.split(",")
-		.map((part) => part.trim())
-		.filter((part) => part && part !== "等");
-	if (parts.length === 0) return authors.trim();
-	return parts.join(" and ");
 }
 
 function bibText(value: string): string {

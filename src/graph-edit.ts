@@ -1,5 +1,6 @@
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
+import { edgeCitationPairs } from "./citation-evidence";
 import type { SelectionRank } from "./neighborhood";
 import type { CitationEvidenceStore } from "./citation-evidence";
 import type { GraphEdge, PaperNode } from "./types";
@@ -21,6 +22,7 @@ export interface EditableGraph {
 	semanticMode?: "embedding" | "local";
 	selectionRank?: ReadonlyMap<string, SelectionRank>;
 	citationEvidence?: CitationEvidenceStore;
+	coCitationContextIds?: readonly string[];
 }
 
 export function omitNode<T extends EditableGraph>(graph: T, id: string): T | null {
@@ -50,7 +52,9 @@ export function graftNodes<T extends EditableGraph>(
 		catalogIds.add(paper.id);
 		catalog.push(paper);
 	}
-	return { ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog };
+	const contexts = new Set(graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id));
+	for (const paper of extra) if (paper.origin === "citation") contexts.add(paper.id);
+	return { ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog, coCitationContextIds: [...contexts] };
 }
 
 export function refreshDerived<T extends EditableGraph>(graph: T): T {
@@ -58,7 +62,8 @@ export function refreshDerived<T extends EditableGraph>(graph: T): T {
 	if (!seed) return graph;
 	const references = new Map<string, Set<string>>();
 	for (const node of graph.nodes) references.set(node.id, new Set(graph.referenceLists.get(node.id) ?? []));
-	const contexts = [...graph.referenceLists.values()]
+	const contextIds = graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id);
+	const contexts = contextIds.map((id) => graph.referenceLists.get(id) ?? [])
 		.filter((list) => list.length > 0)
 		.map((list) => new Set(list));
 	const { edges, seedScore: structuralScore } = buildSimilarity({
@@ -67,6 +72,21 @@ export function refreshDerived<T extends EditableGraph>(graph: T): T {
 		references,
 		contexts,
 	});
+	const present = new Set(graph.nodes.map((node) => node.id));
+	const byPair = new Map(edges.map((edge) => [[edge.source, edge.target].sort().join("\0"), edge]));
+	for (const old of graph.edges) for (const { citingId, citedId } of edgeCitationPairs(old)) {
+		if (!present.has(citingId) || !present.has(citedId)) continue;
+		const key = [citingId, citedId].sort().join("\0");
+		let edge = byPair.get(key);
+		if (!edge) {
+			edge = { ...old, source: citingId, target: citedId, direct: "source-cites-target" };
+			edges.push(edge);
+			byPair.set(key, edge);
+			continue;
+		}
+		const direction = edge.source === citingId ? "source-cites-target" : "target-cites-source";
+		edge.direct = edge.direct === "none" ? direction : edge.direct === direction ? direction : "mutual";
+	}
 	const semanticScorer = buildSemanticScorer(seed, graph.nodes);
 	const semanticScores = new Map<string, number | null>();
 	const seedScore = new Map(structuralScore);

@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { LabelMode } from "./labels";
 import { defaultColorMode, type ColorMode, type LayoutMode } from "./layout-modes";
 import { classifyQuery, type SeedQuery } from "./paper";
@@ -134,7 +135,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		const key = line.slice(0, split).trim().toLowerCase();
 		const value = line.slice(split + 1).trim();
 		if (key === "doi" || key === "openalex" || key === "id" || key === "seed") {
-			if (!value) return { ok: false, error: "种子不能为空。请写 DOI 或 OpenAlex ID。" };
+			if (!value) return { ok: false, error: tr("种子不能为空。请写 DOI 或 OpenAlex ID。", "A seed is required. Enter a DOI or OpenAlex ID.") };
 			const parsed = asSeed(value);
 			if (!parsed.ok) return parsed;
 			target = parsed.target;
@@ -161,7 +162,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		if (key === "position") {
 			const parsed = readPosition(value);
 			if (!parsed) {
-				return { ok: false, error: "position 只能是 inline、float-left、float-right 或 full。" };
+				return { ok: false, error: tr("position 只能是 inline、float-left、float-right 或 full。", "position must be inline, float-left, float-right, or full.") };
 			}
 			position = parsed;
 			continue;
@@ -174,13 +175,13 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "align") {
 			const parsed = readAlign(value);
-			if (!parsed) return { ok: false, error: "align 只能是 left、center 或 right。" };
+			if (!parsed) return { ok: false, error: tr("align 只能是 left、center 或 right。", "align must be left, center, or right.") };
 			align = parsed;
 			continue;
 		}
 		if (key === "labels") {
 			const parsed = readLabels(value);
-			if (!parsed) return { ok: false, error: "labels 只能是 author-year、title、both 或 off。" };
+			if (!parsed) return { ok: false, error: tr("labels 只能是 author-year、title、both 或 off。", "labels must be author-year, title, both, or off.") };
 			labels = parsed;
 			continue;
 		}
@@ -194,31 +195,31 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		if (key === "language") {
 			const token = value.trim().toLowerCase();
-			if (!token) return { ok: false, error: "language 不能为空。" };
+			if (!token) return { ok: false, error: tr("language 不能为空。", "language cannot be empty.") };
 			language = token;
 			continue;
 		}
 		if (key === "type") {
 			const token = value.trim().toLowerCase();
-			if (!token) return { ok: false, error: "type 不能为空。" };
+			if (!token) return { ok: false, error: tr("type 不能为空。", "type cannot be empty.") };
 			workType = token;
 			continue;
 		}
 		if (key === "concept" || key === "concepts") {
 			const token = value.trim();
-			if (!token) return { ok: false, error: "concept 不能为空。" };
+			if (!token) return { ok: false, error: tr("concept 不能为空。", "concept cannot be empty.") };
 			concept = token;
 			continue;
 		}
 		if (key === "layout") {
 			const parsed = readLayout(value);
-			if (!parsed) return { ok: false, error: "layout 只能是 temporal、radial 或 force2d。" };
+			if (!parsed) return { ok: false, error: tr("layout 只能是 temporal、radial 或 force2d。", "layout must be temporal, radial, or force2d.") };
 			layout = parsed;
 			continue;
 		}
 		if (key === "color") {
 			const parsed = readColor(value);
-			if (!parsed) return { ok: false, error: "color 只能是 topic、graph、community 或 year。" };
+			if (!parsed) return { ok: false, error: tr("color 只能是 topic、graph、community 或 year。", "color must be topic, graph, community, or year.") };
 			color = parsed;
 			continue;
 		}
@@ -229,7 +230,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 	}
 
 	if (!target) {
-		return { ok: false, error: "请写 doi: 10.1038/nature14539，或一行 OpenAlex ID。" };
+		return { ok: false, error: tr("请写 doi: 10.1038/nature14539，或一行 OpenAlex ID。", "Enter doi: 10.1038/nature14539 or an OpenAlex ID on one line.") };
 	}
 	if (yearFrom !== null && yearTo !== null && yearFrom > yearTo) {
 		const swap = yearFrom;
@@ -265,13 +266,13 @@ function asSeed(
 ): { ok: true; target: { kind: "doi" | "openalex"; value: string } } | { ok: false; error: string } {
 	const parsed: SeedQuery | null = classifyQuery(value);
 	if (!parsed || parsed.kind === "search") {
-		return { ok: false, error: "嵌入里请写 DOI 或 OpenAlex ID。按标题搜索请用命令面板。" };
+		return { ok: false, error: tr("嵌入里请写 DOI 或 OpenAlex ID。按标题搜索请用命令面板。", "Embeds require a DOI or OpenAlex ID. Use the command palette to search by title.") };
 	}
 	return { ok: true, target: parsed };
 }
 
 function readInt(value: string, label: string): { ok: true; value: number } | { ok: false; error: string } {
-	if (!/^\d+$/.test(value)) return { ok: false, error: `${label} 需要一个整数。` };
+	if (!/^\d+$/.test(value)) return { ok: false, error: tr(`${label} 需要一个整数。`, `${label} requires an integer.`) };
 	return { ok: true, value: Number(value) };
 }
 
@@ -320,10 +321,10 @@ function readWidth(value: string): { ok: true; width: string } | { ok: false; er
 	const raw = value.trim().toLowerCase();
 	if (/^\d+$/.test(raw)) return { ok: true, width: `${clampInt(Number(raw), EMBED_WIDTH_LIMIT.min, EMBED_WIDTH_LIMIT.max)}px` };
 	const match = raw.match(/^(\d+(?:\.\d+)?)(px|%|em|rem)$/);
-	if (!match) return { ok: false, error: "width 写成 420、420px、60% 或 24em。" };
+	if (!match) return { ok: false, error: tr("width 写成 420、420px、60% 或 24em。", "Write width as 420, 420px, 60%, or 24em.") };
 	const amount = Number(match[1]);
 	const unit = match[2];
-	if (!unit || !Number.isFinite(amount)) return { ok: false, error: "width 写成 420、420px、60% 或 24em。" };
+	if (!unit || !Number.isFinite(amount)) return { ok: false, error: tr("width 写成 420、420px、60% 或 24em。", "Write width as 420, 420px, 60%, or 24em.") };
 	if (unit === "px") return { ok: true, width: `${clampInt(amount, EMBED_WIDTH_LIMIT.min, EMBED_WIDTH_LIMIT.max)}px` };
 	if (unit === "%") return { ok: true, width: `${clampInt(amount, 30, 100)}%` };
 	return { ok: true, width: `${clampInt(amount, 16, 80)}${unit}` };

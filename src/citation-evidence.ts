@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { SemanticCitation } from "./citation-sources";
 import { nonResearchLabel } from "./paper";
 import type { GraphEdge, PaperNode } from "./types";
@@ -62,16 +63,16 @@ export function evidenceFromSemanticCitation(
 }
 
 export function evidenceLabel(evidence: CitationEvidence | null): string {
-	if (!evidence) return "暂无额外引用证据";
+	if (!evidence) return tr("暂无额外引用证据", "No additional citation evidence");
 	const labels = evidence.intents.map((intent) => INTENT_TEXT[intent]);
-	if (evidence.influential) labels.push("高影响");
-	return labels.length > 0 ? labels.join(" · ") : "已确认引用关系，暂无引用意图";
+	if (evidence.influential) labels.push(tr("高影响", "Highly influential"));
+	return labels.length > 0 ? labels.join(" · ") : tr("已确认引用关系，暂无引用意图", "Citation confirmed; intent unavailable");
 }
 
 const INTENT_TEXT: Record<CitationIntent, string> = {
-	background: "背景",
-	method: "方法",
-	result: "结果",
+	background: tr("背景", "Background"),
+	method: tr("方法", "Method"),
+	result: tr("结果", "Result"),
 };
 
 /** Display names for evidence sources, for stats and source lines. */
@@ -89,13 +90,13 @@ export interface EvidenceBadge {
 
 /** 双源确认 / 单源记录 / 数据缺失；低置信时追加采样有限。 */
 export function evidenceBadges(evidence: CitationEvidence | null): EvidenceBadge[] {
-	if (!evidence || evidence.sources.length === 0) return [{ label: "数据缺失", tone: "warn" }];
+	if (!evidence || evidence.sources.length === 0) return [{ label: tr("数据缺失", "Missing data"), tone: "warn" }];
 	const badges: EvidenceBadge[] = [
 		evidence.sources.length >= 2
-			? { label: "双源确认", tone: "strong" }
-			: { label: "单源记录", tone: "plain" },
+			? { label: tr("双源确认", "Confirmed by two sources"), tone: "strong" }
+			: { label: tr("单源记录", "Single-source record"), tone: "plain" },
 	];
-	if (evidence.confidence === "low") badges.push({ label: "采样有限", tone: "warn" });
+	if (evidence.confidence === "low") badges.push({ label: tr("采样有限", "Limited sample"), tone: "warn" });
 	return badges;
 }
 
@@ -118,12 +119,12 @@ export interface CrossCheckLike {
  */
 export function paperStateBadges(paper: PaperStateLike, check: CrossCheckLike | null | undefined): EvidenceBadge[] {
 	const badges: EvidenceBadge[] = [];
-	if (paper.retracted) badges.push({ label: "⚠ 已撤稿", tone: "warn" });
+	if (paper.retracted) badges.push({ label: tr("⚠ 已撤稿", "⚠ Retracted"), tone: "warn" });
 	const flagged = nonResearchLabel({ workType: paper.workType ?? null });
 	if (flagged) badges.push({ label: flagged, tone: "warn" });
-	if (check?.mismatched) badges.push({ label: "⚠ 数据源差异", tone: "warn" });
-	if (check && check.refsAdded > 0) badges.push({ label: `S2 回填 ${check.refsAdded} 条`, tone: "plain" });
-	if (check?.crossrefRefsAdded) badges.push({ label: `Crossref 补充 ${check.crossrefRefsAdded} 条`, tone: "plain" });
+	if (check?.mismatched) badges.push({ label: tr("⚠ 数据源差异", "⚠ Source discrepancy"), tone: "warn" });
+	if (check && check.refsAdded > 0) badges.push({ label: tr(`S2 回填 ${check.refsAdded} 条`, `S2 backfilled ${check.refsAdded} references`), tone: "plain" });
+	if (check?.crossrefRefsAdded) badges.push({ label: tr(`Crossref 补充 ${check.crossrefRefsAdded} 条`, `Crossref added ${check.crossrefRefsAdded} references`), tone: "plain" });
 	return badges;
 }
 

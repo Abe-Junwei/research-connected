@@ -1,4 +1,5 @@
 import { Plugin } from "obsidian";
+import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
 import { registerConnectedPapersEmbed } from "./embed-block";
 import { normalizeGrafted } from "./graph-edit";
@@ -7,8 +8,8 @@ import {
 	DEFAULT_SETTINGS,
 	type ConnectedPapersSettings,
 } from "./settings";
-import { normalizeStagedList, wrapStagedList } from "./staging";
-import { normalizeProjects } from "./project-state";
+import { normalizeStagedList } from "./staging";
+import { migrateProjectRecords, normalizeProjects } from "./project-state";
 import { clamp } from "./visual";
 import { ConnectedPapersView } from "./view";
 
@@ -27,7 +28,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-research-connected",
-			name: "Open Research Connected",
+			name: tr("打开 Research Connected", "Open Research Connected"),
 			callback: () => {
 				void this.openView();
 			},
@@ -35,7 +36,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 		this.addCommand({
 			id: "find-doi-citation-path",
-			name: "Find DOI citation path (budgeted)",
+			name: tr("查找 DOI 引用路径（预算内）", "Find DOI citation path (budgeted)"),
 			callback: () => {
 				void (async () => {
 					await this.openView();
@@ -76,16 +77,21 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
 		this.settings.stagedPapers = normalizeStagedList(stored?.stagedPapers);
 		this.settings.graftedBySeed = normalizeGrafted(stored?.graftedBySeed);
-		this.settings.researchProjects = normalizeProjects(stored?.researchProjects);
+		this.settings.researchProjects = migrateProjectRecords(
+			normalizeProjects(stored?.researchProjects),
+			this.settings.stagedPapers,
+			this.settings.graftedBySeed,
+		);
+		this.settings.stagedPapers = [];
+		this.settings.graftedBySeed = {};
 	}
 
-	async saveSettings(): Promise<void> {
-		// Persist staging as `{ version, items }`; runtime settings keep a flat array.
-		await this.saveData({
-			...this.settings,
-			stagedPapers: wrapStagedList(this.settings.stagedPapers),
-		} as unknown as ConnectedPapersSettings);
-		window.dispatchEvent(new Event("research-connected-settings"));
+	async saveSettings(notify = true): Promise<void> {
+		const data = { ...this.settings } as Partial<ConnectedPapersSettings> & { stagedPapers?: unknown; graftedBySeed?: unknown };
+		delete data.stagedPapers;
+		delete data.graftedBySeed;
+		await this.saveData(data);
+		window.dispatchEvent(new Event(notify ? "research-connected-settings" : "research-connected-project"));
 	}
 
 	private async openView(): Promise<void> {
