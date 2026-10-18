@@ -23,6 +23,14 @@ export interface ConnectedPapersSettings {
 	includeRelated: boolean;
 	/** Exclude retracted works from new graph samples; default keeps them with a ranking penalty. */
 	excludeRetracted: boolean;
+	/** Folder for literature notes. Empty writes them to the vault root. */
+	literatureFolder: string;
+	/** Filename template. Empty uses "{{year}} {{title}}". */
+	literatureFilename: string;
+	/** Body template. Empty uses a heading with the title. Frontmatter is always added. */
+	literatureTemplate: string;
+	/** Frontmatter key used to recognize an existing note's DOI. */
+	literatureDoiProperty: string;
 	stagedPapers: StagedPaper[];
 	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
 	graftedBySeed: Record<string, string[]>;
@@ -47,6 +55,10 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	includeCitations: true,
 	includeRelated: true,
 	excludeRetracted: false,
+	literatureFolder: "",
+	literatureFilename: "",
+	literatureTemplate: "",
+	literatureDoiProperty: "doi",
 	stagedPapers: [],
 	graftedBySeed: {},
 	researchProjects: {},

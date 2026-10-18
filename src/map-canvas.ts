@@ -565,11 +565,6 @@ export class SimilarityMap {
 		if (!this.alive) return;
 		const local = this.localPoint(event.clientX, event.clientY);
 		const hit = this.hit(local.x, local.y);
-		if (hit) {
-			this.selectedId = hit.id;
-			this.onSelect?.(hit);
-			this.draw();
-		}
 		this.onNodeMenu?.(hit, event.clientX, event.clientY);
 	}
 

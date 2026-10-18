@@ -74,8 +74,6 @@ export interface GraphChromeOptions {
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
 	researchButton?: boolean;
-	stagingButton?: boolean;
-	excludedButton?: boolean;
 	/** Tabs and export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
 	/** Layout buttons. When set, they leave the control host for the narrow rail. */
@@ -259,8 +257,6 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		["derivative", tr("衍生工作", "Later work")],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", tr("研究脉络", "Research narrative")]);
-	if (options.stagingButton) tabs.push(["staged", tr("暂存", "Saved")]);
-	if (options.excludedButton) tabs.push(["excluded", tr("排除", "Excluded")]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	for (const [tab, label] of tabs) {
 		const button = pressButton(label, tab === "graph", () => {
@@ -285,7 +281,13 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		exportItems.append(actionButton(label, () => options.onExport(kind)));
 	}
 	exportMenu.append(exportItems);
+	const releaseExportMenu = registerPopover(exportMenu);
 	tabRow.append(exportMenu);
+
+	const onExportKey = (event: KeyboardEvent): void => {
+		if (event.key === "Escape" && !output.hidden) clearOutputText();
+	};
+	if (typeof document !== "undefined") document.addEventListener("keydown", onExportKey);
 
 	if (layoutHost) layoutHost.append(layoutRow);
 	else host.append(layoutRow);
@@ -345,6 +347,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		destroy(): void {
 			stop();
 			clearOutputText();
+			releaseExportMenu();
+			if (typeof document !== "undefined") document.removeEventListener("keydown", onExportKey);
 			host.replaceChildren();
 			host.classList.remove("cpo-tools");
 			if (actions !== host) {
@@ -419,6 +423,44 @@ export function mountBottomSheet(host: HTMLElement, options?: { collapsible?: bo
 			host.replaceChildren();
 			host.classList.remove("cpo-sheet", "is-collapsed");
 		},
+	};
+}
+
+const popovers = new Set<HTMLDetailsElement>();
+let popoverListening = false;
+
+function ensurePopoverListeners(): void {
+	if (popoverListening || typeof document === "undefined") return;
+	popoverListening = true;
+	document.addEventListener("pointerdown", (event) => {
+		const target = event.target;
+		for (const menu of [...popovers]) {
+			if (!menu.isConnected) { popovers.delete(menu); continue; }
+			if (!menu.open || (target instanceof Node && menu.contains(target))) continue;
+			menu.open = false;
+		}
+	});
+	document.addEventListener("keydown", (event) => {
+		if (event.key !== "Escape") return;
+		for (const menu of [...popovers]) {
+			if (!menu.isConnected) { popovers.delete(menu); continue; }
+			menu.open = false;
+		}
+	});
+}
+
+/** A details menu closes itself: item click, outside pointer, or Escape. */
+export function registerPopover(menu: HTMLDetailsElement): () => void {
+	popovers.add(menu);
+	ensurePopoverListeners();
+	const onClick = (event: Event): void => {
+		const target = event.target;
+		if (target instanceof Element && target.closest("button")) menu.open = false;
+	};
+	menu.addEventListener("click", onClick);
+	return () => {
+		popovers.delete(menu);
+		menu.removeEventListener("click", onClick);
 	};
 }
 

@@ -26,10 +26,11 @@ export interface CandidateAudit {
 }
 
 /**
- * Sampling tiers. Standard matches the historical behavior. Extended pulls a
- * full 200-per-page list; deep cursor-pages references and citations up to
- * 1000 works each. Deep costs roughly 20 requests per map and wants an API key.
- * Related works can use one extra page to replace filtered records.
+ * Sampling tiers. The numbers are accepted-work targets, not the HTTP page
+ * size: OpenAlex caps a page at 100, and sampleWorks spreads a larger target
+ * across cursor pages. Deep examines up to 1000 raw records per list and needs
+ * an API key to leave page 1. Related works can use one extra page to replace
+ * filtered records.
  */
 export const SAMPLE_TIERS: Record<
 	SampleDepth,
@@ -74,6 +75,8 @@ export interface SimilarityGraph {
 	skippedNonResearch: number;
 	/** Retracted works removed because excludeRetracted was enabled. */
 	skippedRetracted?: number;
+	/** Deep sampling stayed on page 1 because no OpenAlex API key is configured. */
+	pagingLimited?: boolean;
 	/** Per-source sampling counters. Optional to keep offline fixtures backwards-compatible. */
 	retrievalStats?: Readonly<Record<"references" | "citations" | "related", RetrievalStats>>;
 	/** Retained candidates and filtered records from this build, for local diagnosis. */
@@ -191,13 +194,15 @@ export async function loadNeighborhood(
 
 	onStage?.("fetching");
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
+	const pagingLimited = settings.sampleDepth === "deep" && settings.apiKey.trim() === "";
+	const listPages = pagingLimited ? 1 : tier.pages;
 	const acceptsResearch = (work: RawWork): boolean => {
 		return candidateExclusion(work, seed.id, settings.excludeRetracted) === null;
 	};
 	const [references, citations, related] = await Promise.all([
-		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", tier.pages, acceptsResearch)),
-		loadGroup(settings.includeCitations, () => client.sampleWorks(`cites:${seed.id}`, tier.citations, tier.citations, "cited_by_count:desc", tier.pages, acceptsResearch)),
-		loadGroup(settings.includeRelated, () => client.sampleWorks(`related_to:${seed.id}`, tier.related, tier.related, undefined, 2, acceptsResearch)),
+		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", listPages, acceptsResearch)),
+		loadGroup(settings.includeCitations, () => client.sampleWorks(`cites:${seed.id}`, tier.citations, tier.citations, "cited_by_count:desc", listPages, acceptsResearch)),
+		loadGroup(settings.includeRelated, () => client.sampleWorks(`related_to:${seed.id}`, tier.related, tier.related, undefined, pagingLimited ? 1 : 2, acceptsResearch)),
 	]);
 
 	const warnings: LoadWarning[] = [];
@@ -476,6 +481,7 @@ export async function loadNeighborhood(
 		citationEvidence,
 		skippedNonResearch,
 		skippedRetracted,
+		pagingLimited,
 		retrievalStats: {
 			references: statsFor(references.sample, refPapers.length, tier.references),
 			citations: statsFor(citations.sample, citePapers.length, tier.citations),

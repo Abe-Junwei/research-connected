@@ -20,6 +20,8 @@ import { placeLayout } from "../src/layout-modes";
 import { runForceLayout } from "../src/layout";
 import { applyResponsiveMode } from "../src/responsive";
 import { clampSidebarWidth } from "../src/sidebar-resize";
+import { literatureFilename, literatureMarkdown, matchLiteratureNote } from "../src/export-graph";
+import { pageBudget } from "../src/openalex";
 import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { syntheticGraph } from "./perf-fixture";
@@ -344,6 +346,29 @@ function graphEdits(): void {
 	assert.deepEqual(forgetGrafted(store, "W1", "W2"), {});
 }
 
+function literatureNotes(): void {
+	assert.deepEqual(pageBudget(200, 5), { perPage: 100, maxPages: 10 });
+	assert.deepEqual(pageBudget(200, 2), { perPage: 100, maxPages: 4 });
+	assert.deepEqual(pageBudget(200, 1), { perPage: 100, maxPages: 1 });
+	assert.deepEqual(pageBudget(80, 2), { perPage: 80, maxPages: 2 });
+	const item = { ...paper("W2741809807", "reference"), doiUrl: "https://doi.org/10.1000/XYZ", title: "A/B: test?" };
+	const fields = { project: "Map", relation: "Cites the seed", status: "to-read" as const };
+	assert.equal(literatureFilename(item, "{{year}}/{{title}}", fields).includes("/"), false);
+	assert.match(literatureFilename(item, "", fields), /^2010 /);
+	const markdown = literatureMarkdown(item, "See {{doi}}", fields);
+	assert.match(markdown, /^---\n/);
+	assert.match(markdown, /rc-status: to-read/);
+	assert.match(markdown, /See 10\.1000\/xyz/);
+	const files = [
+		{ path: "other.md", frontmatter: { doi: "10.1000/other", openalex: "https://openalex.org/W1", "rc-status": "read" } },
+		{ path: "hit.md", frontmatter: { DOI: "https://doi.org/10.1000/XYZ", "rc-status": "unread" } },
+	];
+	assert.equal(matchLiteratureNote(files, item, "DOI")?.path, "hit.md");
+	assert.equal(matchLiteratureNote(files, item, "DOI")?.reading, "unread");
+	assert.equal(matchLiteratureNote(files, paper("W1", "citation"), "doi")?.path, "other.md");
+	assert.equal(matchLiteratureNote([{ path: "nope.md", frontmatter: { title: "x" } }], item, "doi"), null);
+}
+
 export function verifyUi(): void {
 	evidenceCopy();
 	badges();
@@ -355,5 +380,6 @@ export function verifyUi(): void {
 	evidenceSidebarSizing();
 	embedDefaultWidthKeepsStandardLayout();
 	aggregates();
+	literatureNotes();
 	console.log("ui checks passed");
 }

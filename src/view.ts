@@ -3,7 +3,7 @@ import { mountGraphApp, type GraphAppHandle } from "./app";
 import { VIEW_TYPE } from "./constants";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
-import { createVaultNote } from "./vault-note";
+import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
 import type { ResearchProject } from "./project-state";
 
@@ -58,7 +58,11 @@ export class ConnectedPapersView extends ItemView {
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
-			createNote: (filename, markdown) => createVaultNote(this.app, filename, markdown),
+			createNote: (filename, markdown, folder) => createVaultNote(this.app, filename, markdown, folder),
+			lookupLiteratureNote: (paper) => lookupLiteratureNote(this.app, paper, this.host.getSettings().literatureDoiProperty),
+			openLiteratureNote: (path) => { void openLiteratureNote(this.app, path); },
+			syncLiteratureReading: (paper, reading) => syncLiteratureReading(this.app, paper, reading, this.host.getSettings().literatureDoiProperty),
+			rememberLiteratureNote,
 			stagePaper: async () => { await this.host.saveSettings(false); },
 			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
 		saveProject: async (project: ResearchProject) => {

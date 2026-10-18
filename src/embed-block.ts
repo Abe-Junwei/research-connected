@@ -3,7 +3,7 @@ import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import type { ConnectedPapersSettings } from "./settings-model";
-import { createVaultNote } from "./vault-note";
+import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 
 interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
@@ -47,7 +47,11 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			postJson: obsidianPostJson,
 			openExternal,
 			stagePaper: async () => { await plugin.saveSettings(false); },
-			createNote: (filename, markdown) => createVaultNote(plugin.app, filename, markdown),
+			createNote: (filename, markdown, folder) => createVaultNote(plugin.app, filename, markdown, folder),
+			lookupLiteratureNote: (paper) => lookupLiteratureNote(plugin.app, paper, plugin.getSettings().literatureDoiProperty),
+			openLiteratureNote: (path) => { void openLiteratureNote(plugin.app, path); },
+			syncLiteratureReading: (paper, reading) => syncLiteratureReading(plugin.app, paper, reading, plugin.getSettings().literatureDoiProperty),
+			rememberLiteratureNote,
 			openGraph: plugin.openGraph ? (target) => plugin.openGraph?.(target) : undefined,
 		});
 	}

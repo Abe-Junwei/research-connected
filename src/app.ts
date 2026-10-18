@@ -2,10 +2,10 @@ import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
-import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintAuthorChips, paintJumpStrip, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, paintVenueRow, semanticHintFor } from "./detail-cards";
+import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, registerPopover, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { paintPaperActions } from "./paper-actions";
-import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
+import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import {
 	EXPAND_CAP,
 	graftNodes,
@@ -50,7 +50,7 @@ import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
 import { displayStageSource, groupStagedBySeed } from "./staging";
-import { projectExcludedPapers, projectStagedPapers, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ResearchProject, type SavedView } from "./project-state";
+import { projectExcludedPapers, projectStagedPapers, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
 	destroy(): void;
@@ -63,7 +63,11 @@ export interface AppDeps {
 	getJson: GetJson;
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	openExternal: (url: string) => void;
-	createNote?: (filename: string, markdown: string) => Promise<void>;
+	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
+	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null } | null;
+	openLiteratureNote?: (path: string) => void;
+	syncLiteratureReading?: (paper: PaperNode, reading: ReadingStatus) => Promise<void>;
+	rememberLiteratureNote?: (paper: PaperNode, path: string, reading: ReadingStatus) => void;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	/** Persist settings (grafted members, staging, …). */
 	persistSettings?: () => Promise<void> | void;
@@ -126,8 +130,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const viewNameInput = el(viewGroup, "input", "cpo-project-name-input") as HTMLInputElement;
 	viewNameInput.placeholder = tr("新视图名称", "New view name");
 	viewNameInput.setAttribute("aria-label", tr("新视图名称", "New view name"));
+	viewNameInput.hidden = true;
 	const saveViewButton = el(viewGroup, "button", "cpo-ghost", tr("保存视图", "Save view")) as HTMLButtonElement;
-	saveViewButton.replaceChildren(createChromeIcon("save"), document.createTextNode(tr("保存视图", "Save view")));
+	const saveViewText = document.createElement("span");
+	saveViewText.textContent = tr("保存视图", "Save view");
+	saveViewButton.replaceChildren(createChromeIcon("save"), saveViewText);
 	saveViewButton.type = "button";
 	saveViewButton.disabled = true;
 	const renameProjectInput = el(projectGroup, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
@@ -140,6 +147,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	renameProjectButton.replaceChildren(createChromeIcon("edit"), renameProjectText);
 	renameProjectButton.type = "button";
 	renameProjectButton.disabled = true;
+	const libraryButton = el(projectGroup, "button", "cpo-ghost cpo-library-open") as HTMLButtonElement;
+	libraryButton.type = "button";
+	libraryButton.append(createChromeIcon("bookmark"), document.createTextNode(tr("清单", "Library")));
+	libraryButton.title = tr("暂存与排除", "Saved and excluded papers");
 	projectTools.append(projectGroup, viewGroup);
 
 	const status = document.createElement("p");
@@ -179,7 +190,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		title: tr("从一篇种子论文开始", "Start with a seed paper"),
 		hint: tr("输入 DOI、OpenAlex 链接或作品 ID，也可以按标题搜索后点选。圆点按参考文献重叠和共被引聚在一起，不是引用列表。", "Enter a DOI, OpenAlex URL, or work ID, or search by title and select a result. Nodes cluster by shared references and co-citations; this is not a citation list."),
 	});
-	const { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, readingActions, zoom, zoomIn, zoomOut, fit, reload } = surface;
+	const { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoom, zoomIn, zoomOut, fit, reload } = surface;
 
 	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
 	const sidebarToggle = el(sidebar, "button", "cpo-panel-toggle is-right", "›") as HTMLButtonElement;
@@ -189,7 +200,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const sidebarResize = el(body, "div", "cpo-sidebar-resizer");
 	body.insertBefore(sidebarResize, sidebar);
 	const evidenceHeader = el(sidebar, "header", "cpo-evidence-header");
-	el(evidenceHeader, "h2", undefined, tr("论文详情与关联依据", "Paper details & evidence"));
+	const evidenceHeading = el(evidenceHeader, "h2", undefined, tr("论文详情与关联依据", "Paper details & evidence"));
 	const evidenceTools = el(evidenceHeader, "div", "cpo-evidence-tools");
 	evidenceTools.setAttribute("role", "toolbar");
 	evidenceTools.setAttribute("aria-label", tr("论文操作", "Paper actions"));
@@ -279,7 +290,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		return graph.nodes.filter((node) => node.isSeed || scrubYear === null || (node.year !== null && node.year <= scrubYear));
 	};
 
+	const tabTitles: Record<GraphTab, string> = {
+		graph: tr("论文详情与关联依据", "Paper details & evidence"),
+		prior: tr("先验工作", "Prior works"),
+		derivative: tr("衍生工作", "Derivative works"),
+		research: tr("研究脉络", "Research narrative"),
+		staged: tr("暂存列表", "Saved papers"),
+		excluded: tr("已排除论文", "Excluded papers"),
+	};
+
 	const paintLists = (): void => {
+		evidenceHeading.textContent = tabTitles[tab] ?? tabTitles.graph;
+		libraryButton.setAttribute("aria-pressed", tab === "staged" || tab === "excluded" ? "true" : "false");
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research");
 		detail.hidden = tab !== "graph";
 		if (tab === "research") {
@@ -329,7 +351,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 				paintPaperWorkflowState(card, paper, state, async (reading, previous) => {
 					updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading });
-					try { await deps.stagePaper?.(paper, seed.id, state.source); }
+					try {
+						await deps.stagePaper?.(paper, seed.id, state.source);
+						await deps.syncLiteratureReading?.(paper, reading);
+					}
 					catch (error) {
 						updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading: previous });
 						throw error;
@@ -355,16 +380,36 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		listPanel.append(list);
 	};
 
+	const paintLibrarySwitch = (parent: HTMLElement): void => {
+		const row = el(parent, "div", "cpo-library-switch");
+		for (const [next, label] of [["staged", tr("暂存", "Saved")], ["excluded", tr("排除", "Excluded")]] as const) {
+			const button = el(row, "button", "cpo-library-switch-item", label) as HTMLButtonElement;
+			button.type = "button";
+			button.setAttribute("aria-pressed", tab === next ? "true" : "false");
+			button.onclick = () => {
+				tab = next;
+				chrome?.setTab(next);
+				paintLists();
+			};
+		}
+	};
+
 	const paintLibraryCard = (list: HTMLOListElement, paper: PaperNode, source: string, actions: (container: HTMLElement) => void): void => {
 		const item = el(list, "li", "cpo-agg-entry");
 		const card = el(item, "div", "cpo-card cpo-library-card");
-		const badges = el(card, "div", "cpo-badge-row");
-		el(badges, "span", "cpo-chip cpo-chip-accent", source);
-		el(badges, "span", "cpo-chip", paper.year === null ? tr("年份不详", "Year unknown") : tr(`${paper.year} 年`, `${paper.year}`));
-		el(badges, "span", "cpo-chip cpo-chip-muted", tr(`被引 ${formatCount(paper.citedByCount)}`, `Cited ${formatCount(paper.citedByCount)} times`));
 		el(card, "h3", "cpo-card-title", paper.title || paper.id);
-		paintAuthorChips(card, paper);
-		paintVenueRow(card, paper);
+		const authorShort = paper.authorList?.length
+			? paper.authorList.length > 2
+				? `${paper.authorList.slice(0, 2).join(", ")} et al.`
+				: paper.authorList.join(" · ")
+			: paper.authors;
+		const metaParts = [
+			paper.year === null ? tr("年份不详", "Year unknown") : String(paper.year),
+			authorShort,
+			source,
+			tr(`被引 ${formatCount(paper.citedByCount)}`, `Cited ${formatCount(paper.citedByCount)}`),
+		].filter(Boolean);
+		el(card, "p", "cpo-library-meta", metaParts.join(" · "));
 		const actionRow = el(card, "div", "cpo-library-actions");
 		actions(actionRow);
 	};
@@ -372,6 +417,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const paintStaged = (): void => {
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
+		paintLibrarySwitch(listPanel);
 		const libraryHeader = el(listPanel, "div", "cpo-library-header");
 		const libraryHeading = el(libraryHeader, "div", "cpo-library-heading");
 		el(libraryHeading, "h3", "cpo-kicker", tr("暂存列表", "Saved papers"));
@@ -383,6 +429,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const actionTrigger = el(actionMenu, "summary", "cpo-ghost cpo-library-menu-trigger");
 		actionTrigger.setAttribute("aria-label", tr("清单操作", "List actions"));
 		actionTrigger.append(createChromeIcon("export"), document.createTextNode(tr("清单操作", "List actions")), createChromeIcon("chevronDown"));
+		registerPopover(actionMenu);
 		const actionItems = el(actionMenu, "div", "cpo-library-menu-items");
 		const copyTable = el(actionItems, "button", "cpo-library-menu-item", tr("复制表格", "Copy table")) as HTMLButtonElement;
 		copyTable.prepend(createChromeIcon("table"));
@@ -390,7 +437,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		copyTable.onclick = () => {
 			const text = toMarkdownTable(orderedForExport(items.map((item) => item.paper)));
 			void chrome?.copyText(text, tr("表格", "Table"));
-			actionMenu.open = false;
 		};
 		const copyBib = el(actionItems, "button", "cpo-library-menu-item", tr("复制 BibTeX", "Copy BibTeX")) as HTMLButtonElement;
 		copyBib.prepend(createChromeIcon("copy"));
@@ -398,7 +444,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		copyBib.onclick = () => {
 			const text = toBibTeX(orderedForExport(items.map((item) => item.paper)));
 			void chrome?.copyText(text, "BibTeX");
-			actionMenu.open = false;
 		};
 		if (deps.createNote) {
 			const divider = el(actionItems, "span", "cpo-library-menu-divider");
@@ -422,7 +467,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				}).catch((error) => {
 					chrome?.setExportText(error instanceof Error ? error.message : tr("笔记没有写成。", "Could not write the note."));
 				});
-				actionMenu.open = false;
 			};
 		}
 		for (const group of groupStagedBySeed(items)) {
@@ -447,7 +491,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 						const project = projects[item.seedId];
 						const previous = project?.paperStates?.[item.paper.id];
 						updateProjectPaperState(projects, item.seedId, item.paper, { reading: reading.value as "unread" | "to-read" | "read" });
-						try { await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); }
+						try {
+							await deps.stagePaper?.(item.paper, item.seedId, item.source);
+							await deps.syncLiteratureReading?.(item.paper, reading.value as ReadingStatus);
+							paintStaged();
+						}
 						catch { if (previous && project?.paperStates) project.paperStates[item.paper.id] = previous; reading.value = item.reading; status.textContent = tr("阅读状态保存失败，请重试", "Could not save reading status. Try again."); }
 					};
 					const remove = el(actions, "button", "cpo-library-action is-quiet", tr("移除", "Remove")) as HTMLButtonElement;
@@ -465,6 +513,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const paintExcluded = (): void => {
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
+		paintLibrarySwitch(listPanel);
 		el(listPanel, "h3", "cpo-kicker", tr("已排除论文", "Excluded papers"));
 		const seedId = currentSeedId();
 		const project = seedId ? deps.getSettings().researchProjects[seedId] : null;
@@ -577,8 +626,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		layout: "force2d",
 		noteButton: Boolean(deps.createNote),
 		researchButton: llmReady(),
-		stagingButton: Boolean(deps.stagePaper),
-		excludedButton: Boolean(deps.stagePaper),
 		actionsHost: actionsBar,
 		layoutHost,
 		scrubHost,
@@ -656,11 +703,21 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (kind === "note") {
 			const paper = selectedPaper ?? graph.nodes.find((node) => node.isSeed);
 			if (!paper) return;
-			const markdown = noteSkeleton(paper);
+			const settings = deps.getSettings();
+			const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
+			const fields = {
+				project: settings.researchProjects[seedId]?.name || seedId,
+				relation: ORIGIN_TEXT[paper.origin],
+				status: settings.researchProjects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread" as const,
+			};
+			const filename = literatureFilename(paper, settings.literatureFilename, fields);
+			const markdown = literatureMarkdown(paper, settings.literatureTemplate, fields);
 			if (deps.createNote) {
 				try {
-					await deps.createNote(noteFilename(paper), markdown);
-					chrome?.setExportText(tr(`已写入笔记：${noteFilename(paper)}`, `Written to note: ${noteFilename(paper)}`));
+					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
+					deps.rememberLiteratureNote?.(paper, typeof path === "string" ? path : filename, fields.status);
+					chrome?.setExportText(tr(`已写入笔记：${filename}`, `Written to note: ${filename}`));
+					showDetail(paper);
 				} catch (error) {
 					chrome?.setExportText(error instanceof Error ? error.message : tr("笔记没有写成。", "Could not write the note."));
 				}
@@ -703,22 +760,36 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		const seedId = seedNode?.id ?? paper.id;
 		const project = deps.getSettings().researchProjects[seedId];
-		const state = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		let state = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
+		if (noted?.reading && noted.reading !== state.reading) {
+			state = { ...state, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
+			void (deps.persistSettings ? deps.persistSettings() : deps.stagePaper?.(paper, seedId, state.source));
+		}
 		paintPaperWorkflowState(detail, paper, state, async (reading, previous) => {
 			updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading });
-			try { await deps.stagePaper?.(paper, seedId, state.source); }
-			catch (error) {
+			try {
+				await (deps.persistSettings ? deps.persistSettings() : deps.stagePaper?.(paper, seedId, state.source));
+				await deps.syncLiteratureReading?.(paper, reading);
+			} catch (error) {
 				updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: previous });
 				throw error;
 			}
 		}, !paper.isSeed ? () => removePaper(paper) : undefined);
+		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote);
 		let diveIndex = -1;
 		for (let index = 0; index < deepDiveBatches.length; index += 1) if (deepDiveBatches[index]!.additions.some((item) => item.paperId === paper.id)) diveIndex = index;
 		if (diveIndex >= 0) {
 			const batch = deepDiveBatches[diveIndex]!;
 			const parent = graph.nodes.find((node) => node.id === batch.parentId) ?? graph.catalog.find((node) => node.id === batch.parentId);
 			const sources = [...new Set(batch.additions.filter((item) => item.paperId === paper.id).map((item) => ({ reference: tr("参考文献", "References"), citation: tr("施引文献", "Citing papers"), "shared-reference": tr("共享参考文献候选", "Shared-reference candidate"), legacy: tr("既有深挖记录", "Earlier deep-dive record") })[item.source]))].join("、");
-			el(detail, "p", "cpo-fact-note", tr(`第 ${diveIndex + 1} 轮深挖 · ${parent?.title ?? batch.parentId} · ${sources}`, `Deep dive ${diveIndex + 1} · ${parent?.title ?? batch.parentId} · ${sources}`));
+			const identityCard = detail.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? detail;
+			const actionRow = identityCard.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
+			const diveNote = document.createElement("p");
+			diveNote.className = "cpo-fact-note";
+			diveNote.textContent = tr(`第 ${diveIndex + 1} 轮深挖 · ${parent?.title ?? batch.parentId} · ${sources}`, `Deep dive ${diveIndex + 1} · ${parent?.title ?? batch.parentId} · ${sources}`);
+			if (actionRow) identityCard.insertBefore(diveNote, actionRow);
+			else identityCard.append(diveNote);
 		}
 		const stageEdge = seedNode && !paper.isSeed ? findEdge(graph.edges, paper.id, seedNode.id) : null;
 		const stageEvidence = seedNode && !paper.isSeed ? graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id) ?? null : null;
@@ -728,6 +799,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seedNode!.id, source) : undefined,
 			openExternal: deps.openExternal,
 		});
+		paintAbstractCard(detail, paper, abstractText);
 		if (seedNode && !paper.isSeed) {
 			const link = findEdge(graph.edges, paper.id, seedNode.id);
 			const from = link ? graph.nodes.find((node) => node.id === link.source) : undefined;
@@ -750,7 +822,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (rankInfo) paintSelectionReasons(detail, rankInfo, score);
 			paintJumpStrip(detail, seedNode, (target) => showDetail(target));
 		}
-		paintAbstractCard(detail, paper, abstractText);
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
@@ -781,9 +852,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		deleteItem.disabled = paper.isSeed;
 		deleteItem.title = paper.isSeed ? tr("种子不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
-		const project = deps.getSettings().researchProjects[graph.nodes.find((node) => node.isSeed)?.id ?? ""];
-		const currentReading = project?.paperStates?.[paper.id]?.reading ?? "unread";
-		for (const [reading, item] of readingActions) item.hidden = reading === currentReading;
 		seedItem.disabled = paper.isSeed;
 		seedItem.title = paper.isSeed ? tr("已是种子", "Already the seed") : tr("以这篇重建整图", "Rebuild graph with this paper as seed");
 		nodeMenu.dataset.paperId = paper.id;
@@ -917,7 +985,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		projectSelect.value = projects.some((project) => project.seedId === selectedId) ? selectedId! : projects[0]!.seedId;
 		renameProjectButton.disabled = false;
 		viewNameInput.disabled = false;
-		saveViewButton.disabled = !graph || !viewNameInput.value.trim();
+		saveViewButton.disabled = !graph;
 		refreshViews();
 	};
 
@@ -937,6 +1005,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		viewSelect.disabled = !project?.views.length;
 	};
 
+	libraryButton.addEventListener("click", () => {
+		const inLibrary = tab === "staged" || tab === "excluded";
+		tab = inLibrary ? "graph" : "staged";
+		chrome?.setTab(tab);
+		if (tab !== "graph") sheet.setExpanded(true);
+		paintLists();
+	});
 	projectSelect.addEventListener("change", () => {
 		const project = deps.getSettings().researchProjects[projectSelect.value];
 		const snapshot = project && restoreGraphSnapshot(project.snapshot);
@@ -951,10 +1026,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 
 	viewNameInput.addEventListener("input", () => {
-		saveViewButton.disabled = !graph || !viewNameInput.value.trim();
+		saveViewButton.disabled = !graph;
 	});
 	viewNameInput.addEventListener("keydown", (event) => {
 		if (event.key === "Enter") { event.preventDefault(); saveViewButton.click(); }
+		if (event.key === "Escape") {
+			viewNameInput.hidden = true;
+			saveViewText.textContent = tr("保存视图", "Save view");
+		}
 	});
 
 	renameProjectButton.addEventListener("click", async () => {
@@ -994,6 +1073,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	saveViewButton.addEventListener("click", async () => {
 		if (!graph) return;
+		if (viewNameInput.hidden && !viewNameInput.value.trim()) {
+			viewNameInput.hidden = false;
+			saveViewText.textContent = tr("确认", "Confirm");
+			viewNameInput.focus();
+			return;
+		}
 		const name = viewNameInput.value.trim();
 		if (!name) { status.textContent = tr("先输入视图名称", "Enter a view name first"); viewNameInput.focus(); return; }
 		const seedId = currentSeedId();
@@ -1015,7 +1100,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				paperStates: prior?.paperStates ?? {},
 			});
 			viewNameInput.value = "";
-			saveViewButton.disabled = true;
+			viewNameInput.hidden = true;
+			saveViewText.textContent = tr("保存视图", "Save view");
+			saveViewButton.disabled = !graph;
 			refreshViews();
 			status.textContent = tr(`已保存视图「${view.name}」`, `Saved view “${view.name}”`);
 		} catch (error) {
@@ -1269,9 +1356,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			: "";
 		status.textContent = tr(`${next.nodes.length} 篇 · ${next.edges.length} 条关系 · ${strategyNames.join("、")}${
 			next.skippedNonResearch ? ` · 滤除书评等非研究记录 ${next.skippedNonResearch} 条` : ""
-		}${next.skippedRetracted ? ` · 排除已撤稿作品 ${next.skippedRetracted} 条` : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`, `${next.nodes.length} papers · ${next.edges.length} links · ${strategyNames.join(", ")}${
+		}${next.skippedRetracted ? ` · 排除已撤稿作品 ${next.skippedRetracted} 条` : ""}${next.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`, `${next.nodes.length} papers · ${next.edges.length} links · ${strategyNames.join(", ")}${
 			next.skippedNonResearch ? ` · filtered ${next.skippedNonResearch} non-research records` : ""
-		}${next.skippedRetracted ? ` · excluded ${next.skippedRetracted} retracted works` : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`);
+		}${next.skippedRetracted ? ` · excluded ${next.skippedRetracted} retracted works` : ""}${next.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`);
 		status.title = status.textContent;
 		if (persist) persistProject(next);
 		refreshProjectSelect(seed?.id);
@@ -1431,22 +1518,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		input.value = paper.id;
 		void buildResolved({ kind: "openalex", value: paper.id });
 	});
-	for (const [reading, item] of readingActions) item.addEventListener("click", async () => {
-		const paper = graph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
-		const seedId = currentSeedId();
-		if (!paper || !seedId) return;
-		const projects = deps.getSettings().researchProjects;
-		const previous = projects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread";
-		updateProjectPaperState(projects, seedId, paper, { reading });
-		try {
-			await deps.stagePaper?.(paper, seedId, projects[seedId]?.paperStates?.[paper.id]?.source ?? "OpenAlex");
-			hideNodeMenu();
-			showDetail(paper);
-		} catch {
-			updateProjectPaperState(projects, seedId, paper, { reading: previous });
-			status.textContent = tr("阅读状态保存失败，请重试", "Could not save reading status. Try again.");
-		}
-	});
 
 	const showHits = (hits: SearchHit[]): void => {
 		results.replaceChildren();
@@ -1526,7 +1597,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const onKey = (event: KeyboardEvent): void => {
 		if (event.key === "Escape") {
-			hideNodeMenu();
+			if (!nodeMenu.hidden) { hideNodeMenu(); return; }
 			showDetail(null);
 		}
 	};

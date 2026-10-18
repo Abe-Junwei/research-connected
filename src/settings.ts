@@ -75,7 +75,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(tr("采样深度", "Sampling depth"))
 			.setDesc(
-				tr("标准：80 参考文献 + 40 施引 + 20 相关，约 5 次请求；扩展：参考文献和施引各 200；深度：各最多 1000（翻页获取，约 20 次请求，建议先配置 OpenAlex API 密钥）。下次构建图谱时生效。", "Standard: 80 references, 40 citing papers, and 20 related works in about five requests. Extended: up to 200 references and citing papers each. Deep: up to 1,000 each across pages, about 20 requests; configure an OpenAlex API key first. Applies to the next graph build."),
+				tr("标准：80 参考文献 + 40 施引 + 20 相关，约 5 次请求。扩展：参考文献和施引各最多 200，每页 100 条并自动翻页。深度：各检查最多 1000 条；没有 OpenAlex API 密钥时只取第一页，状态栏会说明。下次构建图谱时生效。", "Standard: 80 references, 40 citing papers, and 20 related works in about five requests. Extended: up to 200 references and citing papers, 100 per page. Deep: examines up to 1,000 each; without an OpenAlex API key it stops after the first page and the status bar says so. Applies to the next graph build."),
 			)
 			.addDropdown((dropdown) => {
 				dropdown
@@ -85,6 +85,59 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 					.setValue(this.store.settings.sampleDepth)
 					.onChange(async (value) => {
 						this.store.settings.sampleDepth = value as SampleDepth;
+						await this.store.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(tr("文献笔记文件夹", "Literature note folder"))
+			.setDesc(tr("导出的单篇笔记写到这个文件夹。留空则写到库根目录。文件夹不存在时会创建。", "Single-paper notes are written here. Leave empty to use the vault root. The folder is created if it does not exist."))
+			.addText((text) => {
+				text
+					.setPlaceholder(tr("例如 Literature", "e.g. Literature"))
+					.setValue(this.store.settings.literatureFolder)
+					.onChange(async (value) => {
+						this.store.settings.literatureFolder = value.trim();
+						await this.store.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(tr("文献笔记文件名", "Literature note filename"))
+			.setDesc(tr("可用 {{title}} {{authors}} {{year}} {{doi}} {{openalex}} {{relation}} {{project}} {{status}}。留空则用「年份 题名」。", "Tokens: {{title}} {{authors}} {{year}} {{doi}} {{openalex}} {{relation}} {{project}} {{status}}. Empty uses “year title”."))
+			.addText((text) => {
+				text
+					.setPlaceholder("{{year}} {{title}}")
+					.setValue(this.store.settings.literatureFilename)
+					.onChange(async (value) => {
+						this.store.settings.literatureFilename = value;
+						await this.store.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(tr("文献笔记正文", "Literature note body"))
+			.setDesc(tr("留空则只写题名标题。插件总会写入 doi、openalex、rc-project、rc-status。打开论文时，笔记里的 rc-status 覆盖项目中的阅读状态；在面板里改阅读状态会写回笔记。", "Empty writes a title heading only. The plugin always adds doi, openalex, rc-project, and rc-status. Opening a paper copies rc-status into the project; changing reading status in the panel writes it back."))
+			.addTextArea((text) => {
+				text
+					.setPlaceholder("# {{title}}\n\n{{authors}}")
+					.setValue(this.store.settings.literatureTemplate)
+					.onChange(async (value) => {
+						this.store.settings.literatureTemplate = value;
+						await this.store.saveSettings();
+					});
+				text.inputEl.rows = 4;
+			});
+
+		new Setting(containerEl)
+			.setName(tr("DOI 属性名", "DOI property name"))
+			.setDesc(tr("用来识别库里已有笔记。默认 doi，也同时认这个名字。Zotero Integration 等插件若把 DOI 写在别的属性里，填那个名字。", "Used to recognize notes already in the vault. doi is always checked as well. If another plugin stores the DOI under a different property, enter that name."))
+			.addText((text) => {
+				text
+					.setPlaceholder("doi")
+					.setValue(this.store.settings.literatureDoiProperty)
+					.onChange(async (value) => {
+						this.store.settings.literatureDoiProperty = value.trim() || "doi";
 						await this.store.saveSettings();
 					});
 			});

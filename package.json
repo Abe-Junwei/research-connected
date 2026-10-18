@@ -1,6 +1,6 @@
 {
 	"name": "research-connected",
-	"version": "1.8.5",
+	"version": "1.9.0",
 	"description": "Research Connected: a paper similarity map inside Obsidian, powered by OpenAlex.",
 	"main": "main.js",
 	"type": "module",

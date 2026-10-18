@@ -1,5 +1,7 @@
 import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
+import { normalizeDoi } from "./paper";
+import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
 
 export function toBibTeX(nodes: readonly PaperNode[]): string {
@@ -30,26 +32,6 @@ export function toMarkdownTable(nodes: readonly PaperNode[]): string {
 		return `| ${cell(paper.title)} | ${cell(paper.authors)} | ${year} | ${paper.citedByCount} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
 	});
 	return [header, rule, ...rows].join("\n");
-}
-
-/** Title, authors, year, DOI, and OpenAlex link. No abstract and no generated prose. */
-export function noteSkeleton(paper: PaperNode): string {
-	const doi = doiOf(paper);
-	const lines = [
-		"---",
-		`title: ${yamlString(paper.title)}`,
-		`authors: ${yamlString(paper.authors)}`,
-		`year: ${paper.year ?? "null"}`,
-	];
-	if (doi) lines.push(`doi: ${yamlString(doi)}`);
-	lines.push(`openalex: ${yamlString(paper.openAlexUrl)}`, "---", "", `# ${paper.title}`, "");
-	return lines.join("\n");
-}
-
-export function noteFilename(paper: PaperNode): string {
-	const year = paper.year === null ? tr("未标注", "Unspecified") : String(paper.year);
-	const title = paper.title.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 72);
-	return `${year} ${title || paper.id}.md`;
 }
 
 export function orderedForExport(nodes: readonly PaperNode[]): PaperNode[] {
@@ -106,4 +88,100 @@ export function doiOf(paper: Pick<PaperNode, "doiUrl">): string | null {
 	if (!paper.doiUrl) return null;
 	const match = paper.doiUrl.match(/10\.\d{4,9}\/\S+/);
 	return match?.[0]?.replace(/[)\].,;>]+$/g, "") ?? null;
+}
+
+export interface LiteratureFields {
+	project: string;
+	relation: string;
+	status: ReadingStatus;
+}
+
+const LITERATURE_TOKENS = ["title", "authors", "year", "doi", "openalex", "relation", "project", "status"] as const;
+
+export function fillLiteratureTemplate(template: string, paper: PaperNode, fields: LiteratureFields): string {
+	const values: Record<(typeof LITERATURE_TOKENS)[number], string> = {
+		title: paper.title,
+		authors: paper.authors,
+		year: paper.year === null ? "" : String(paper.year),
+		doi: normalizeDoi(paper.doiUrl) ?? "",
+		openalex: paper.openAlexUrl,
+		relation: fields.relation,
+		project: fields.project,
+		status: fields.status,
+	};
+	return template.replace(/\{\{\s*(title|authors|year|doi|openalex|relation|project|status)\s*\}\}/g, (_match, key: keyof typeof values) => values[key] ?? "");
+}
+
+/** Filename stays inside one folder: slashes and other path characters are removed. */
+export function literatureFilename(paper: PaperNode, template: string, fields: LiteratureFields): string {
+	const raw = fillLiteratureTemplate(template.trim() || "{{year}} {{title}}", paper, fields);
+	const cleaned = raw.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+	return `${cleaned || paper.id}.md`;
+}
+
+/** Frontmatter is always written by the plugin. A custom template is the note body. */
+export function literatureMarkdown(paper: PaperNode, template: string, fields: LiteratureFields): string {
+	const doi = normalizeDoi(paper.doiUrl);
+	const lines = [
+		"---",
+		`title: ${yamlString(paper.title)}`,
+		`authors: ${yamlString(paper.authors)}`,
+		`year: ${paper.year ?? "null"}`,
+	];
+	if (doi) lines.push(`doi: ${yamlString(doi)}`);
+	lines.push(
+		`openalex: ${yamlString(paper.openAlexUrl)}`,
+		`rc-project: ${yamlString(fields.project)}`,
+		`rc-status: ${fields.status}`,
+		"---",
+		"",
+	);
+	const body = template.trim() ? fillLiteratureTemplate(template, paper, fields).trim() : `# ${paper.title}`;
+	return [...lines, body, ""].join("\n");
+}
+
+export interface IndexedNote {
+	path: string;
+	reading: ReadingStatus | null;
+}
+
+/** First matching file wins. A DOI match outranks an OpenAlex id match. */
+export function matchLiteratureNote(
+	files: readonly { path: string; frontmatter?: Record<string, unknown> }[],
+	paper: Pick<PaperNode, "id" | "doiUrl">,
+	doiProperty: string,
+): IndexedNote | null {
+	const index = indexLiteratureFiles(files, doiProperty);
+	const doi = normalizeDoi(paper.doiUrl);
+	if (doi && index.byDoi.has(doi)) return index.byDoi.get(doi) ?? null;
+	return index.byId.get(paper.id) ?? null;
+}
+
+export function indexLiteratureFiles(
+	files: readonly { path: string; frontmatter?: Record<string, unknown> }[],
+	doiProperty: string,
+): { byDoi: Map<string, IndexedNote>; byId: Map<string, IndexedNote> } {
+	const keys = [...new Set([doiProperty.trim() || "doi", "doi"])];
+	const byDoi = new Map<string, IndexedNote>();
+	const byId = new Map<string, IndexedNote>();
+	for (const file of files) {
+		const frontmatter = file.frontmatter;
+		if (!frontmatter) continue;
+		const note = { path: file.path, reading: readingValue(frontmatter["rc-status"]) };
+		const doi = keys.map((key) => normalizeDoi(frontmatterText(frontmatter[key]))).find((value): value is string => Boolean(value));
+		const id = frontmatterText(frontmatter.openalex)?.match(/W\d+/i)?.[0]?.toUpperCase();
+		if (doi && !byDoi.has(doi)) byDoi.set(doi, note);
+		if (id && !byId.has(id)) byId.set(id, note);
+	}
+	return { byDoi, byId };
+}
+
+function readingValue(value: unknown): ReadingStatus | null {
+	return value === "unread" || value === "to-read" || value === "read" ? value : null;
+}
+
+function frontmatterText(value: unknown): string | null {
+	if (typeof value === "string" && value.trim()) return value.trim();
+	if (typeof value === "number" && Number.isFinite(value)) return String(value);
+	return null;
 }

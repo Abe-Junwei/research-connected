@@ -1,8 +1,6 @@
 import { tr } from "./i18n";
 import { createChromeIcon } from "./graph-chrome";
 
-export type ReadingAction = "unread" | "to-read" | "read";
-
 export interface GraphSurface {
 	stage: HTMLDivElement;
 	canvas: HTMLCanvasElement;
@@ -14,7 +12,6 @@ export interface GraphSurface {
 	deleteItem: HTMLButtonElement;
 	expandItem: HTMLButtonElement;
 	seedItem: HTMLButtonElement;
-	readingActions: Map<ReadingAction, HTMLButtonElement>;
 	zoom: HTMLDivElement;
 	zoomIn: HTMLButtonElement;
 	zoomOut: HTMLButtonElement;
@@ -30,7 +27,7 @@ export function placeNodeMenu(stage: HTMLElement, menu: HTMLElement, x: number, 
 }
 
 /** Shared graph canvas shell; graph pane and note embeds supply only their host-specific content/actions. */
-export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: string; title: string; hint: string }): GraphSurface {
+export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: string; title: string; hint: string; mutations?: boolean }): GraphSurface {
 	const stage = document.createElement("div");
 	stage.className = "cpo-stage";
 	const canvas = document.createElement("canvas");
@@ -52,17 +49,15 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	nodeMenu.hidden = true;
 	nodeMenu.setAttribute("role", "menu");
 	const deleteItem = menuButton(tr("排除", "Exclude"));
+	deleteItem.classList.add("is-danger");
 	const expandItem = menuButton(tr("深挖", "Deep dive"));
 	const seedItem = menuButton(tr("设为种子", "Set as seed"));
-	nodeMenu.append(deleteItem, expandItem, seedItem);
-	const readingActions = new Map<ReadingAction, HTMLButtonElement>();
-	for (const [reading, label] of [["unread", tr("标记为未读", "Mark as unread")], ["to-read", tr("标记为待读", "Mark as to read")], ["read", tr("标记为已读", "Mark as read")]] as const) {
-		const button = document.createElement("button");
-		button.type = "button";
-		button.setAttribute("role", "menuitem");
-		button.textContent = label;
-		readingActions.set(reading, button);
-		nodeMenu.append(button);
+	if (options.mutations === false) nodeMenu.append(seedItem);
+	else {
+		const dangerSep = document.createElement("span");
+		dangerSep.className = "cpo-node-menu-sep";
+		dangerSep.setAttribute("role", "separator");
+		nodeMenu.append(expandItem, seedItem, dangerSep, deleteItem);
 	}
 	const zoom = document.createElement("div");
 	zoom.className = "cpo-zoom";
@@ -78,7 +73,7 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	zoom.append(zoomIn, zoomOut, fit, reload);
 	stage.append(canvas, empty, tooltip, nodeMenu, zoom);
 	parent.append(stage);
-	return { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, readingActions, zoom, zoomIn, zoomOut, fit, reload };
+	return { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoom, zoomIn, zoomOut, fit, reload };
 }
 
 function menuButton(label: string): HTMLButtonElement {

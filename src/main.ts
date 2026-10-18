@@ -11,6 +11,7 @@ import {
 import { normalizeStagedList } from "./staging";
 import { migrateProjectRecords, normalizeProjects } from "./project-state";
 import { clamp } from "./visual";
+import { invalidateLiteratureIndex } from "./vault-note";
 import { ConnectedPapersView } from "./view";
 
 export default class ConnectedPapersPlugin extends Plugin {
@@ -49,6 +50,10 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on("css-change", () => {
 			window.dispatchEvent(new Event("research-connected-theme"));
 		}));
+		const dropLiteratureIndex = (): void => invalidateLiteratureIndex();
+		this.registerEvent(this.app.metadataCache.on("changed", dropLiteratureIndex));
+		this.registerEvent(this.app.vault.on("delete", dropLiteratureIndex));
+		this.registerEvent(this.app.vault.on("rename", dropLiteratureIndex));
 		this.addSettingTab(new ConnectedPapersSettingTab(this.app, this, this));
 		registerConnectedPapersEmbed(this);
 	}

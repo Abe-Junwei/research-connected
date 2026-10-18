@@ -17,3 +17,4 @@ scripts/perf.cjs
 scripts/mmr-sweep.cjs
 preview/preview.js
 preview/embed.js
+.superdesign/tmp

@@ -119,9 +119,10 @@ export class OpenAlexClient {
 		maxPages: number,
 		accept: (work: RawWork) => boolean,
 	): Promise<SampledWorks> {
+		const budget = pageBudget(perPage, maxPages);
 		const url = new URL(`${OPENALEX_API}/works`);
 		url.searchParams.set("filter", filter);
-		url.searchParams.set("per_page", String(perPage));
+		url.searchParams.set("per_page", String(budget.perPage));
 		if (sort) url.searchParams.set("sort", sort);
 		url.searchParams.set("select", LIST_SELECT);
 		if (maxPages > 1) url.searchParams.set("cursor", "*");
@@ -136,7 +137,7 @@ export class OpenAlexClient {
 	let pages = 0;
 	let nextCursor: string | null = "*";
 	let error: string | undefined;
-	while (pages < Math.max(1, maxPages) && works.length < target && nextCursor) {
+	while (pages < budget.maxPages && works.length < target && nextCursor) {
 		if (pages > 0) url.searchParams.set("cursor", nextCursor);
 		let page: { results: RawWork[]; nextCursor: string | null };
 		try {
@@ -266,6 +267,17 @@ export class OpenAlexClient {
 		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 		return headers;
 	}
+}
+
+/** OpenAlex documents cap `per_page` at 100. A multi-page call keeps the same raw budget by adding pages; a one-page call stays one page. */
+export const OPENALEX_MAX_PER_PAGE = 100;
+
+export function pageBudget(perPage: number, maxPages: number): { perPage: number; maxPages: number } {
+	const size = Math.max(1, Math.floor(perPage) || 1);
+	const pages = Math.max(1, Math.floor(maxPages) || 1);
+	if (size <= OPENALEX_MAX_PER_PAGE) return { perPage: size, maxPages: pages };
+	if (pages === 1) return { perPage: OPENALEX_MAX_PER_PAGE, maxPages: 1 };
+	return { perPage: OPENALEX_MAX_PER_PAGE, maxPages: pages * Math.ceil(size / OPENALEX_MAX_PER_PAGE) };
 }
 
 function sampledIdentity(work: RawWork): string {

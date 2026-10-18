@@ -31,6 +31,19 @@ export interface RelationSectionOptions {
 	semanticHint?: string;
 }
 
+/** Shown when a vault note already matches this paper's DOI or OpenAlex id. */
+export function paintLiteratureLink(parent: HTMLElement, path: string, open: (path: string) => void): void {
+	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
+	const actionRow = card.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
+	const note = el(card, "p", "cpo-fact-note");
+	const button = el(note, "button", "cpo-text-btn", tr("打开笔记", "Open note")) as HTMLButtonElement;
+	button.type = "button";
+	button.title = path;
+	button.onclick = () => open(path);
+	note.prepend(document.createTextNode(tr("已有笔记 · ", "In your notes · ")));
+	if (actionRow) card.insertBefore(note, actionRow);
+}
+
 export function paintPaperWorkflowState(
 	parent: HTMLElement, paper: PaperNode, state: ProjectPaperState,
 	onReading: (reading: ReadingStatus, previous: ReadingStatus) => void, onExclude?: () => void,
@@ -79,12 +92,12 @@ export function semanticHintFor(mode?: "embedding" | "local"): string {
 	return mode === "embedding" ? tr("SPECTER2 语义向量 + 主题", "SPECTER2 embeddings and topics") : tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally");
 }
 
-/** Author chips from the structured list; falls back to the joined string. */
+/** Author line from the structured list; falls back to the joined string. */
 export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
-	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
-	el(row, "span", "cpo-chip-label", tr("作者", "Authors"));
 	const names = paper.authorList?.length ? paper.authorList : paper.authors ? [paper.authors] : [];
-	for (const name of names.slice(0, 5)) el(row, "span", "cpo-chip cpo-chip-author", name);
+	if (names.length === 0) return;
+	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
+	const text = el(row, "span", "cpo-paper-authors", names.slice(0, 5).join(" · "));
 	if (names.length > 5) {
 		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`) as HTMLButtonElement;
 		more.type = "button";
@@ -93,30 +106,18 @@ export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
 		more.onclick = () => {
 			const expanded = more.getAttribute("aria-expanded") !== "true";
 			more.setAttribute("aria-expanded", String(expanded));
-			if (expanded) {
-				for (const name of names.slice(5)) {
-					const chip = document.createElement("span");
-					chip.className = "cpo-chip cpo-chip-author cpo-author-extra";
-					chip.textContent = name;
-					more.before(chip);
-				}
-				more.textContent = tr("收起", "Collapse");
-				more.setAttribute("aria-label", tr("收起其余作者", "Collapse other authors"));
-			} else {
-				row.querySelectorAll(".cpo-author-extra").forEach((chip) => chip.remove());
-				more.textContent = `+${names.length - 5}`;
-				more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
-			}
+			text.textContent = (expanded ? names : names.slice(0, 5)).join(" · ");
+			more.textContent = expanded ? tr("收起", "Collapse") : `+${names.length - 5}`;
+			more.setAttribute("aria-label", expanded ? tr("收起其余作者", "Collapse other authors") : tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
 		};
 	}
 }
 
-/** 出处行：期刊名/书名 chip，悬停显示全文。元数据卡与聚合卡共用。 */
+/** 出处行：期刊名/书名题录行，悬停显示全文。元数据卡与聚合卡共用。 */
 export function paintVenueRow(parent: HTMLElement, paper: PaperNode): void {
 	if (!paper.venue) return;
 	const row = el(parent, "div", "cpo-badge-row cpo-venue-row");
-	el(row, "span", "cpo-chip-label", tr("出处", "Venue"));
-	const venue = el(row, "span", "cpo-chip cpo-chip-venue", paper.venue);
+	const venue = el(row, "span", "cpo-paper-venue", paper.venue);
 	venue.title = paper.venue;
 }
 
@@ -145,11 +146,12 @@ export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: s
 /** 元数据卡：origin/年份/类型/被引徽章行 + 标题 + 作者 chips + 状态徽章与警告 + 主题 chips。 */
 export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: DetailCrossCheck | null | undefined): void {
 	const card = el(parent, "section", "cpo-card cpo-paper-identity");
-	const badges = el(card, "div", "cpo-badge-row");
-	el(badges, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
-	el(badges, "span", "cpo-chip", paper.year === null ? tr("年份不详", "Year unknown") : tr(`${paper.year} 年`, `${paper.year}`));
-	el(badges, "span", "cpo-chip cpo-chip-muted", tr(`被引 ${formatCount(paper.citedByCount)}`, `Cited ${formatCount(paper.citedByCount)} times`));
 	el(card, "h3", "cpo-card-title", paper.title || paper.id);
+	el(card, "p", "cpo-library-meta", [
+		ORIGIN_TEXT[paper.origin],
+		paper.year === null ? tr("年份不详", "Year unknown") : tr(`${paper.year} 年`, `${paper.year}`),
+		tr(`被引 ${formatCount(paper.citedByCount)}`, `Cited ${formatCount(paper.citedByCount)} times`),
+	].join(" · "));
 	paintAuthorChips(card, paper);
 	paintVenueRow(card, paper);
 	paintPaperStateBadges(card, paper, check);
@@ -196,6 +198,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 /** One labeled similarity meter; null renders the unavailable empty state. */
 export function paintMeter(parent: HTMLElement, label: string, value: number | null, hint: string, alt = false): void {
 	const meter = el(parent, "div", "cpo-meter");
+	meter.title = hint;
 	const head = el(meter, "div", "cpo-meter-head");
 	el(head, "span", "cpo-meter-label", label);
 	if (value === null) {

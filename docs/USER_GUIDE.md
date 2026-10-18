@@ -152,6 +152,24 @@ Thickness is the same three steps as the graph key (weak / medium / strong), not
 
 `depth: 2` costs a few extra OpenAlex calls. If that second hop fails, the block keeps the depth-1 graph and says so.
 
+## Literature notes
+
+Select a paper, then choose **Export → Write to note**. With nothing selected, the seed is written. Outside Obsidian (the dev preview) the same action copies the note contents instead.
+
+The note goes to **Literature note folder** (created if missing; empty means the vault root). A file with the same name gets a numeric suffix rather than being overwritten. The frontmatter is always written:
+
+| Property | Value |
+| --- | --- |
+| `title`, `authors`, `year` | From OpenAlex. `authors` is one comma-separated string. |
+| `doi` | Bare DOI, omitted when the work has none. |
+| `openalex` | OpenAlex work URL. |
+| `rc-project` | Research project name, or the seed ID when the project is unnamed. |
+| `rc-status` | `unread`, `to-read`, or `read`. |
+
+**Literature note filename** and **Literature note body** accept `{{title}}`, `{{authors}}`, `{{year}}`, `{{doi}}`, `{{openalex}}`, `{{relation}}` (how the paper relates to the seed), `{{project}}`, and `{{status}}`. The filename defaults to `{{year}} {{title}}`, drops `\ / : * ? " < > |`, and is cut to 80 characters. An empty body writes a `# title` heading.
+
+The plugin recognizes notes already in the vault by frontmatter: a DOI match (in `doi` or the property set in **DOI property name**) wins over an `openalex` match. When a paper has a note, its details show **In your notes · Open note**. Opening that paper copies a valid `rc-status` from the note into the project; changing the reading status in the panel, the staged list, or the Prior / Later work cards writes `rc-status` back to the note. Notes written by other plugins without `rc-status` are linked but left untouched until you change the status.
+
 ## Settings
 
 ### Multiple evidence sources and optional LLM
@@ -179,6 +197,10 @@ Settings → Research Connected.
 | Include references | on | Seed's outgoing references. |
 | Include citing works | on | Works that cite the seed, also used as co-citation context. |
 | Include related works | on | OpenAlex `related_works` as extra candidate nodes. |
+| Literature note folder | empty | Folder for **Write to note**. Empty is the vault root. See [Literature notes](#literature-notes). |
+| Literature note filename | empty | Filename template. Empty is `{{year}} {{title}}`. |
+| Literature note body | empty | Body template under the frontmatter. Empty is a title heading. |
+| DOI property name | `doi` | Extra frontmatter property checked when matching existing notes. `doi` is always checked. |
 
 Turn off every neighbor toggle and the pane asks you to enable one. The next build uses the new toggles; the current map is not rebuilt automatically.
 
@@ -190,7 +212,7 @@ A free key from [openalex.org/settings/api](https://openalex.org/settings/api) r
 
 Since February 2026 OpenAlex **ignores `mailto`**. The email setting is still sent to older OpenAlex gateways but does **not** raise its limit; Crossref uses a valid email as contact information for its public API. An OpenAlex key is the way to get a higher OpenAlex budget. See [OpenAlex authentication](https://help.openalex.org/api/authentication/).
 
-One map on standard sampling is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Deep sampling cursor-pages the reference and citation lists (up to 5 pages each) and fetches more batched details, around 20 calls in total. Title search is a separate, slightly more expensive call.
+One map on standard sampling is a handful of calls: one work lookup, up to three list calls, and one or two batched id lookups. Deep sampling cursor-pages the reference and citation lists (100 works per page, up to 1,000 examined) and fetches more batched details. Without an OpenAlex API key, deep sampling stops after the first page and the status bar says so. Title search is a separate, slightly more expensive call.
 
 ## Algorithm
 
@@ -199,8 +221,8 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
 1. Resolve the seed work.
 2. Sample candidates (most-cited first when a sort applies). The **Sampling depth** setting picks the tier:
    - **standard** — up to 80 works the seed cites, 40 that cite it, 20 related works; about 5 requests per map
-   - **extended** — one full 200-per-page list of references and citing works, 50 related; about 7 requests
-   - **deep** — references and citing works cursor-paged up to 1000 each, 100 related; about 20 requests, so set an OpenAlex API key first
+   - **extended** — up to 200 references and 200 citing works, 100 per page, 50 related
+   - **deep** — references and citing works examined up to 1000 each (100 per page), 100 related; past the first page this needs an OpenAlex API key, otherwise the status bar reports that only the first page was read
 3. Keep at most `Maximum nodes − 1` neighbors (20–300; pair anything above ~80 with extended or deep sampling so the pools can fill the slots):
    - records whose OpenAlex `type` is non-research (**book-review**, editorial, correction/erratum, letter, retraction, peer-review, paratext) are dropped first — a book review's title embeds the book ("…By Author. Publisher, year. Pp. …") and citations meant for the book land on the review, which would bend the map toward the wrong record; the status line reports how many were filtered. The seed itself is kept regardless of type, with a note in its detail sheet
    - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure

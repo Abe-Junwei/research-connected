@@ -2,23 +2,23 @@ import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
 import { createChromeIcon, mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { noteFilename, noteSkeleton, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
+import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
-import { EXPAND_CAP, graftNodes, omitNode, refreshDerived } from "./graph-edit";
-import { beginDeepDive, diagnoseCandidate, endDeepDive, expandAround, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
+import { omitNode } from "./graph-edit";
+import { diagnoseCandidate, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
 import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
-import { restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ResearchProject } from "./project-state";
+import { updateProjectPaperState, type ReadingStatus } from "./project-state";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { mountSidebarResize } from "./sidebar-resize";
@@ -31,7 +31,11 @@ export interface EmbedDeps {
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
-	createNote?: (filename: string, markdown: string) => Promise<void>;
+	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
+	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null } | null;
+	openLiteratureNote?: (path: string) => void;
+	syncLiteratureReading?: (paper: PaperNode, reading: ReadingStatus) => Promise<void>;
+	rememberLiteratureNote?: (paper: PaperNode, path: string, reading: ReadingStatus) => void;
 	/** Open the full graph pane on this seed, when the host supports it. */
 	openGraph?: (target: { kind: "doi" | "openalex"; value: string }) => void;
 }
@@ -101,8 +105,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	rail.append(layoutHost, scrubHost, railToggle);
 
 	body.append(rail);
-	const surface = mountGraphSurface(body, { canvasLabel: tr("论文相似度图谱", "Paper similarity graph"), title: "", hint: "" });
-	const { stage, canvas, empty: message, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, readingActions, zoom, zoomIn, zoomOut, fit: zoomFit, reload } = surface;
+	const surface = mountGraphSurface(body, { canvasLabel: tr("论文相似度图谱", "Paper similarity graph"), title: "", hint: "", mutations: false });
+	const { stage, canvas, empty: message, messageText, tooltip, nodeMenu, seedItem, zoom, zoomIn, zoomOut, fit: zoomFit, reload } = surface;
 	const openGraphAction = document.createElement("button");
 	openGraphAction.type = "button";
 	openGraphAction.className = "cpo-ghost cpo-open-graph";
@@ -211,154 +215,45 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let currentGraph: SimilarityGraph | null = null;
 	let sourceGraph: SimilarityGraph | null = null;
 	let lastDepthNote = "";
-	let expanding = false;
-	seedItem.textContent = tr("在图谱中设为种子", "Set as seed in graph");
+	seedItem.textContent = tr("在图谱中打开", "Open in graph");
 	seedItem.hidden = !deps.openGraph;
 	let selected: PaperNode | null = null;
 	let selectedLink: GraphEdge | null = null;
 	let chrome: GraphChrome | null = null;
 	map.onNodeMenu = (paper, x, y) => {
-		if (!paper || !currentGraph) {
+		if (!paper || !currentGraph || !deps.openGraph) {
 			nodeMenu.hidden = true;
 			return;
 		}
-		const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id;
-		const reading = seedId ? deps.getSettings().researchProjects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread" : "unread";
-		for (const [value, button] of readingActions) button.hidden = value === reading;
-		deleteItem.disabled = paper.isSeed || !deps.stagePaper;
-		deleteItem.title = paper.isSeed ? tr("种子论文不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
-		expandItem.disabled = expanding || !deps.stagePaper;
-		seedItem.disabled = paper.isSeed;
 		nodeMenu.dataset.paperId = paper.id;
 		nodeMenu.hidden = false;
 		placeNodeMenu(stage, nodeMenu, x, y);
 	};
-	deleteItem.addEventListener("click", async () => {
-		const paper = currentGraph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
-		const seedId = currentGraph?.nodes.find((node) => node.isSeed)?.id;
-		if (!paper || paper.isSeed || !seedId || !deps.stagePaper) return;
-		const projects = deps.getSettings().researchProjects;
-		const previous = projects[seedId]?.paperStates?.[paper.id]?.excluded ?? false;
-		const source = projects[seedId]?.paperStates?.[paper.id]?.source ?? "OpenAlex";
-		updateProjectPaperState(projects, seedId, paper, { excluded: true });
-		deleteItem.disabled = true;
-		try {
-			await deps.stagePaper(paper, seedId, source);
-			nodeMenu.hidden = true;
-			if (sourceGraph) renderGraph(sourceGraph, lastDepthNote);
-			status.textContent = tr(`已排除「${paper.title}」`, `Excluded “${paper.title}”`);
-		} catch {
-			updateProjectPaperState(projects, seedId, paper, { excluded: previous });
-			status.textContent = tr("排除状态保存失败，请重试", "Could not save exclusion state. Try again.");
-			deleteItem.disabled = false;
-		}
-	});
 	seedItem.addEventListener("click", () => {
 		const paper = currentGraph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
-		if (paper && !paper.isSeed) deps.openGraph?.({ kind: "openalex", value: paper.id });
+		if (paper) deps.openGraph?.({ kind: "openalex", value: paper.id });
 		nodeMenu.hidden = true;
 	});
-	expandItem.addEventListener("click", async () => {
-		const host = currentGraph;
-		const paper = host?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
-		const seedId = host?.nodes.find((node) => node.isSeed)?.id;
-		if (!host || !paper || !seedId || expanding || !deps.stagePaper) return;
-		const settings = deps.getSettings();
-		const projects = settings.researchProjects;
-		const prior = projects[seedId];
-		const savedGraph = restoreGraphSnapshot(prior?.snapshot);
-		if (prior?.snapshot && (!savedGraph || !savedGraph.nodes.some((node) => node.isSeed && node.id === seedId))) {
-			nodeMenu.hidden = true;
-			status.textContent = tr("研究项目快照无法读取，请先在图谱页处理", "Cannot read the project snapshot. Open the graph view first.");
-			return;
-		}
-		const base = savedGraph?.nodes.some((node) => node.isSeed && node.id === seedId) ? savedGraph : host;
-		const slots = Math.min(EXPAND_CAP, (spec.maxNodes ?? settings.maxNodes) - host.nodes.length, settings.maxNodes - base.nodes.length);
-		nodeMenu.hidden = true;
-		if (slots <= 0) {
-			status.textContent = tr("已到节点上限，请在图谱页移除论文后继续深挖", "Node limit reached. Remove a paper in the graph view before continuing the deep dive.");
-			return;
-		}
-		if (!beginDeepDive(seedId)) {
-			status.textContent = tr("这张图已有一轮深挖在进行，请稍后重试", "A deep dive is already running for this graph. Try again later.");
-			return;
-		}
-		const token = generation;
-		expanding = true;
-		expandItem.disabled = true;
-		status.textContent = tr(`正在从「${paper.title.slice(0, 24)}」扩展…`, `Expanding from “${paper.title.slice(0, 24)}”…`);
-		try {
-			const hidden = new Set([...host.excludedIds ?? [], ...Object.entries(prior?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id)]);
-			const oa = clientFor(deps, settings);
-			const result = await expandAround(oa, host, paper, hidden, settings, slots);
-			if (!alive || token !== generation || currentGraph !== host) return;
-			const latest = projects[seedId];
-			const latestSaved = restoreGraphSnapshot(latest?.snapshot);
-			if (latest?.snapshot && (!latestSaved || !latestSaved.nodes.some((node) => node.isSeed && node.id === seedId))) throw new Error(tr("研究项目快照已变化，请重试深挖", "Project snapshot changed. Try the deep dive again."));
-			const latestBase = latestSaved?.nodes.some((node) => node.isSeed && node.id === seedId) ? latestSaved : host;
-			const newToProject = result.papers.filter((item) => !latestBase.nodes.some((node) => node.id === item.id));
-			if (latestBase.nodes.length + newToProject.length > settings.maxNodes) throw new Error(tr("项目节点上限已变化，请重试深挖", "Project node limit changed. Try the deep dive again."));
-			const updated = result.papers.length ? refreshDerived(graftNodes(host, result.papers, result.lists)) : host;
-			const full = latestBase === host ? updated : refreshDerived(graftNodes(latestBase, result.papers, result.lists));
-			const batch: DeepDiveBatch = {
-				id: `${Date.now()}`, parentId: paper.id, createdAt: Date.now(),
-				references: result.references, citations: result.citations,
-				additions: result.papers.map((item) => ({ paperId: item.id, source: item.origin === "reference" ? "reference" : item.origin === "citation" ? "citation" : "shared-reference" })),
-				noMore: result.noMore, warnings: result.warnings,
-			};
-			const project: ResearchProject = {
-				version: 1, seedId, name: latest?.name ?? host.nodes.find((node) => node.isSeed)?.title ?? seedId,
-				updatedAt: Date.now(), snapshot: saveGraphSnapshot(full),
-				views: latest?.views ?? [], currentView: latest?.currentView,
-				paperStates: latest?.paperStates ?? {}, deepDives: [...(latest?.deepDives ?? []), batch].slice(-100),
-			};
-			projects[seedId] = project;
-			try { await deps.stagePaper(paper, seedId, "OpenAlex"); }
-			catch (error) {
-				if (latest) projects[seedId] = latest;
-				else delete projects[seedId];
-				throw error;
-			}
-			if (!alive || token !== generation || currentGraph !== host) return;
-			if (result.papers.length) {
-				remember(stateKey, updated);
-				renderGraph(updated, lastDepthNote);
-				if (currentGraph) showDetail(paper, currentGraph, null);
-			}
-			status.textContent = result.warnings.length ? result.warnings.join(tr("；", "; ")) : result.papers.length ? tr(`已并入 ${result.papers.length} 篇 · 当前 ${updated.nodes.length} 篇`, `Added ${result.papers.length} papers · ${updated.nodes.length} total`) : result.noMore ? tr("已读完当前可访问候选，没有更多文献", "All accessible candidates have been read; no more papers are available") : tr("本轮没有新增文献，可继续深挖", "No papers added in this round; you can continue the deep dive");
-		} catch (error) {
-			if (alive && token === generation) status.textContent = error instanceof Error ? error.message : tr("深挖失败", "Deep dive failed");
-		} finally {
-			endDeepDive(seedId);
-			expanding = false;
-			expandItem.disabled = false;
-		}
-	});
-	for (const [reading, button] of readingActions) button.addEventListener("click", async () => {
-		const paper = currentGraph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
-		const seedId = currentGraph?.nodes.find((node) => node.isSeed)?.id;
-		if (!paper || !seedId) return;
-		const projects = deps.getSettings().researchProjects;
-		const previous = projects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread";
-		const source = projects[seedId]?.paperStates?.[paper.id]?.source ?? "OpenAlex";
-		updateProjectPaperState(projects, seedId, paper, { reading });
-		button.disabled = true;
-		try {
-			await deps.stagePaper?.(paper, seedId, source);
-			nodeMenu.hidden = true;
-			if (currentGraph) showDetail(paper, currentGraph, null);
-		} catch {
-			updateProjectPaperState(projects, seedId, paper, { reading: previous });
-			status.textContent = tr("阅读状态保存失败，请重试", "Could not save reading status. Try again.");
-		} finally {
-			button.disabled = false;
-		}
-	});
+	const hideNodeMenu = (): void => { nodeMenu.hidden = true; };
 	stage.addEventListener("pointerdown", (event) => {
-		if (!nodeMenu.contains(event.target as Node)) nodeMenu.hidden = true;
+		if (!nodeMenu.contains(event.target as Node)) hideNodeMenu();
 	});
+	const onMenuKey = (event: KeyboardEvent): void => {
+		if (event.key === "Escape") hideNodeMenu();
+	};
+	window.addEventListener("keydown", onMenuKey);
+
+	const tabTitles: Record<GraphTab, string> = {
+		graph: tr("论文详情与关联依据", "Paper details & evidence"),
+		prior: tr("先验工作", "Prior works"),
+		derivative: tr("衍生工作", "Derivative works"),
+		research: tr("研究脉络", "Research narrative"),
+		staged: tr("暂存列表", "Saved papers"),
+		excluded: tr("已排除论文", "Excluded papers"),
+	};
 
 	const paintLists = (): void => {
+		evidenceTitle.textContent = tabTitles[tab] ?? tabTitles.graph;
 		detail.hidden = tab !== "graph";
 		if (!currentGraph || tab === "graph") {
 			listPanel.hidden = true;
@@ -380,7 +275,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 			paintPaperWorkflowState(card, paper, state, async (reading, previous) => {
 				updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading });
-				try { await deps.stagePaper?.(paper, seed.id, state.source); }
+				try {
+					await deps.stagePaper?.(paper, seed.id, state.source);
+					await deps.syncLiteratureReading?.(paper, reading);
+				}
 				catch (error) {
 					updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading: previous });
 					throw error;
@@ -443,11 +341,21 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (kind === "note") {
 			const paper = selected ?? currentGraph.nodes.find((node) => node.isSeed) ?? null;
 			if (!paper) return;
-			const markdown = noteSkeleton(paper);
+			const settings = deps.getSettings();
+			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
+			const fields = {
+				project: settings.researchProjects[seedId]?.name || seedId,
+				relation: ORIGIN_TEXT[paper.origin],
+				status: settings.researchProjects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread" as const,
+			};
+			const filename = literatureFilename(paper, settings.literatureFilename, fields);
+			const markdown = literatureMarkdown(paper, settings.literatureTemplate, fields);
 			if (deps.createNote) {
 				try {
-					await deps.createNote(noteFilename(paper), markdown);
-					chrome?.setExportText(tr(`已写入笔记：${noteFilename(paper)}`, `Written to note: ${noteFilename(paper)}`));
+					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
+					deps.rememberLiteratureNote?.(paper, typeof path === "string" ? path : filename, fields.status);
+					chrome?.setExportText(tr(`已写入笔记：${filename}`, `Written to note: ${filename}`));
+					if (currentGraph) showDetail(paper, currentGraph, selectedLink);
 				} catch (error) {
 					chrome?.setExportText(error instanceof Error ? error.message : tr("笔记没有写成。", "Could not write the note."));
 				}
@@ -524,15 +432,23 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 		const seedId = seed?.id ?? paper.id;
 		const project = deps.getSettings().researchProjects[seedId];
-		const paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
+		if (noted?.reading && noted.reading !== paperState.reading) {
+			paperState = { ...paperState, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
+			void deps.stagePaper?.(paper, seedId, paperState.source);
+		}
 		paintPaperWorkflowState(detail, paper, paperState, async (reading, previous) => {
 			updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading });
-			try { await deps.stagePaper?.(paper, seedId, paperState.source); }
-			catch (error) {
+			try {
+				await deps.stagePaper?.(paper, seedId, paperState.source);
+				await deps.syncLiteratureReading?.(paper, reading);
+			} catch (error) {
 				updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: previous });
 				throw error;
 			}
 		});
+		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote);
 		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
 		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
 		const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
@@ -542,6 +458,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			persist: deps.stagePaper && seed ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
 			openExternal: deps.openExternal,
 		});
+		paintAbstractCard(detail, paper, embedAbstractText);
 		if (!paper.isSeed && seed) {
 			const toSeed = findEdge(graph.edges, paper.id, seed.id);
 			if (toSeed) {
@@ -602,7 +519,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				if (selected === paper && currentGraph) showDetail(paper, currentGraph, null);
 			});
 		}
-		paintAbstractCard(detail, paper, embedAbstractText);
 	};
 
 	diagnoseButton.addEventListener("click", () => {
@@ -699,11 +615,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		else chrome?.clearYears();
 		paintLists();
 		const seed = graph.nodes.find((node) => node.isSeed);
-		status.textContent = tr(`${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
+		const fullStatus = tr(`${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
-		}`, `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
+		}${graph.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}`, `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · filtered ${graph.skippedNonResearch} reviews and other non-research records` : ""
-		}`);
+		}${graph.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}`);
+		status.textContent = fullStatus;
+		status.title = fullStatus;
 		if (seed) showDetail(seed, graph, null);
 	};
 
@@ -816,6 +734,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		snapshotView();
 		window.removeEventListener("research-connected-theme", onTheme);
 		window.removeEventListener("research-connected-project", onProject);
+		window.removeEventListener("keydown", onMenuKey);
 		map.destroy();
 		chrome?.destroy();
 		sheet.destroy();

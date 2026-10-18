@@ -3135,7 +3135,8 @@ button.cpo-agg-item {
 }
 
 .cpo-root .cpo-seed-title {
-	font-size: 12px;
+	font-size: 13px;
+	font-weight: 650;
 }
 
 .cpo-root .cpo-seed-meta {
@@ -3530,13 +3531,129 @@ button.cpo-agg-item {
 	border-radius: 4px;
 	background: color-mix(in srgb, var(--text-normal) 5%, transparent);
 	color: var(--text-muted);
-	font-size: 10px;
+	font-size: 11px;
 	line-height: 1;
 }
 .cpo-root .cpo-detail .cpo-paper-topics .cpo-paper-topic-more,
 .cpo-embed .cpo-detail .cpo-paper-topics .cpo-paper-topic-more {
 	background: transparent;
 	color: var(--text-muted);
+}
+
+/* Phase 1–4: Editorial typography, flat library rows, and rail/menu hierarchy. */
+.cpo-paper-venue {
+	display: block;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: 11px;
+	font-style: italic;
+	line-height: 1.4;
+}
+
+.cpo-library-open[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--cpo-accent) 12%, var(--background-primary));
+	color: var(--cpo-accent);
+}
+
+.cpo-library-switch {
+	display: flex;
+	gap: 4px;
+	margin: 0 0 10px;
+}
+
+.cpo-root .cpo-library-switch-item,
+.cpo-embed .cpo-library-switch-item {
+	min-height: 26px;
+	padding: 2px 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-muted);
+	font: inherit;
+	font-size: 11px;
+}
+
+.cpo-library-switch-item[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--cpo-accent) 12%, var(--background-primary));
+	color: var(--cpo-accent);
+}
+
+.cpo-meter:has(.cpo-meter-track) > .cpo-meter-hint {
+	display: none;
+}
+
+.cpo-root .cpo-library-card,
+.cpo-embed .cpo-library-card {
+	gap: 5px;
+	padding: 9px 2px;
+	border: 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background: transparent;
+}
+
+.cpo-agg-entry:last-child > .cpo-library-card {
+	border-bottom: 0;
+}
+
+.cpo-library-card > .cpo-card-title {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.38;
+}
+
+.cpo-library-meta {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+.cpo-rail .cpo-graph-key-marks {
+	margin-top: 4px;
+	padding-top: 6px;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.cpo-node-menu-sep {
+	display: block;
+	height: 1px;
+	margin: 3px 4px;
+	background: var(--background-modifier-border);
+}
+
+.cpo-node-menu button.is-danger:hover:not(:disabled) {
+	color: var(--text-error, #b42318);
+}
+
+.cpo-chip,
+.cpo-stat-label,
+.cpo-root button.cpo-paper-action,
+.cpo-embed button.cpo-paper-action,
+.cpo-root button.cpo-library-action,
+.cpo-embed button.cpo-library-action {
+	font-size: 11px;
+}
+
+.cpo-root .cpo-project-tools {
+	gap: 8px;
+	padding-top: 5px;
+}
+
+.cpo-project-group {
+	min-height: 30px;
+}
+
+.cpo-root .cpo-project-tools .cpo-project-select,
+.cpo-root .cpo-project-tools .cpo-project-name-input,
+.cpo-root .cpo-project-tools button.cpo-ghost {
+	height: 29px;
+	min-height: 29px;
 }
 
 @media (max-width: 779px) {

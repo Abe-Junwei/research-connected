@@ -32,6 +32,8 @@ assert.match(app, /cpo-evidence-header[\s\S]*?诊断候选/, "pane exposes candi
 const chrome = readFileSync("src/graph-chrome.ts", "utf8");
 assert.match(chrome, /createChromeIcon\(mode === "force2d" \? "grid"/, "layout buttons use shared line icons");
 assert.match(chrome, /cpo-scrub-meta/, "year readout and playback are grouped");
+assert.match(chrome, /export function registerPopover/, "popover menus close themselves");
+assert.match(app, /registerPopover\(actionMenu\)/, "saved-list menu uses the shared popover");
 assert.match(surface, /createChromeIcon\("refresh"\)/, "shared graph surface owns the reload icon");
 assert.doesNotMatch(embed, /icon\.style\.display\s*=\s*on\s*\?/, "expanded embed rail keeps icons beside labels");
 assert.doesNotMatch(app, /cpo-rail-filter/, "pane has no filter tab");
@@ -55,7 +57,8 @@ assert.match(css, /\.cpo-panel-toggle\b/, "panel collapse toggles are styled");
 assert.match(app, /is-rail-collapsed/, "pane can collapse the left rail");
 assert.match(app, /is-sidebar-collapsed/, "pane can collapse the evidence rail");
 assert.match(embed, /is-rail-collapsed/, "embed can collapse the left rail");
-assert.match(embed, /expandItem\.addEventListener\("click"[\s\S]*?expandAround\(/, "embed supports deep dive from the shared node menu");
+assert.match(embed, /在图谱中打开/, "embed sends heavy actions to the graph pane");
+assert.doesNotMatch(embed, /expandAround/, "embed does not deep-dive on its own");
 assert.match(app, /paintSelectionReasons\(detail, rankInfo, score\)/, "pane wires selection reasons");
 assert.match(embed, /paintSelectionReasons\(detail, rankInfo, graph\.seedScore\.get\(paper\.id\)\)/, "embed wires selection reasons");
 const details = readFileSync("src/detail-cards.ts", "utf8");
@@ -63,5 +66,8 @@ assert.match(details, /createElement\("details"\)/, "入选原因 uses native de
 assert.match(details, /createElement\("summary"\)/, "入选原因 uses native summary");
 assert.match(details, /选择时相关性/, "relevance meter is shown");
 assert.match(details, /建图后当前综合分/, "post-graph score is labeled as not used in selection");
+assert.match(details, /cpo-paper-venue/, "venue renders as clean editorial line");
+assert.match(surface, /cpo-node-menu-sep/, "node menu separates graph actions, reading status, and exclusion");
+assert.match(css, /\.cpo-library-meta\b/, "saved/excluded rows use compact metadata lines");
 assert.match(css, /\.cpo-root :where\([^)]*summary[^)]*\):focus-visible/, "summary keyboard focus is shared");
 console.log("ui contract checks passed");
