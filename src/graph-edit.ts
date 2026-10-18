@@ -1,8 +1,8 @@
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
-import { edgeCitationPairs } from "./citation-evidence";
+import { CitationEvidenceStore, edgeCitationPairs, type CitationEvidence } from "./citation-evidence";
+import { paperHasId, paperRecords, workIndex, type WorkIdentity } from "./work-identity";
 import type { SelectionRank } from "./neighborhood";
-import type { CitationEvidenceStore } from "./citation-evidence";
 import type { GraphEdge, PaperNode } from "./types";
 
 export const EXPAND_CAP = 8;
@@ -23,11 +23,14 @@ export interface EditableGraph {
 	selectionRank?: ReadonlyMap<string, SelectionRank>;
 	citationEvidence?: CitationEvidenceStore;
 	coCitationContextIds?: readonly string[];
+	workIdentity?: WorkIdentity;
+	excludedIds?: readonly string[];
 }
 
 export function omitNode<T extends EditableGraph>(graph: T, id: string): T | null {
-	const target = graph.nodes.find((node) => node.id === id);
+	const target = graph.nodes.find((node) => paperHasId(node, id));
 	if (!target || target.isSeed) return null;
+	id = target.id;
 	return {
 		...graph,
 		nodes: graph.nodes.filter((node) => node.id !== id),
@@ -54,10 +57,11 @@ export function graftNodes<T extends EditableGraph>(
 	}
 	const contexts = new Set(graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id));
 	for (const paper of extra) if (paper.origin === "citation") contexts.add(paper.id);
-	return { ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog, coCitationContextIds: [...contexts] };
+	return normalizeWorkGraph({ ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog, coCitationContextIds: [...contexts] });
 }
 
-export function refreshDerived<T extends EditableGraph>(graph: T): T {
+export function refreshDerived<T extends EditableGraph>(input: T): T {
+	const graph = canonicalizeWorkGraph(input);
 	const seed = graph.nodes.find((node) => node.isSeed);
 	if (!seed) return graph;
 	const references = new Map<string, Set<string>>();
@@ -105,6 +109,91 @@ export function refreshDerived<T extends EditableGraph>(graph: T): T {
 	return { ...graph, edges, seedScore, semanticScores, selectionRank: graph.selectionRank };
 }
 
+/** Reversible source records stay alongside the derived work graph. */
+function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
+	const previous = graph.workIdentity;
+	const index = workIndex([...(previous?.records ?? []), ...graph.catalog, ...graph.nodes], graph.nodes.map((paper) => paper.id), previous?.separatedIds);
+	if (!previous && index.records.length === index.papers.length) return graph;
+	const oldIds = new Map(previous?.canonicalIds ?? []);
+	const resolve = (id: string): string => index.ids.get(id) ?? id;
+	const projectLists = (rows: readonly (readonly [string, readonly string[]])[], mapping: ReadonlyMap<string, string>): Map<string, string[]> => {
+		const lists = new Map<string, Set<string>>();
+		for (const [id, refs] of rows) {
+			const key = mapping.get(id) ?? id;
+			const set = lists.get(key) ?? new Set<string>();
+			for (const ref of refs) { const target = mapping.get(ref) ?? ref; if (target !== key) set.add(target); }
+			lists.set(key, set);
+		}
+		return new Map([...lists].map(([id, refs]) => [id, [...refs].sort()]));
+	};
+	const sources = new Map<string, string[]>((previous?.referenceLists ?? []).map(([id, refs]) => [id, [...refs]]));
+	const oldProjection = projectLists(previous?.referenceLists ?? [], oldIds);
+	for (const [id, refs] of graph.referenceLists) {
+		if (previous && JSON.stringify([...refs].sort()) === JSON.stringify(oldProjection.get(id))) continue;
+		sources.set(id, [...new Set([...(sources.get(id) ?? []), ...refs])]);
+	}
+	const rawEvidence = new CitationEvidenceStore();
+	const evidenceSignature = (row: CitationEvidence | null): string => row ? JSON.stringify({ ...row, sources: [...row.sources].sort(), intents: [...row.intents].sort(), contexts: [...row.contexts].sort(), evidenceQuotes: [...row.evidenceQuotes].sort(), influential: row.influential ?? null }) : "";
+	for (const evidence of previous?.evidence ?? []) rawEvidence.set(evidence);
+	const oldEvidence = new CitationEvidenceStore();
+	for (const evidence of previous?.evidence ?? []) {
+		const citingId = oldIds.get(evidence.citingId) ?? evidence.citingId;
+		const citedId = oldIds.get(evidence.citedId) ?? evidence.citedId;
+		if (citingId !== citedId) oldEvidence.set({ ...evidence, citingId, citedId });
+	}
+	for (const evidence of graph.citationEvidence?.entries() ?? []) {
+		if (evidenceSignature(evidence) !== evidenceSignature(oldEvidence.get(evidence.citingId, evidence.citedId))) rawEvidence.set(evidence);
+	}
+	const evidence = new CitationEvidenceStore();
+	for (const row of rawEvidence.entries()) {
+		const citingId = resolve(row.citingId), citedId = resolve(row.citedId);
+		if (citingId !== citedId) evidence.set({ ...row, citingId, citedId });
+	}
+	const directEdges = new Map<string, GraphEdge>();
+	const oldDirectPairs = new Set((previous?.directEdges ?? []).flatMap(edgeCitationPairs).map((pair) => `${oldIds.get(pair.citingId) ?? pair.citingId}\0${oldIds.get(pair.citedId) ?? pair.citedId}`));
+	for (const [id, refs] of oldProjection) for (const ref of refs) oldDirectPairs.add(`${id}\0${ref}`);
+	for (const row of oldEvidence.entries()) oldDirectPairs.add(`${row.citingId}\0${row.citedId}`);
+	for (const edge of [...(previous?.directEdges ?? []), ...graph.edges]) {
+		if (graph.edges.includes(edge) && previous && edgeCitationPairs(edge).every((pair) => oldDirectPairs.has(`${pair.citingId}\0${pair.citedId}`))) continue;
+		if (edge.direct !== "none") directEdges.set(`${edge.source}\0${edge.target}\0${edge.direct}`, edge);
+	}
+	if (previous) {
+		const records = new Map(previous.records.map((record) => [record.id, record]));
+		const sameRecords = records.size === index.records.length && index.records.every((record) => JSON.stringify(record) === JSON.stringify(records.get(record.id)));
+		const sameIds = oldIds.size === index.ids.size && [...index.ids].every(([id, canonical]) => oldIds.get(id) === canonical);
+		const sameLists = oldProjection.size === graph.referenceLists.size && [...graph.referenceLists].every(([id, refs]) => JSON.stringify([...refs].sort()) === JSON.stringify(oldProjection.get(id)));
+		const rows = graph.citationEvidence?.entries() ?? [];
+		const sameEvidence = rows.length === oldEvidence.entries().length && rows.every((row) => evidenceSignature(row) === evidenceSignature(oldEvidence.get(row.citingId, row.citedId)));
+		const canonical = [...graph.nodes, ...graph.catalog].every((paper) => resolve(paper.id) === paper.id);
+		if (sameRecords && sameIds && sameLists && sameEvidence && canonical && directEdges.size === previous.directEdges.length) return graph;
+	}
+	const edges = [...directEdges.values()].map((edge) => ({ ...edge, source: resolve(edge.source), target: resolve(edge.target) })).filter((edge) => edge.source !== edge.target);
+	const visibleIds = new Set(graph.nodes.flatMap((paper) => paperRecords(paper).map((record) => resolve(record.id))));
+	const nodes = index.papers.filter((paper) => visibleIds.has(paper.id));
+	const contexts = graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id);
+	const sourceContexts = new Set(previous?.contextIds ?? contexts.flatMap((id) => previous ? previous.records.filter((record) => (oldIds.get(record.id) ?? record.id) === id && record.origin === "citation").map((record) => record.id) : [id]));
+	const oldContexts = new Set([...sourceContexts].map((id) => oldIds.get(id) ?? id));
+	for (const id of contexts) if (!previous || !oldContexts.has(id)) sourceContexts.add(id);
+	const changedIds = new Set(index.papers.filter((paper) => (paper.records?.length ?? 0) > 1).map((paper) => paper.id));
+	return {
+		...graph, nodes, catalog: index.papers, edges, referenceLists: projectLists([...sources], index.ids), citationEvidence: evidence,
+		coCitationContextIds: [...new Set([...sourceContexts].map(resolve))],
+		excludedIds: graph.excludedIds ? [...new Set(graph.excludedIds.map(resolve))].filter((id) => !nodes.some((paper) => paper.id === id && paper.isSeed)) : undefined,
+		semanticScores: graph.semanticScores ? new Map([...graph.semanticScores].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
+		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts] },
+	};
+}
+
+export function normalizeWorkGraph<T extends EditableGraph>(graph: T): T {
+	const normalized = canonicalizeWorkGraph(graph);
+	return normalized === graph ? graph : refreshDerived(normalized);
+}
+
+export function separateWorkRecords<T extends EditableGraph>(graph: T, paper: PaperNode): T {
+	if (!graph.workIdentity || !paper.records?.length) return graph;
+	return normalizeWorkGraph({ ...graph, workIdentity: { ...graph.workIdentity, separatedIds: [...new Set([...graph.workIdentity.separatedIds, ...paper.records.map((record) => record.id)])] } });
+}
+
 export function chooseExpand(
 	present: ReadonlySet<string>,
 	hidden: ReadonlySet<string>,
@@ -114,13 +203,17 @@ export function chooseExpand(
 	if (slots <= 0) return [];
 	const ok = (paper: PaperNode): boolean => !paper.isSeed && !present.has(paper.id) && !hidden.has(paper.id);
 	const byCite = (a: PaperNode, b: PaperNode): number => Number(a.retracted) - Number(b.retracted) || b.citedByCount - a.citedByCount || a.id.localeCompare(b.id);
-	const refs = groups.reference.filter(ok).sort(byCite);
-	const cites = groups.citation.filter(ok).sort(byCite);
+	const index = workIndex([...groups.reference, ...groups.citation]);
+	const group = (papers: readonly PaperNode[]) => [...new Set(papers.map((paper) => index.ids.get(paper.id) ?? paper.id))].map((id) => index.papers.find((paper) => paper.id === id)!).filter(ok);
+	const refs = group(groups.reference).sort(byCite);
+	const cites = group(groups.citation).sort(byCite);
 	const take = (list: PaperNode[], n: number, skip: ReadonlySet<string>): PaperNode[] => {
 		const out: PaperNode[] = [];
+		const seen = new Set(skip);
 		for (const paper of list) {
 			if (out.length >= n) break;
-			if (skip.has(paper.id)) continue;
+			if (seen.has(paper.id)) continue;
+			seen.add(paper.id);
 			out.push(paper);
 		}
 		return out;

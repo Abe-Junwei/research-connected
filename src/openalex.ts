@@ -30,6 +30,8 @@ export interface OpenAlexAuth {
 }
 
 export interface SampledWorks {
+	/** Source aliases do not consume accepted-work slots but remain available for evidence. */
+	duplicateWorks?: RawWork[];
 	works: RawWork[];
 	rejected: RawWork[];
 	rawFetched: number;
@@ -133,6 +135,7 @@ export class OpenAlexClient {
 	let rawFetched = 0;
 	let filtered = 0;
 	let duplicates = 0;
+	const duplicateWorks: RawWork[] = [];
 	let requests = 0;
 	let pages = 0;
 	let nextCursor: string | null = "*";
@@ -155,7 +158,7 @@ export class OpenAlexClient {
 					rejected.push(work);
 				} else {
 					const identity = sampledIdentity(work);
-					if (seen.has(identity)) { duplicates += 1; continue; }
+					if (seen.has(identity)) { duplicates += 1; duplicateWorks.push(work); continue; }
 					seen.add(identity);
 					works.push(work);
 				}
@@ -163,7 +166,7 @@ export class OpenAlexClient {
 			nextCursor = page.nextCursor;
 			if (page.results.length === 0) break;
 		}
-		return { works: works.slice(0, target), rejected, rawFetched, filtered, duplicates, requests, pages, exhausted: !error && !nextCursor, error };
+		return { works: works.slice(0, target), duplicateWorks, rejected, rawFetched, filtered, duplicates, requests, pages, exhausted: !error && !nextCursor, error };
 	}
 
 	async worksByIds(ids: string[]): Promise<RawWork[]> {

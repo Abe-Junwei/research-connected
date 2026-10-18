@@ -3,6 +3,7 @@ import type { SemanticCitation } from "./citation-sources";
 import { nonResearchLabel } from "./paper";
 import type { GraphEdge, PaperNode } from "./types";
 import type { SimilarityGraph } from "./neighborhood";
+import { paperHasId } from "./work-identity";
 
 export type CitationIntent = "background" | "method" | "result";
 export type CitationRelation = "background" | "method" | "extension" | "validation" | "application" | "criticism" | "unclear";
@@ -185,9 +186,19 @@ export function edgeDetailStillCurrent(
 
 /** Sources describe this directed citation, never just the paper metadata. */
 export function mergeOpenCitation(graph: SimilarityGraph, citingId: string, citedId: string): void {
-	const a = graph.nodes.find(p => p.id === citingId);
-	const b = graph.nodes.find(p => p.id === citedId);
-	if (!a || !b || citingId === citedId) return;
+	const a = graph.nodes.find(p => paperHasId(p, citingId));
+	const b = graph.nodes.find(p => paperHasId(p, citedId));
+	if (!a || !b || a.id === b.id) return;
+	const originalA = graph.workIdentity?.records.find((record) => record.id === citingId) ?? a;
+	const originalB = graph.workIdentity?.records.find((record) => record.id === citedId) ?? b;
+	if (graph.workIdentity) {
+		const store = new CitationEvidenceStore();
+		for (const row of graph.workIdentity.evidence) store.set(row);
+		const inOriginal = graph.workIdentity.referenceLists.find(([id]) => id === citingId)?.[1].includes(citedId) ?? false;
+		store.set(directEvidence(originalA, originalB, inOriginal, true));
+		graph.workIdentity.evidence = store.entries();
+	}
+	citingId = a.id; citedId = b.id;
 	graph.citationEvidence ??= new CitationEvidenceStore();
 	const inOpenAlex = graph.referenceLists.get(citingId)?.includes(citedId) ?? false;
 	graph.citationEvidence.set(directEvidence(a, b, inOpenAlex, true));

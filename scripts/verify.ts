@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
 import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
@@ -26,7 +27,7 @@ import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../sr
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
-import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
+import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject } from "../src/project-state";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
 import { buildPairSimilarity } from "../src/diversity";
@@ -73,6 +74,19 @@ function paper(id: string, origin: PaperNode["origin"], citedByCount: number): P
 }
 
 function unit(): void {
+	verifyWorkIdentity();
+	const savedSeed = { ...paper("W1", "seed", 1), doiUrl: "https://doi.org/10.1234/seed" };
+	const project: ResearchProject = {
+		version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [],
+		snapshot: {
+			version: 1, savedAt: 1, seedId: "W1", nodes: [savedSeed], edges: [], seedScore: [], warnings: [],
+			strategies: { references: true, citations: true, related: true }, referenceLists: [], catalog: [savedSeed],
+			citationEvidence: [], skippedNonResearch: 0,
+		},
+	};
+	assert.equal(savedProjectForSeed({ W1: project }, { kind: "openalex", value: "https://openalex.org/W1" }), project);
+	assert.equal(savedProjectForSeed({ W1: project }, { kind: "doi", value: "10.1234/SEED" }), project);
+	assert.equal(savedProjectForSeed({ W1: project }, { kind: "doi", value: "10.1234/other" }), undefined);
 	assert.deepEqual(classifyQuery("  10.1038/nature14539 "), {
 		kind: "doi",
 		value: "10.1038/nature14539",
@@ -813,6 +827,7 @@ function diversityChecks(): void {
 
 async function main(): Promise<void> {
 	unit();
+	await verifyWorkIdentityPipeline();
 	semanticChecks();
 	diversityChecks();
 	await verifyEvidence();

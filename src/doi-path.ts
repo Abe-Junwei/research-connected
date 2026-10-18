@@ -1,4 +1,6 @@
 /** Default node-visit budget for citation-path search on sampled reference lists. */
+import { paperHasId, paperDois } from "./work-identity";
+
 export const DEFAULT_PATH_BUDGET = 200;
 
 export type PathDirection = "citing-to-cited" | "cited-to-citing";
@@ -119,12 +121,12 @@ export function resolvePathEndpoint(
 	const asId = shortId(trimmed);
 	if (/^W\d+$/i.test(asId)) {
 		const upper = asId.toUpperCase();
-		for (const paper of papers) if (paper.id === upper) return paper.id;
+		for (const paper of papers) if (paperHasId(paper, upper)) return paper.id;
 	}
 	const doi = normalizeDoi(trimmed);
 	if (!doi) return null;
 	for (const paper of papers) {
-		if (normalizeDoi(paper.doiUrl) === doi) return paper.id;
+		if (paperDois(paper).includes(doi)) return paper.id;
 	}
 	return null;
 }

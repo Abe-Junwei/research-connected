@@ -11,7 +11,8 @@ import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
-import { chooseExpand, couplingFill, EXPAND_CAP, graftNodes, omitNode, refreshDerived, type EditableGraph } from "./graph-edit";
+import { chooseExpand, couplingFill, EXPAND_CAP, graftNodes, normalizeWorkGraph, omitNode, refreshDerived, type EditableGraph } from "./graph-edit";
+import { paperHasId, paperRecords, resolveWorkQuery, sameWork, workIndex, type WorkIdentity } from "./work-identity";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
@@ -53,6 +54,7 @@ export function endDeepDive(seedId: string): void { expandingSeeds.delete(seedId
 const MAX_CONTEXT_CITERS = 400;
 
 export interface SimilarityGraph {
+	workIdentity?: WorkIdentity;
 	nodes: PaperNode[];
 	edges: GraphEdge[];
 	seedScore: Map<string, number>;
@@ -187,10 +189,21 @@ export async function loadNeighborhood(
 	}
 
 	onStage?.("resolving");
-	const seedRaw =
+	let seedRaw =
 		target.kind === "doi" ? await client.workByDoi(target.value) : await client.workById(target.value);
-	const seed = toPaper(seedRaw, "seed");
+	let seed = toPaper(seedRaw, "seed");
 	if (!seed) throw new OpenAlexError(tr("OpenAlex 返回的种子作品缺少标题或 ID。", "The seed work from OpenAlex has no title or ID."));
+	const exactProject = settings.researchProjects?.[seed.id];
+	const matchingProjects = Object.values(settings.researchProjects ?? {}).filter((project) => project.snapshot?.nodes.some((paper) => paper.isSeed && paperRecords(paper).every((record) => sameWork(record, seed!))));
+	const existingProject = exactProject ?? (matchingProjects.length === 1 ? matchingProjects[0] : undefined);
+	const originalSeed = { ...seed, isSeed: false, origin: "related" as const };
+	if (existingProject && existingProject.seedId !== seed.id) {
+		seedRaw = await client.workById(existingProject.seedId);
+		seed = toPaper(seedRaw, "seed");
+		if (!seed) throw new OpenAlexError(tr("已保存项目的种子记录暂时不可用", "The saved project's seed record is currently unavailable"));
+	}
+	const seedAliases = [...(existingProject?.snapshot?.nodes.find((paper) => paper.isSeed)?.records ?? []), originalSeed]
+		.filter((record) => record.id !== seed!.id).map((record) => ({ ...record, isSeed: false }));
 
 	onStage?.("fetching");
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;
@@ -222,9 +235,15 @@ export async function loadNeighborhood(
 	// Reviews and editorials are dropped as nodes and as co-citation context:
 	// their reference lists and citation counts belong to the reviewed work,
 	// so keeping them bends the map toward the wrong record.
-	const refPapers = researchOnly(refAll);
-	const citePapers = researchOnly(citeAll);
-	const relatedPapers = researchOnly(relatedAll);
+	const saved = settings.researchProjects?.[seed.id]?.snapshot;
+	const separatedIds = saved?.workIdentity?.separatedIds ?? [];
+	const candidates = workIndex([seed, ...seedAliases, ...researchOnly(refAll), ...researchOnly(citeAll), ...researchOnly(relatedAll)], [seed.id, ...(saved?.nodes.map((paper) => paper.id) ?? [])], separatedIds);
+	const group = (papers: PaperNode[]) => [...new Set(papers.map((paper) => candidates.ids.get(paper.id) ?? paper.id))].map((id) => candidates.papers.find((paper) => paper.id === id)!).filter((paper) => paper && paper.id !== seed.id);
+	const refPapers = group(researchOnly(refAll));
+	const citePapers = group(researchOnly(citeAll));
+	const relatedPapers = group(researchOnly(relatedAll));
+	const seedGroup = candidates.papers.find((paper) => paper.id === seed.id)!;
+	Object.assign(seed, seedGroup);
 	const skippedNonResearch =
 		countNonResearch(references.sample.rejected, "reference", seed.id) +
 		countNonResearch(citations.sample.rejected, "citation", seed.id) +
@@ -235,7 +254,7 @@ export async function loadNeighborhood(
 	const candidateAudit: CandidateAudit[] = ([
 		["reference", references], ["citation", citations], ["related", related],
 	] as const).flatMap(([source, group]) => [
-		...group.sample.works.map((work) => auditCandidate(work, source)),
+		...group.works.map((work) => auditCandidate(work, source)),
 		...group.sample.rejected.map((work) => auditCandidate(work, source, candidateExclusion(work, seed.id, settings.excludeRetracted) ?? tr("已过滤", "Filtered"))),
 	]).filter((item) => item.id || item.doi);
 	// 候选排序：权威分（log 被引 × 新近度，3.7c）与语义分（标题/concepts/主题，
@@ -282,7 +301,9 @@ export async function loadNeighborhood(
 	// Citing papers arrive most-cited first; the context cap bounds the batched
 	// reference-list fetch when deep sampling returned hundreds of citers.
 	const contextIds = citePapers.slice(0, MAX_CONTEXT_CITERS).map((paper) => paper.id);
-	const batchIds = unique([seed.id, ...picked.map((paper) => paper.id), ...contextIds]);
+	const allDetailIds = unique([seed.id, ...picked.map((paper) => paper.id), ...[seed, ...picked].flatMap((paper) => paperRecords(paper).map((record) => record.id)), ...contextIds]);
+	const batchIds = allDetailIds.slice(0, settings.maxNodes + MAX_CONTEXT_CITERS);
+	if (batchIds.length < allDetailIds.length) warnings.push("details");
 	if (batchIds.length > 1 || !seed.abstract) {
 		onStage?.("scoring");
 		try {
@@ -464,7 +485,8 @@ export async function loadNeighborhood(
 		}
 	}
 
-		return {
+	return normalizeWorkGraph({
+		workIdentity: separatedIds.length ? { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], separatedIds } : undefined,
 		nodes: [seed, ...picked],
 		edges,
 		seedScore,
@@ -493,7 +515,7 @@ export async function loadNeighborhood(
 		semanticMode,
 		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
 		selectionRank,
-	};
+	});
 }
 
 /** Fetch up to EXPAND_CAP new neighbors of `from`, skipping graph members and hidden ids. */
@@ -506,6 +528,7 @@ export async function expandAround(
 	slots: number,
 ): Promise<{
 		papers: PaperNode[];
+		aliases: PaperNode[];
 		lists: Map<string, readonly string[]>;
 	references: number;
 	citations: number;
@@ -517,15 +540,18 @@ export async function expandAround(
 	noMore: boolean;
 }> {
 	const cap = Math.min(EXPAND_CAP, Math.max(0, slots));
-	if (cap <= 0) return { papers: [], lists: new Map(), references: 0, citations: 0, alreadyPresent: 0, alreadyExcluded: 0, filtered: 0, overlaps: 0, warnings: [], noMore: false };
+	if (cap <= 0) return { papers: [], aliases: [], lists: new Map(), references: 0, citations: 0, alreadyPresent: 0, alreadyExcluded: 0, filtered: 0, overlaps: 0, warnings: [], noMore: false };
 	const present = new Set(graph.nodes.map((node) => node.id));
+	const aliases = new Map<string, PaperNode>();
+	const separated = new Set(graph.workIdentity?.separatedIds ?? []);
+	const matches = (node: PaperNode, paper: PaperNode) => paperHasId(node, paper.id) || !separated.has(paper.id) && !node.recordsSeparated && paperRecords(node).every((record) => sameWork(record, paper));
 	let alreadyPresent = 0, alreadyExcluded = 0, filtered = 0;
 	const fetchN = Math.min(40, Math.max(12, cap * 4));
 	const accept = (work: RawWork): boolean => {
 		const paper = toPaper(work, "related");
 		if (!paper || paper.id === from.id || nonResearchLabel(paper) || settings.excludeRetracted && paper.retracted) { filtered += 1; return false; }
-		if (present.has(paper.id)) { alreadyPresent += 1; return false; }
-		if (hidden.has(paper.id)) { alreadyExcluded += 1; return false; }
+		if (graph.nodes.some((node) => matches(node, paper))) { alreadyPresent += 1; if (!graph.nodes.some((node) => paperHasId(node, paper.id))) aliases.set(paper.id, paper); return false; }
+		if (hidden.has(paper.id) || graph.catalog.some((node) => hidden.has(node.id) && matches(node, paper))) { alreadyExcluded += 1; return false; }
 		return true;
 	};
 	const [references, citations] = await Promise.all([
@@ -540,6 +566,8 @@ export async function expandAround(
 		reference: researchOnly(asPapers(references.works, "reference", from.id)),
 		citation: researchOnly(asPapers(citations.works, "citation", from.id)),
 	});
+	const citingRecordIds = new Set([...citations.works, ...citations.sample.rejected].map((work) => shortId(work.id ?? "")));
+	for (const paper of aliases.values()) paper.origin = citingRecordIds.has(paper.id) ? "citation" : "reference";
 	const warnings = [
 		references.error ? tr(`参考文献查询失败：${references.error}`, `Reference query failed: ${references.error}`) : "",
 		citations.error ? tr(`施引文献查询失败：${citations.error}`, `Citing-paper query failed: ${citations.error}`) : "",
@@ -555,14 +583,14 @@ export async function expandAround(
 	const noMore = (!settings.includeReferences || references.sample.exhausted) && (!settings.includeCitations || citations.sample.exhausted);
 	const citationIds = new Set(citations.works.map((work) => work.id));
 	const overlaps = references.works.filter((work) => citationIds.has(work.id)).length;
-	if (papers.length === 0) return {
-		papers, lists, references: 0, citations: 0, alreadyPresent, alreadyExcluded, filtered,
+	if (papers.length === 0 && aliases.size === 0) return {
+		papers, aliases: [], lists, references: 0, citations: 0, alreadyPresent, alreadyExcluded, filtered,
 		overlaps,
 		warnings, noMore,
 	};
 	let detailsFailed = false;
 	try {
-		const detailed = await client.worksByIds(papers.map((paper) => paper.id));
+		const detailed = await client.worksByIds([...papers, ...aliases.values()].flatMap((paper) => paperRecords(paper).map((record) => record.id)));
 		for (const raw of detailed) {
 			const id = raw.id ? shortId(raw.id) : "";
 			if (id) lists.set(id, referenceIds(raw.referenced_works));
@@ -573,6 +601,7 @@ export async function expandAround(
 	if (detailsFailed) warnings.push(tr("部分新增论文的参考文献没有读取到，关系暂不完整", "Some new papers have missing reference lists, so links are incomplete"));
 	return {
 		papers,
+		aliases: [...aliases.values()],
 		lists,
 		references: picked.filter((paper) => paper.origin === "reference").length,
 		citations: picked.filter((paper) => paper.origin === "citation").length,
@@ -594,7 +623,8 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 	hidden: ReadonlySet<string> = new Set(),
 	origins: ReadonlyMap<string, PaperNode["origin"]> = new Map(),
 ): Promise<{ graph: T; added: number; displaced: number; omitted: number; failed: number }> {
-	const requested = [...new Set(ids.filter((id) => /^W\d+$/i.test(id)).map((id) => id.toUpperCase()))].filter((id) => !hidden.has(id));
+	const identityIds = new Map(graph.workIdentity?.canonicalIds ?? []);
+	const requested = [...new Set(ids.filter((id) => /^W\d+$/i.test(id)).map((id) => identityIds.get(id.toUpperCase()) ?? id.toUpperCase()))].filter((id) => !hidden.has(id));
 	const capacity = Math.max(0, settings.maxNodes - 1);
 	const pinned = requested.slice(0, capacity);
 	const omitted = requested.length - pinned.length;
@@ -617,14 +647,15 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 	}
 	if (papers.length === 0) return { graph, added: 0, displaced: 0, omitted, failed: want.length };
 	const pinnedSet = new Set(pinned);
-	const excess = Math.max(0, graph.nodes.length + papers.length - settings.maxNodes);
+	let next = refreshDerived(graftNodes(graph, papers, lists));
+	const added = next.nodes.length - graph.nodes.length;
+	const excess = Math.max(0, next.nodes.length - settings.maxNodes);
 	const removable = graph.nodes.filter((node) => !node.isSeed && !pinnedSet.has(node.id))
 		.sort((a, b) => (graph.seedScore.get(a.id) ?? 0) - (graph.seedScore.get(b.id) ?? 0) || a.id.localeCompare(b.id))
 		.slice(0, excess);
-	let base = graph;
-	for (const node of removable) base = (omitNode(base, node.id) ?? base);
-	const next = refreshDerived(graftNodes(base, papers, lists));
-	return { graph: next, added: papers.length, displaced: removable.length, omitted, failed: want.length - papers.length };
+	for (const node of removable) next = omitNode(next, node.id) ?? next;
+	if (removable.length) next = refreshDerived(next);
+	return { graph: next, added, displaced: removable.length, omitted, failed: want.length - papers.length };
 }
 
 export function selectNeighbors(
@@ -741,7 +772,7 @@ async function loadGroup(
 	if (!enabled) return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, duplicates: 0, requests: 0, pages: 0, exhausted: true } };
 	try {
 		const sample = await run();
-		return { works: sample.works, sample, error: sample.error };
+		return { works: [...sample.works, ...(sample.duplicateWorks ?? [])], sample, error: sample.error };
 	} catch (error) {
 		return { works: [], sample: { works: [], rejected: [], rawFetched: 0, filtered: 0, duplicates: 0, requests: 1, pages: 0, exhausted: false }, error: error instanceof Error ? error.message : tr("请求失败", "Request failed") };
 	}
@@ -788,14 +819,16 @@ export function diagnoseCandidate(
 	const parsed = classifyQuery(query);
 	if (!parsed || parsed.kind === "search") return { title: tr("请输入 DOI 或 OpenAlex ID", "Enter a DOI or OpenAlex ID"), detail: tr("诊断只查当前图谱保存的采样记录。", "Inspection uses sampling records saved with the current graph only.") };
 	const matches = (id: string, doi: string | null): boolean => parsed.kind === "openalex" ? id === parsed.value : doi === parsed.value;
-	const found = graph.nodes.find((paper) => matches(paper.id, normalizeDoi(paper.doiUrl)));
+	const foundId = resolveWorkQuery(graph.nodes, query);
+	const found = graph.nodes.find((paper) => paper.id === foundId);
 	if (found) {
 		if (!found.isSeed && scrubYear !== null && (found.year === null || found.year > scrubYear)) {
 			return { title: tr("已在图谱中，当前年份范围将其隐藏", "Already in graph, hidden by the current year range"), detail: tr(`论文 ${found.id} · 调整时间视图的年份范围即可看到。`, `Paper ${found.id} · adjust the timeline year range to show it.`), paperId: found.id };
 		}
 		return { title: found.isSeed ? tr("当前种子论文", "Current seed paper") : tr("已在当前图谱中", "Already in current graph"), detail: `${found.title} · ${found.id}`, paperId: found.id };
 	}
-	const removed = [...excludedIds].find((id) => matches(id, graph.candidateAudit?.find((item) => item.id === id)?.doi ?? normalizeDoi(graph.catalog.find((paper) => paper.id === id)?.doiUrl)));
+	const resolved = resolveWorkQuery(graph.catalog, query);
+	const removed = [...excludedIds].find((id) => id === resolved || matches(id, graph.candidateAudit?.find((item) => item.id === id)?.doi ?? normalizeDoi(graph.catalog.find((paper) => paper.id === id)?.doiUrl)));
 	if (removed) return { title: tr("已从当前图谱删除", "Removed from current graph"), detail: tr(`论文 ${removed} 已被排除；重新构建图谱可重新采样。`, `Paper ${removed} was excluded; rebuilding can sample it again.`) };
 	const records = (graph.candidateAudit ?? []).filter((item) => matches(item.id, item.doi));
 	const retained = records.filter((item) => !item.rejection);
@@ -805,7 +838,8 @@ export function diagnoseCandidate(
 		detail: tr(`进入了${sources}候选池；有限节点配额和多样性选择后未入选。现有记录不能确定单一落选因素。`, `Entered the ${sources} candidate pool but was not selected under the node limit and diversity criteria. The records do not identify a single reason.`),
 	};
 	if (records.length) return { title: tr("采样时被过滤", "Filtered during sampling"), detail: [...new Set(records.map((item) => displayCandidateReason(item.rejection)))].join(tr("；", "; ")) };
-	const context = graph.catalog.find((paper) => matches(paper.id, normalizeDoi(paper.doiUrl)));
+	const contextId = resolveWorkQuery(graph.catalog, query);
+	const context = graph.catalog.find((paper) => paper.id === contextId);
 	if (context) return { title: tr("已抓取为引用上下文，未入选节点", "Fetched as citation context but not selected as a node"), detail: `${context.title} · ${context.id}` };
 	const incomplete = Object.values(graph.retrievalStats ?? {}).some((stats) => stats.partial);
 	const sampled = graph.retrievalStats
@@ -861,8 +895,7 @@ function mergeRawReferences(
 }
 
 function withoutSeedDuplicate(papers: PaperNode[], seed: PaperNode): PaperNode[] {
-	const seedDoi = doiFromPaper(seed);
-	return papers.filter((paper) => paper.id !== seed.id && (!seedDoi || doiFromPaper(paper) !== seedDoi));
+	return papers.filter((paper) => !paperHasId(seed, paper.id));
 }
 
 function asPapers(works: RawWork[], origin: Origin, seedId: string): PaperNode[] {
@@ -890,6 +923,7 @@ function dedupe(list: PaperNode[], seedId: string, byRank: (a: PaperNode, b: Pap
 }
 
 function identityKey(paper: PaperNode): string {
+	if (paper.recordsSeparated) return `openalex:${paper.id}`;
 	return doiFromPaper(paper) ?? `openalex:${paper.id}`;
 }
 

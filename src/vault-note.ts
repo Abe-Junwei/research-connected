@@ -2,6 +2,7 @@ import { TFile, type App } from "obsidian";
 import { indexLiteratureFiles, type IndexedNote } from "./export-graph";
 import { tr } from "./i18n";
 import { normalizeDoi } from "./paper";
+import { paperDois, paperRecords } from "./work-identity";
 import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
 
@@ -16,8 +17,8 @@ export function invalidateLiteratureIndex(): void {
 export function rememberLiteratureNote(paper: PaperNode, path: string, reading: ReadingStatus): void {
 	const note = { path, reading };
 	remembered.set(paper.id, note);
-	const doi = normalizeDoi(paper.doiUrl);
-	if (doi) remembered.set(`doi:${doi}`, note);
+	for (const doi of paperDois(paper)) remembered.set(`doi:${doi}`, note);
+	for (const record of paperRecords(paper)) remembered.set(record.id, note);
 }
 
 /**
@@ -26,15 +27,15 @@ export function rememberLiteratureNote(paper: PaperNode, path: string, reading: 
  * Upgrade path: patch the two maps from the changed file instead of rescanning.
  */
 export function lookupLiteratureNote(app: App, paper: PaperNode, doiProperty: string): IndexedNote | null {
-	const doi = normalizeDoi(paper.doiUrl);
-	const recent = remembered.get(paper.id) ?? (doi ? remembered.get(`doi:${doi}`) : undefined);
-	if (recent && app.vault.getAbstractFileByPath(recent.path)) return recent;
 	const index = literatureIndex(app, doiProperty);
-	if (doi) {
-		const match = index.byDoi.get(doi);
-		if (match) return match;
+	const matches = new Map<string, IndexedNote>();
+	for (const key of [paper.id, ...paperRecords(paper).map((record) => record.id)]) {
+		const note = remembered.get(key) ?? index.byId.get(key);
+		if (note) for (const path of note.alternatives ?? [note.path]) if (app.vault.getAbstractFileByPath(path)) matches.set(path, note);
 	}
-	return index.byId.get(paper.id) ?? null;
+	for (const doi of paperDois(paper)) { const note = remembered.get(`doi:${doi}`) ?? index.byDoi.get(doi); if (note) for (const path of note.alternatives ?? [note.path]) if (app.vault.getAbstractFileByPath(path)) matches.set(path, note); }
+	if (matches.size > 1) return { path: [...matches.keys()][0]!, reading: null, alternatives: [...matches.keys()] };
+	return [...matches.values()][0] ?? null;
 }
 
 export async function openLiteratureNote(app: App, path: string): Promise<void> {
@@ -46,6 +47,7 @@ export async function openLiteratureNote(app: App, path: string): Promise<void> 
 export async function syncLiteratureReading(app: App, paper: PaperNode, reading: ReadingStatus, doiProperty: string): Promise<void> {
 	const found = lookupLiteratureNote(app, paper, doiProperty);
 	if (!found) return;
+	if (found.alternatives?.length) throw new Error(tr("匹配到多份文献笔记，请先选择并核对，阅读状态未写入笔记", "Multiple literature notes match. Review them before syncing reading status."));
 	const file = app.vault.getAbstractFileByPath(found.path);
 	if (!(file instanceof TFile)) return;
 	await app.fileManager.processFrontMatter(file, (frontmatter) => {

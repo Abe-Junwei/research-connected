@@ -1,14 +1,17 @@
+import { paperDois, paperHasId, paperRecords, resolveWorkQuery, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
 import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, registerPopover, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { paintPaperActions } from "./paper-actions";
 import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import {
 	EXPAND_CAP,
 	graftNodes,
+	normalizeWorkGraph,
+	separateWorkRecords,
 	omitNode,
 	refreshDerived,
 } from "./graph-edit";
@@ -50,7 +53,7 @@ import { formatCount, snippet } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
 import { displayStageSource, groupStagedBySeed } from "./staging";
-import { projectExcludedPapers, projectStagedPapers, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
+import { matchingSeedProjects, projectExcludedPapers, projectStagedPapers, acknowledgeIdentityStates, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
 	destroy(): void;
@@ -64,7 +67,7 @@ export interface AppDeps {
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
-	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null } | null;
+	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
 	openLiteratureNote?: (path: string) => void;
 	syncLiteratureReading?: (paper: PaperNode, reading: ReadingStatus) => Promise<void>;
 	rememberLiteratureNote?: (paper: PaperNode, path: string, reading: ReadingStatus) => void;
@@ -703,6 +706,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (kind === "note") {
 			const paper = selectedPaper ?? graph.nodes.find((node) => node.isSeed);
 			if (!paper) return;
+			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const fields = {
@@ -760,6 +764,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		const seedId = seedNode?.id ?? paper.id;
 		const project = deps.getSettings().researchProjects[seedId];
+		paintIdentitySources(detail, paper, deps.openExternal, () => {
+			if (!graph) return;
+			if (graph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { status.textContent = tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."); return; }
+			const next = separateWorkRecords(graph, paper);
+			if (project) reconcileProjectIdentity(project, next);
+			applyEdit(next, tr("已保持来源记录分开", "Source records are now kept separate"), undefined, true);
+		}, project?.identityConflicts?.includes(paper.id), () => {
+			if (!project) return;
+			acknowledgeIdentityStates(project, paper);
+			void deps.persistSettings?.(); showDetail(paper);
+		});
 		let state = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
 		if (noted?.reading && noted.reading !== state.reading) {
@@ -776,7 +791,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				throw error;
 			}
 		}, !paper.isSeed ? () => removePaper(paper) : undefined);
-		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote);
+		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote, noted.alternatives);
 		let diveIndex = -1;
 		for (let index = 0; index < deepDiveBatches.length; index += 1) if (deepDiveBatches[index]!.additions.some((item) => item.paperId === paper.id)) diveIndex = index;
 		if (diveIndex >= 0) {
@@ -941,6 +956,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!seed || !deps.saveProject) return;
 		const prior = deps.getSettings().researchProjects[seed.id];
 		const project: ResearchProject = {
+			...prior,
 			version: 1,
 			seedId: seed.id,
 			name: prior?.name && prior.name !== seed.id ? prior.name : (seed.title || seed.id),
@@ -1089,6 +1105,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const views = [...(prior?.views ?? []).filter((item) => item.name !== view.name), view].slice(-30);
 		try {
 			await deps.saveProject?.({
+				...prior,
 				version: 1,
 				seedId,
 				name: prior?.name ?? graph.nodes.find((node) => node.isSeed)?.title ?? seedId,
@@ -1144,7 +1161,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			selectedPaper = seed;
 			selectedEdge = null;
 			showDetail(seed);
-		}
+		} else showDetail(next.nodes.find((node) => node.id === selectedId) ?? null);
 		status.textContent = tr(`${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`, `${note} · ${next.nodes.length} papers · ${next.edges.length} links`);
 		persistProject(next);
 	};
@@ -1231,12 +1248,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		try {
 			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
 			const result = await expandAround(oa, host, paper, hiddenIds, settings, slots);
-			const { papers, lists } = result;
+			const { papers, aliases, lists } = result;
 			if (disposed || token !== generation || graph !== host) return;
 			if (papers.length === 0) {
 				const batch: DeepDiveBatch = { id: `${Date.now()}`, parentId: paper.id, createdAt: Date.now(), references: 0, citations: 0, additions: [], noMore: result.noMore, warnings: result.warnings };
 				deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
-				persistProject(host);
+				if (aliases.length) applyEdit(graftNodes(host, aliases, lists), tr(`已补充 ${aliases.length} 条同作品来源记录`, `Added ${aliases.length} source records for existing works`));
+				else persistProject(host);
 				const reasons = [
 					result.alreadyPresent ? tr(`${result.alreadyPresent} 篇已在图中`, `${result.alreadyPresent} already in the graph`) : "",
 					result.alreadyExcluded ? tr(`${result.alreadyExcluded} 篇已排除`, `${result.alreadyExcluded} excluded`) : "",
@@ -1259,7 +1277,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				warnings: result.warnings,
 			};
 			deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
-			applyEdit(refreshDerived(graftNodes(host, papers, lists)), tr(`已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, `Added ${papers.length} papers (${directions.join(" · ")})${result.noMore ? " · end of candidates" : ""}${result.warnings.length ? ` · ${result.warnings.join("; ")}` : ""}`), paper.id);
+			applyEdit(refreshDerived(graftNodes(host, [...papers, ...aliases], lists)), tr(`已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, `Added ${papers.length} papers (${directions.join(" · ")})${result.noMore ? " · end of candidates" : ""}${result.warnings.length ? ` · ${result.warnings.join("; ")}` : ""}`), paper.id);
 			if (undoCheckpoint) undoCheckpoint.deepDives = previousBatches;
 		} catch (error) {
 			if (disposed || token !== generation || graph !== host) return;
@@ -1281,7 +1299,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 
 	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true, persist = true): void => {
+		next = normalizeWorkGraph(next);
 		const seedId = next.nodes.find((node) => node.isSeed)?.id;
+		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
+		if (savedProject) reconcileProjectIdentity(savedProject, next);
 		const persistedExcluded = seedId ? Object.entries(deps.getSettings().researchProjects[seedId]?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : [];
 		hiddenIds = new Set([...(next.excludedIds ?? []), ...persistedExcluded]);
 		for (const id of hiddenIds) {
@@ -1324,7 +1345,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				graphKey.setKinds(mapFilter.kinds);
 			}
 			map.setScrubYear(scrubYear);
-			map.setViewState(restoreView);
+			map.setViewState({ ...restoreView, selectedId: restoreView.selectedId ? resolveWorkQuery(next.nodes, restoreView.selectedId) : null });
 			if (restoreView.leftCollapsed !== undefined) {
 				body.classList.toggle("is-rail-collapsed", restoreView.leftCollapsed);
 				railToggle.textContent = restoreView.leftCollapsed ? "›" : "‹";
@@ -1337,7 +1358,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				sidebarToggle.setAttribute("aria-expanded", String(!restoreView.rightCollapsed));
 				sidebarToggle.setAttribute("aria-label", restoreView.rightCollapsed ? tr("展开右侧栏", "Expand right sidebar") : tr("折叠右侧栏", "Collapse right sidebar"));
 			}
-			selectedPaper = next.nodes.find((node) => node.id === restoreView.selectedId) ?? seed;
+			selectedPaper = next.nodes.find((node) => paperHasId(node, restoreView.selectedId ?? "")) ?? seed;
 			if (selectedPaper) showDetail(selectedPaper);
 		}
 		paintLists();
@@ -1377,7 +1398,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			map.setKinds(mapFilter.kinds);
 			graphKey.setKinds(mapFilter.kinds);
 		}
-		map.setViewState(view);
+		map.setViewState({ ...view, selectedId: view.selectedId ? resolveWorkQuery(graph.nodes, view.selectedId) : null });
 		if (view.leftCollapsed !== undefined) {
 			body.classList.toggle("is-rail-collapsed", view.leftCollapsed);
 			railToggle.textContent = view.leftCollapsed ? "›" : "‹";
@@ -1390,19 +1411,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			sidebarToggle.setAttribute("aria-expanded", String(!view.rightCollapsed));
 			sidebarToggle.setAttribute("aria-label", view.rightCollapsed ? tr("展开右侧栏", "Expand right sidebar") : tr("折叠右侧栏", "Collapse right sidebar"));
 		}
-		selectedPaper = graph.nodes.find((node) => node.id === view.selectedId) ?? graph.nodes.find((node) => node.isSeed) ?? null;
+		selectedPaper = graph.nodes.find((node) => paperHasId(node, view.selectedId ?? "")) ?? graph.nodes.find((node) => node.isSeed) ?? null;
 		if (selectedPaper) showDetail(selectedPaper);
 		status.textContent = tr(`已恢复视图「${view.name}」`, `Restored view “${view.name}”`);
 	}
 
 	const enrichOpenCitations = async (next: SimilarityGraph): Promise<void> => {
 		const token = generation;
-		const doiToId = new Map(next.nodes.flatMap(p => {
-			const doi = doiOf(p.doiUrl); return doi ? [[doi, p.id] as const] : [];
-		}));
+		const doiToId = new Map(next.nodes.flatMap((paper) => paperRecords(paper).flatMap((record) => { const doi = doiOf(record.doiUrl); return doi ? [[doi, record.id] as const] : []; })));
 		const client = new OpenCitationsClient(deps.getJson, deps.getSettings().openCitationsToken);
 		// Bounded sequential outgoing lookups; no unbounded high-citation responses.
-		const papers = next.nodes.filter(p => doiOf(p.doiUrl)).slice(0, 20);
+		const papers = next.nodes.flatMap(paperRecords).filter(p => doiOf(p.doiUrl)).slice(0, 20);
 		let completed = 0, failed = 0;
 		for (const paper of papers) {
 			if (disposed || graph !== next || token !== generation) return;
@@ -1441,7 +1460,29 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		return new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey, deps.postJson);
 	};
 
-	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }): Promise<void> => {
+	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false): Promise<void> => {
+		if (!refresh) {
+			const matches = matchingSeedProjects(deps.getSettings().researchProjects, target);
+			if (matches.length > 1 && !(target.kind === "openalex" && deps.getSettings().researchProjects[shortId(target.value)])) {
+				status.textContent = tr(`这篇作品有 ${matches.length} 个独立研究项目，请从项目列表选择：${matches.map((project) => project.name).join("、")}`, `This work has ${matches.length} independent research projects. Choose from the project list: ${matches.map((project) => project.name).join(", ")}`);
+				projectSelect.focus(); return;
+			}
+			const project = savedProjectForSeed(deps.getSettings().researchProjects, target);
+			const snapshot = project && restoreGraphSnapshot(project.snapshot);
+			if (snapshot) {
+				clearError();
+				hideResults();
+				if (currentSeedId() !== project.seedId) {
+					clearUndo();
+					generation++;
+					deepDiveBatches = project.deepDives ?? [];
+					applyGraph(snapshot, project.currentView, false, false);
+				}
+				setBusy(false);
+				status.textContent = tr(`已打开研究项目「${project.name}」；需要更新数据请使用重新加载`, `Opened research project “${project.name}”; use Reload to update data`);
+				return;
+			}
+		}
 		clearUndo();
 		const token = ++generation;
 		setBusy(true);
@@ -1488,7 +1529,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					return;
 				}
 			}
-			if (restored.added > 0) {
+			if (restored.added > 0 || restored.graph !== displayed) {
 				applyGraph(restored.graph, undefined, !restored.failed);
 				status.textContent = tr(`已恢复 ${restored.added} 篇深挖文献${restored.displaced ? `，为深挖内容腾出 ${restored.displaced} 个名额` : ""}`, `Restored ${restored.added} deep-dive papers${restored.displaced ? `; freed ${restored.displaced} slots for deep-dive papers` : ""}`);
 			} else {
@@ -1592,7 +1633,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const seedId = currentSeedId();
 		if (!seedId || reload.disabled) return;
 		input.value = seedId;
-		void buildResolved({ kind: "openalex", value: seedId });
+		void buildResolved({ kind: "openalex", value: seedId }, true);
 	});
 
 	const onKey = (event: KeyboardEvent): void => {
@@ -1667,6 +1708,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	if (restored) {
 		deepDiveBatches = saved?.deepDives ?? [];
 		applyGraph(restored, saved?.currentView, false);
+		setBusy(false);
 		status.textContent = tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」 · ${restored.nodes.length} 篇 · 可随时更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}” · ${restored.nodes.length} papers · refresh data anytime`);
 	} else if (initial) {
 		input.value = initial.value;

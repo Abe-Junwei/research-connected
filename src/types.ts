@@ -1,6 +1,6 @@
 export type Origin = "seed" | "reference" | "citation" | "related";
 
-export interface PaperNode {
+export interface PaperRecord {
 	id: string;
 	title: string;
 	year: number | null;
@@ -27,6 +27,13 @@ export interface PaperNode {
 	topicTags?: Array<{ id: string; name: string; score: number }>;
 	/** True when OpenAlex flags the work as retracted (is_retracted). */
 	retracted: boolean;
+}
+
+export interface PaperNode extends PaperRecord {
+	/** Original source records; the representative's citation count is never summed. */
+	records?: PaperRecord[];
+	/** A project-local decision to keep this source record separate. */
+	recordsSeparated?: boolean;
 }
 
 /** Which way a direct citation runs, relative to `source` and `target`. */

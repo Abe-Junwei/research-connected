@@ -1,23 +1,25 @@
 import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
 import { normalizeDoi } from "./paper";
+import { paperDois, paperRecords, workIndex } from "./work-identity";
 import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
 
 export function toBibTeX(nodes: readonly PaperNode[]): string {
 	const used = new Set<string>();
-	return nodes.map((paper) => bibEntry(paper, used)).join("\n\n");
+	return workIndex(nodes, nodes.map((paper) => paper.id)).papers.map((paper) => bibEntry(paper, used)).join("\n\n");
 }
 
 export function toYamlList(nodes: readonly PaperNode[]): string {
 	const lines = ["papers:"];
-	for (const paper of nodes) {
+	for (const paper of workIndex(nodes, nodes.map((paper) => paper.id)).papers) {
 		lines.push(`  - title: ${yamlString(paper.title)}`);
 		lines.push(`    authors: ${yamlString(paper.authors)}`);
 		lines.push(`    year: ${paper.year ?? "null"}`);
 		lines.push(`    citations: ${paper.citedByCount}`);
 		const doi = doiOf(paper);
 		if (doi) lines.push(`    doi: ${yamlString(doi)}`);
+		if (paper.records?.length) lines.push(`    doi_aliases: ${JSON.stringify(paperDois(paper))}`, `    openalex_aliases: ${JSON.stringify(paperRecords(paper).map((record) => record.id))}`);
 		lines.push(`    openalex: ${yamlString(paper.openAlexUrl)}`);
 	}
 	return lines.join("\n");
@@ -26,7 +28,7 @@ export function toYamlList(nodes: readonly PaperNode[]): string {
 export function toMarkdownTable(nodes: readonly PaperNode[]): string {
 	const header = tr("| 题名 | 作者 | 年份 | 被引 | DOI | OpenAlex |", "| Title | Authors | Year | Citations | DOI | OpenAlex |");
 	const rule = "| --- | --- | --- | --- | --- | --- |";
-	const rows = nodes.map((paper) => {
+	const rows = workIndex(nodes, nodes.map((paper) => paper.id)).papers.map((paper) => {
 		const year = paper.year === null ? "" : String(paper.year);
 		const doi = doiOf(paper) ?? "";
 		return `| ${cell(paper.title)} | ${cell(paper.authors)} | ${year} | ${paper.citedByCount} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
@@ -129,6 +131,7 @@ export function literatureMarkdown(paper: PaperNode, template: string, fields: L
 		`year: ${paper.year ?? "null"}`,
 	];
 	if (doi) lines.push(`doi: ${yamlString(doi)}`);
+	if (paper.records?.length) lines.push(`rc-doi-aliases: ${JSON.stringify(paperDois(paper))}`, `rc-openalex-aliases: ${JSON.stringify(paperRecords(paper).map((record) => record.id))}`);
 	lines.push(
 		`openalex: ${yamlString(paper.openAlexUrl)}`,
 		`rc-project: ${yamlString(fields.project)}`,
@@ -143,18 +146,20 @@ export function literatureMarkdown(paper: PaperNode, template: string, fields: L
 export interface IndexedNote {
 	path: string;
 	reading: ReadingStatus | null;
+	alternatives?: string[];
 }
 
-/** First matching file wins. A DOI match outranks an OpenAlex id match. */
+/** All known identifiers participate; ambiguous notes are returned for selection. */
 export function matchLiteratureNote(
 	files: readonly { path: string; frontmatter?: Record<string, unknown> }[],
-	paper: Pick<PaperNode, "id" | "doiUrl">,
+	paper: Pick<PaperNode, "id" | "doiUrl" | "records">,
 	doiProperty: string,
 ): IndexedNote | null {
 	const index = indexLiteratureFiles(files, doiProperty);
-	const doi = normalizeDoi(paper.doiUrl);
-	if (doi && index.byDoi.has(doi)) return index.byDoi.get(doi) ?? null;
-	return index.byId.get(paper.id) ?? null;
+	const matches = new Map<string, IndexedNote>();
+	for (const doi of paperDois(paper)) { const note = index.byDoi.get(doi); if (note) for (const path of note.alternatives ?? [note.path]) matches.set(path, note); }
+	for (const id of [paper.id, ...(paper.records ?? []).map((record) => record.id)]) { const note = index.byId.get(id); if (note) for (const path of note.alternatives ?? [note.path]) matches.set(path, note); }
+	return matches.size > 1 ? { path: [...matches.keys()][0]!, reading: null, alternatives: [...matches.keys()] } : [...matches.values()][0] ?? null;
 }
 
 export function indexLiteratureFiles(
@@ -164,14 +169,21 @@ export function indexLiteratureFiles(
 	const keys = [...new Set([doiProperty.trim() || "doi", "doi"])];
 	const byDoi = new Map<string, IndexedNote>();
 	const byId = new Map<string, IndexedNote>();
+	const remember = (index: Map<string, IndexedNote>, key: string, note: IndexedNote): void => {
+		const previous = index.get(key);
+		if (!previous || previous.path === note.path) { index.set(key, note); return; }
+		index.set(key, { path: previous.path, reading: null, alternatives: [...new Set([...(previous.alternatives ?? [previous.path]), note.path])] });
+	};
 	for (const file of files) {
 		const frontmatter = file.frontmatter;
 		if (!frontmatter) continue;
 		const note = { path: file.path, reading: readingValue(frontmatter["rc-status"]) };
 		const doi = keys.map((key) => normalizeDoi(frontmatterText(frontmatter[key]))).find((value): value is string => Boolean(value));
 		const id = frontmatterText(frontmatter.openalex)?.match(/W\d+/i)?.[0]?.toUpperCase();
-		if (doi && !byDoi.has(doi)) byDoi.set(doi, note);
-		if (id && !byId.has(id)) byId.set(id, note);
+		if (doi) remember(byDoi, doi, note);
+		if (id) remember(byId, id, note);
+		if (Array.isArray(frontmatter["rc-doi-aliases"])) for (const value of frontmatter["rc-doi-aliases"]) { const alias = typeof value === "string" ? normalizeDoi(value) : null; if (alias) remember(byDoi, alias, note); }
+		if (Array.isArray(frontmatter["rc-openalex-aliases"])) for (const value of frontmatter["rc-openalex-aliases"]) { const alias = typeof value === "string" ? value.match(/W\d+/i)?.[0]?.toUpperCase() : null; if (alias) remember(byId, alias, note); }
 	}
 	return { byDoi, byId };
 }

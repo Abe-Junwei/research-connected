@@ -16,6 +16,7 @@ import { ConnectedPapersView } from "./view";
 
 export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
+	private pendingSave: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -73,6 +74,11 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const stored = (await this.loadData()) as (Partial<ConnectedPapersSettings> & { stagedPapers?: unknown }) | null;
+		const migrateIdentity = Object.values(stored?.researchProjects ?? {}).some((project) => project.snapshot?.version === 1);
+		if (migrateIdentity && this.manifest.dir) {
+			const path = `${this.manifest.dir}/data-before-work-identity-v2.json`;
+			if (!await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.write(path, JSON.stringify(stored));
+		}
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
 		const maxNodes = Number(this.settings.maxNodes);
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
@@ -83,16 +89,25 @@ export default class ConnectedPapersPlugin extends Plugin {
 			this.settings.stagedPapers,
 			this.settings.graftedBySeed,
 		);
+		if (migrateIdentity && Object.entries(stored?.researchProjects ?? {}).some(([id, project]) => project.snapshot && !this.settings.researchProjects[id.toUpperCase()])) {
+			throw new Error(tr("项目迁移未完成，已保留原数据及备份；请检查保存的项目格式", "Project migration could not complete. Original data and backup are retained; review the saved project format."));
+		}
 		this.settings.stagedPapers = [];
 		this.settings.graftedBySeed = {};
+		if (migrateIdentity) await this.saveSettings(false);
 	}
 
 	async saveSettings(notify = true): Promise<void> {
 		const data = { ...this.settings } as Partial<ConnectedPapersSettings> & { stagedPapers?: unknown; graftedBySeed?: unknown };
 		delete data.stagedPapers;
 		delete data.graftedBySeed;
-		await this.saveData(data);
-		window.dispatchEvent(new Event(notify ? "research-connected-settings" : "research-connected-project"));
+		const snapshot = JSON.parse(JSON.stringify(data));
+		const save = this.pendingSave.catch(() => {}).then(async () => {
+			await this.saveData(snapshot);
+			window.dispatchEvent(new Event(notify ? "research-connected-settings" : "research-connected-project"));
+		});
+		this.pendingSave = save;
+		await save;
 	}
 
 	private async openView(): Promise<void> {

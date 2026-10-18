@@ -1,8 +1,9 @@
+import { paperDois, paperHasId, paperRecords, resolveWorkQuery, workIndex, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -11,14 +12,14 @@ import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toM
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
-import { omitNode } from "./graph-edit";
+import { graftNodes, normalizeWorkGraph, omitNode, separateWorkRecords } from "./graph-edit";
 import { diagnoseCandidate, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
 import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
-import { updateProjectPaperState, type ReadingStatus } from "./project-state";
+import { acknowledgeIdentityStates, reconcileProjectIdentity, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus } from "./project-state";
 import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { mountSidebarResize } from "./sidebar-resize";
@@ -32,7 +33,7 @@ export interface EmbedDeps {
 	openExternal: (url: string) => void;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
-	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null } | null;
+	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
 	openLiteratureNote?: (path: string) => void;
 	syncLiteratureReading?: (paper: PaperNode, reading: ReadingStatus) => Promise<void>;
 	rememberLiteratureNote?: (paper: PaperNode, path: string, reading: ReadingStatus) => void;
@@ -341,6 +342,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (kind === "note") {
 			const paper = selected ?? currentGraph.nodes.find((node) => node.isSeed) ?? null;
 			if (!paper) return;
+			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper, currentGraph, selectedLink); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const fields = {
@@ -432,6 +434,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
 		const seedId = seed?.id ?? paper.id;
 		const project = deps.getSettings().researchProjects[seedId];
+		paintIdentitySources(detail, paper, deps.openExternal, () => {
+			if (!currentGraph) return;
+			if (currentGraph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { status.textContent = tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."); return; }
+			const next = separateWorkRecords(sourceGraph ?? currentGraph, paper);
+			if (project) { reconcileProjectIdentity(project, next); project.snapshot = saveGraphSnapshot(next); }
+			renderGraph(next, lastDepthNote);
+			void deps.stagePaper?.(paper, seedId, "OpenAlex");
+		}, project?.identityConflicts?.includes(paper.id), () => {
+			if (!project) return;
+			acknowledgeIdentityStates(project, paper);
+			void deps.stagePaper?.(paper, seedId, "OpenAlex"); showDetail(paper, graph, link);
+		});
 		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
 		if (noted?.reading && noted.reading !== paperState.reading) {
@@ -448,7 +462,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				throw error;
 			}
 		});
-		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote);
+		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote, noted.alternatives);
 		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
 		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
 		const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
@@ -594,11 +608,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const renderGraph = (graph: SimilarityGraph, depthNote: string): void => {
+		graph = normalizeWorkGraph(graph);
 		snapshotView();
 		message.hidden = true;
 		sourceGraph = graph;
 		lastDepthNote = depthNote;
 		const seedId = graph.nodes.find((node) => node.isSeed)?.id;
+		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
+		if (savedProject) reconcileProjectIdentity(savedProject, graph);
 		const excluded = seedId ? Object.entries(deps.getSettings().researchProjects[seedId]?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : [];
 		for (const id of excluded) graph = omitNode(graph, id) ?? graph;
 		graph.excludedIds = excluded;
@@ -629,13 +646,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const enrichOpenCitations = async (graph: SimilarityGraph, depthNote: string): Promise<void> => {
 		const token = generation;
 		const doiToId = new Map<string, string>();
-		for (const paper of graph.nodes) {
+		for (const paper of graph.nodes.flatMap(paperRecords)) {
 			const doi = doiFromPaper(paper)?.toLowerCase();
 			if (doi) doiToId.set(doi, paper.id);
 		}
 		if (doiToId.size === 0) return;
 		const client = new OpenCitationsClient(deps.getJson, deps.getSettings().openCitationsToken);
-		const papers = graph.nodes.filter((paper) => doiFromPaper(paper)).slice(0, 10);
+		const papers = graph.nodes.flatMap(paperRecords).filter((paper) => doiFromPaper(paper)).slice(0, 10);
 		const edgesBefore = graph.edges.length;
 		for (const paper of papers) {
 			if (!alive || token !== generation || currentGraph !== graph) return;
@@ -673,6 +690,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const key = cacheKey(spec.target, cap, spec.depth, settings);
 		try {
 			let graph = bypassCache ? undefined : cache.get(key);
+			if (graph) graph = cloneGraph(graph);
 			let depthNote = "";
 			if (!graph) {
 				const firstCap = spec.depth === 2 ? Math.min(cap, Math.max(15, cap - 10)) : cap;
@@ -723,6 +741,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const onProject = (): void => {
 		if (!sourceGraph || !currentGraph) return;
 		const seedId = sourceGraph.nodes.find((node) => node.isSeed)?.id;
+		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
+		if (savedProject) reconcileProjectIdentity(savedProject, sourceGraph);
 		const excluded = seedId ? Object.entries(deps.getSettings().researchProjects[seedId]?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : [];
 		if (excluded.join("\0") !== (currentGraph.excludedIds ?? []).join("\0")) renderGraph(sourceGraph, lastDepthNote);
 	};
@@ -887,82 +907,40 @@ function reconcileFor(deps: EmbedDeps, settings: ConnectedPapersSettings): Seman
 }
 
 async function expandDepth(
-	client: OpenAlexClient,
-	graph: SimilarityGraph,
-	cap: number,
+	client: OpenAlexClient, graph: SimilarityGraph, cap: number,
 ): Promise<{ graph: SimilarityGraph; note: string }> {
-	const seed = graph.nodes.find((node) => node.isSeed);
-	if (!seed) return { graph, note: "" };
-	const hubs = graph.nodes
-		.filter((node) => !node.isSeed)
-		.sort((a, b) => (graph.seedScore.get(b.id) ?? 0) - (graph.seedScore.get(a.id) ?? 0))
-		.slice(0, 2);
-	const seen = new Set(graph.nodes.map((node) => node.id));
-	const extra: PaperNode[] = [];
+	const hubs = graph.nodes.filter((node) => !node.isSeed)
+		.sort((a, b) => (graph.seedScore.get(b.id) ?? 0) - (graph.seedScore.get(a.id) ?? 0)).slice(0, 2);
 	const room = cap - graph.nodes.length;
-	if (room <= 0 || hubs.length === 0) return { graph, note: tr("已到节点上限", "Node limit reached") };
+	if (room <= 0) return { graph, note: tr("已到节点上限", "Node limit reached") };
+	const extra: PaperNode[] = [];
+	const seen = new Set(graph.nodes.flatMap((paper) => paperRecords(paper).map((record) => record.id)));
 	let failed = false;
+	let added = 0;
 	for (const hub of hubs) {
 		try {
-			const works = await client.referencedBySeed(hub.id, 12);
-			for (const raw of works) {
+			for (const raw of await client.referencedBySeed(hub.id, 12)) {
 				const paper = toPaper(raw, "reference");
 				if (!paper || seen.has(paper.id)) continue;
-				seen.add(paper.id);
-				extra.push(paper);
-				if (extra.length >= room) break;
+				const index = workIndex([...graph.nodes, ...extra, paper], graph.nodes.map((node) => node.id), graph.workIdentity?.separatedIds);
+				const nextAdded = index.papers.length - graph.nodes.length;
+				if (nextAdded > room) continue;
+				seen.add(paper.id); extra.push(paper); added = nextAdded;
 			}
-		} catch {
-			failed = true;
-		}
-		if (extra.length >= room) break;
+		} catch { failed = true; }
 	}
-	if (extra.length === 0) {
-		return { graph, note: failed ? tr("第二层没有读到", "The second layer could not be loaded") : "" };
-	}
-	const nodes = [...graph.nodes, ...extra];
+	if (!extra.length) return { graph, note: failed ? tr("第二层没有读到", "The second layer could not be loaded") : "" };
+	const lists = new Map<string, readonly string[]>();
 	try {
-		const detailed = await client.worksByIds(nodes.map((node) => node.id));
-		const refLists = new Map<string, Set<string>>();
-		for (const raw of detailed) {
+		for (const raw of await client.worksByIds(extra.flatMap((paper) => paperRecords(paper).map((record) => record.id)))) {
 			const id = shortId(raw.id ?? "");
-			if (!id) continue;
-			refLists.set(id, new Set(referenceIds(raw.referenced_works)));
-			const paper = nodes.find((item) => item.id === id);
-			const abstract = reconstructAbstract(raw.abstract_inverted_index);
-			if (paper && abstract) paper.abstract = abstract;
+			if (id) lists.set(id, referenceIds(raw.referenced_works));
 		}
-		for (const node of nodes) {
-			if (!refLists.has(node.id)) refLists.set(node.id, new Set());
-		}
-		const contexts = nodes
-			.filter((node) => node.origin === "citation")
-			.map((node) => refLists.get(node.id))
-			.filter((list): list is Set<string> => Boolean(list && list.size > 0));
-		const scored = buildSimilarity({
-			ids: nodes.map((node) => node.id),
-			seedId: seed.id,
-			references: refLists,
-			contexts,
-		});
-		const referenceLists = new Map(graph.referenceLists);
-		for (const [id, ids] of refLists) referenceLists.set(id, [...ids]);
-		const catalog = new Map(graph.catalog.map((paper) => [paper.id, paper]));
-		for (const paper of nodes) catalog.set(paper.id, paper);
-		return {
-			graph: {
-				...graph,
-				nodes,
-				edges: scored.edges,
-				seedScore: scored.seedScore,
-				referenceLists,
-				catalog: [...catalog.values()],
-			},
-			note: tr(`含第二层 ${extra.length} 篇`, `Includes ${extra.length} second-layer papers`),
-		};
-	} catch {
-		return { graph, note: tr("第二层没有读到", "The second layer could not be loaded") };
-	}
+	} catch { failed = true; }
+	return {
+		graph: graftNodes(graph, extra, lists),
+		note: tr(`含第二层 ${added} 篇${failed ? "；部分来源未读取" : ""}`, `Includes ${added} second-layer papers${failed ? "; some source data could not be loaded" : ""}`),
+	};
 }
 
 function cacheKey(
@@ -972,6 +950,8 @@ function cacheKey(
 	settings: ConnectedPapersSettings,
 ): string {
 	return [
+		`identity-${WORK_IDENTITY_VERSION}`,
+		JSON.stringify(Object.values(settings.researchProjects).map((project) => [project.seedId, project.snapshot?.workIdentity?.separatedIds ?? []])),
 		target.kind,
 		target.value,
 		maxNodes,
@@ -988,12 +968,16 @@ function cacheKey(
 	].join("|");
 }
 
+function cloneGraph(graph: SimilarityGraph): SimilarityGraph {
+	return restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(graph)))) ?? graph;
+}
+
 function remember(key: string, graph: SimilarityGraph): void {
 	if (cache.size >= 12) {
 		const oldest = cache.keys().next().value;
 		if (oldest) cache.delete(oldest);
 	}
-	cache.set(key, graph);
+	cache.set(key, cloneGraph(graph));
 }
 
 function rememberViewState(key: string, state: EmbedViewState): void {

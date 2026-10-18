@@ -5,6 +5,8 @@ import { buildPairSimilarity } from "../src/diversity";
 import { MMR_LAMBDA, selectNeighbors } from "../src/neighborhood";
 import { buildSimilarity } from "../src/similarity";
 import { syntheticGraph, syntheticNeighborhood } from "./perf-fixture";
+import { normalizeWorkGraph } from "../src/graph-edit";
+import { workIndex } from "../src/work-identity";
 
 const SIZES = [50, 150, 300];
 const ROUNDS = 7;
@@ -30,8 +32,8 @@ function format(ms: number): string {
 }
 
 console.log(`rounds=${ROUNDS} (median), fixture seed=42\n`);
-console.log("| N | nodes | edges | select+similarity | force2d | temporal | radial | aggregates |");
-console.log("| - | ----- | ----- | ----------------- | ------- | -------- | ------ | ---------- |");
+console.log("| N | nodes | edges | select+similarity | force2d | temporal | radial | aggregates | identity | merge+score |");
+console.log("| - | ----- | ----- | ----------------- | ------- | -------- | ------ | ---------- | -------- | ----------- |");
 
 for (const size of SIZES) {
 	const nb = syntheticNeighborhood(size);
@@ -72,8 +74,14 @@ for (const size of SIZES) {
 		priorWorks(graph, visible);
 		derivativeWorks(graph, visible);
 	});
+	const seed = graph.nodes.find((paper) => paper.isSeed)!;
+	const canonical = { ...seed, year: 2000, authorList: ["Test Author"], workType: "article", venue: "Test Journal", bibliography: { volume: "1", firstPage: "1", lastPage: "9" } };
+	const alias = { ...canonical, id: "W9999999999", isSeed: false, doiUrl: "https://doi.org/10.1234/alias" };
+	const identityGraph = { ...graph, nodes: [canonical, ...graph.nodes.filter((paper) => !paper.isSeed), alias], catalog: [canonical, ...graph.catalog.filter((paper) => !paper.isSeed), alias] };
+	const identity = timeMedian(() => { workIndex(identityGraph.nodes); });
+	const merge = timeMedian(() => { normalizeWorkGraph(identityGraph); });
 
 	console.log(
-		`| ${size} | ${graph.nodes.length} | ${graph.edges.length} | ${format(scoring)} ms | ${format(layouts.force2d)} ms | ${format(layouts.temporal)} ms | ${format(layouts.radial)} ms | ${format(aggregates)} ms |`,
+		`| ${size} | ${graph.nodes.length} | ${graph.edges.length} | ${format(scoring)} ms | ${format(layouts.force2d)} ms | ${format(layouts.temporal)} ms | ${format(layouts.radial)} ms | ${format(aggregates)} ms | ${format(identity)} ms | ${format(merge)} ms |`,
 	);
 }

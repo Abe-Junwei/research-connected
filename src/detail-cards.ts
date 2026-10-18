@@ -32,16 +32,40 @@ export interface RelationSectionOptions {
 }
 
 /** Shown when a vault note already matches this paper's DOI or OpenAlex id. */
-export function paintLiteratureLink(parent: HTMLElement, path: string, open: (path: string) => void): void {
+export function paintLiteratureLink(parent: HTMLElement, path: string, open: (path: string) => void, alternatives?: string[]): void {
 	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
 	const actionRow = card.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
 	const note = el(card, "p", "cpo-fact-note");
+	if (alternatives?.length) {
+		note.textContent = tr("匹配到多份笔记，请选择：", "Multiple matching notes. Choose one: ");
+		for (const file of alternatives) { const pick = el(note, "button", "cpo-text-btn", file) as HTMLButtonElement; pick.type = "button"; pick.onclick = () => open(file); }
+		if (actionRow) card.insertBefore(note, actionRow);
+		return;
+	}
 	const button = el(note, "button", "cpo-text-btn", tr("打开笔记", "Open note")) as HTMLButtonElement;
 	button.type = "button";
 	button.title = path;
 	button.onclick = () => open(path);
 	note.prepend(document.createTextNode(tr("已有笔记 · ", "In your notes · ")));
 	if (actionRow) card.insertBefore(note, actionRow);
+}
+
+export function paintIdentitySources(parent: HTMLElement, paper: PaperNode, open: (url: string) => void, separate: () => void, conflict = false, acknowledge?: () => void): void {
+	if (!paper.records?.length) return;
+	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
+	const details = el(card, "details", "cpo-work-sources");
+	el(details, "summary", "cpo-fact-note", tr(`已合并 ${paper.records.length} 条同作品记录 · 查看来源`, `${paper.records.length} records merged for this work · Sources`));
+	el(details, "p", "cpo-fact-note", tr("依据：相同 DOI，或题名、作者、年份与完整期刊题录一致。被引数分别保留。", "Matched by DOI or identical title, authors, year, and journal details. Citation counts remain separate."));
+	for (const record of paper.records) {
+		const row = el(details, "p", "cpo-fact-note", `${record.id} · ${record.citedByCount} ${tr("次被引", "citations")} · `);
+		if (record.doiUrl) { const link = el(row, "button", "cpo-text-btn", record.doiUrl.replace(/^https?:\/\/doi.org\//, "")) as HTMLButtonElement; link.type = "button"; link.onclick = () => open(record.doiUrl!); }
+	}
+	if (conflict) {
+		el(details, "p", "cpo-fact-note", tr("旧记录的阅读、暂存或排除状态不一致；已按各字段时间恢复，原值已保留。请核对当前状态。", "Legacy records have conflicting workflow states. The latest field values were restored and originals retained. Review the current state."));
+		if (acknowledge) { const done = el(details, "button", "cpo-paper-action", tr("已核对状态", "States reviewed")) as HTMLButtonElement; done.type = "button"; done.onclick = acknowledge; }
+	}
+	const button = el(details, "button", "cpo-paper-action", tr("保持这些记录分开", "Keep these records separate")) as HTMLButtonElement;
+	button.type = "button"; button.onclick = separate;
 }
 
 export function paintPaperWorkflowState(

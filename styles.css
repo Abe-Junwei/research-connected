@@ -1736,6 +1736,18 @@
 	font-size: 10.5px;
 }
 
+.cpo-root .cpo-work-sources,
+.cpo-embed .cpo-work-sources {
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	font: inherit;
+}
+.cpo-work-sources > summary { cursor: pointer; line-height: 1.5; }
+.cpo-work-sources > p { margin: 7px 0; overflow-wrap: anywhere; }
+.cpo-work-sources > .cpo-paper-action { margin-top: 4px; }
+
 .cpo-embed .cpo-tools {
 	flex: none;
 	max-height: none;

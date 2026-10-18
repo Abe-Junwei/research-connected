@@ -1,11 +1,15 @@
 import { tr } from "./i18n";
 import { CitationEvidenceStore, type CitationEvidence } from "./citation-evidence";
+import { normalizeDoi, shortId } from "./paper";
+import { normalizeWorkGraph } from "./graph-edit";
+import { paperHasId, paperRecords, resolveWorkQuery, type WorkIdentity } from "./work-identity";
 import type { SimilarityGraph } from "./neighborhood";
 import type { GraphFilter } from "./graph-filter";
 import type { PaperNode, GraphEdge } from "./types";
 
 export interface SavedGraphSnapshot {
-	version: 1;
+	version: 1 | 2;
+	workIdentity?: WorkIdentity;
 	savedAt: number;
 	seedId: string;
 	nodes: PaperNode[];
@@ -53,6 +57,7 @@ export interface ProjectPaperState {
 	excluded: boolean;
 	source: string;
 	updatedAt: number;
+	fieldUpdatedAt?: Partial<Record<"reading" | "staged" | "excluded", number>>;
 }
 
 export interface DeepDiveAddition {
@@ -81,6 +86,91 @@ export interface ResearchProject {
 	views: SavedView[];
 	deepDives?: DeepDiveBatch[];
 	paperStates?: Record<string, ProjectPaperState>;
+	identityOriginalStates?: Record<string, ProjectPaperState>;
+	identityConflicts?: string[];
+	identityReviewedGroups?: string[];
+	identityOriginalDeepDives?: DeepDiveBatch[];
+	identityOriginalViews?: SavedView[];
+	identityOriginalCurrentView?: SavedView;
+}
+
+export function savedProjectForSeed(
+	projects: Record<string, ResearchProject>, target: { kind: "doi" | "openalex"; value: string },
+): ResearchProject | undefined {
+	if (target.kind === "openalex" && projects[shortId(target.value)]) return projects[shortId(target.value)];
+	const matches = Object.values(projects).filter((project) => { const graph = restoreGraphSnapshot(project.snapshot); return graph && resolveWorkQuery(graph.nodes.filter((paper) => paper.isSeed), target.value) !== null; });
+	return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function matchingSeedProjects(projects: Record<string, ResearchProject>, target: { kind: "doi" | "openalex"; value: string }): ResearchProject[] {
+	return Object.values(projects).filter((project) => {
+		const snapshot = restoreGraphSnapshot(project.snapshot);
+		return snapshot && resolveWorkQuery(snapshot.nodes.filter((paper) => paper.isSeed), target.value) !== null;
+	});
+}
+
+export function reconcileProjectIdentity(project: ResearchProject, graph: SimilarityGraph): void {
+	if (!graph.workIdentity) return;
+	const ids = new Map(graph.workIdentity.canonicalIds);
+	const resolve = (id: string): string => ids.get(id) ?? id;
+	const papers = new Map(graph.catalog.map((paper) => [paper.id, paper]));
+	const original = project.identityOriginalStates ?? { ...project.paperStates };
+	const grouped = new Map<string, ProjectPaperState[]>();
+	for (const state of [...Object.values(original), ...Object.values(project.paperStates ?? {})]) {
+		const targets = new Set(paperRecords(state.paper).map((record) => resolve(record.id)));
+		for (const id of targets) {
+			let value = state;
+			if (targets.size > 1) {
+				const base = original[id] ?? { paper: papers.get(id) ?? state.paper, reading: "unread" as const, staged: false, excluded: false, source: state.source, updatedAt: 0 };
+				value = { ...base, fieldUpdatedAt: { ...base.fieldUpdatedAt } };
+				for (const field of ["reading", "staged", "excluded"] as const) {
+					const originalTime = Math.max(0, ...paperRecords(state.paper).map((record) => original[record.id]?.fieldUpdatedAt?.[field] ?? original[record.id]?.updatedAt ?? 0));
+					if ((state.fieldUpdatedAt?.[field] ?? 0) > originalTime) { Object.assign(value, { [field]: state[field] }); value.fieldUpdatedAt![field] = state.fieldUpdatedAt![field]; }
+				}
+			}
+			const rows = grouped.get(id) ?? []; rows.push(value); grouped.set(id, rows);
+		}
+	}
+	const states: Record<string, ProjectPaperState> = {};
+	const conflicts = new Set(project.identityConflicts ?? []);
+	for (const [id, rows] of grouped) {
+		const recent = [...rows].sort((a, b) => b.updatedAt - a.updatedAt || a.paper.id.localeCompare(b.paper.id))[0]!;
+		const next = { ...recent, paper: papers.get(id) ?? recent.paper, fieldUpdatedAt: { ...recent.fieldUpdatedAt } };
+		for (const field of ["reading", "staged", "excluded"] as const) {
+			const ordered = [...rows].sort((a, b) => (b.fieldUpdatedAt?.[field] ?? b.updatedAt) - (a.fieldUpdatedAt?.[field] ?? a.updatedAt) || a.paper.id.localeCompare(b.paper.id));
+			const winner = ordered[0]!;
+			Object.assign(next, { [field]: winner[field] });
+			next.fieldUpdatedAt[field] = winner.fieldUpdatedAt?.[field] ?? winner.updatedAt;
+			const groupKey = paperRecords(next.paper).map((record) => record.id).sort().join("|");
+			if (new Set(rows.map((row) => row[field])).size > 1 && rows.some((row) => !row.fieldUpdatedAt) && !project.identityReviewedGroups?.includes(groupKey)) conflicts.add(id);
+		}
+		if (next.paper.isSeed) next.excluded = false;
+		states[id] = next;
+	}
+	if (JSON.stringify(states) !== JSON.stringify(project.paperStates ?? {})) project.paperStates = states;
+	project.identityOriginalStates = original;
+	project.identityConflicts = [...conflicts];
+	project.identityOriginalCurrentView ??= project.currentView;
+	project.identityOriginalViews ??= project.views;
+	const remapView = (view: SavedView, before?: SavedView): SavedView => {
+		const selectedId = before?.updatedAt === view.updatedAt ? before.selectedId : view.selectedId;
+		return { ...view, selectedId: selectedId ? resolve(selectedId) : null };
+	};
+	if (project.currentView) project.currentView = remapView(project.currentView, project.identityOriginalCurrentView);
+	project.views = project.views.map((view) => remapView(view, project.identityOriginalViews?.find((before) => before.name === view.name)));
+	const sourceBatches = new Map((project.identityOriginalDeepDives ?? []).map((batch) => [batch.id, batch]));
+	for (const batch of project.deepDives ?? []) if (!sourceBatches.has(batch.id)) sourceBatches.set(batch.id, batch);
+	project.identityOriginalDeepDives = [...sourceBatches.values()];
+	const batches = project.deepDives?.map((batch) => {
+		const source = sourceBatches.get(batch.id) ?? batch;
+		return { ...batch, parentId: resolve(source.parentId), additions: [...new Map(source.additions.map((addition) => [resolve(addition.paperId), { ...addition, paperId: resolve(addition.paperId) }])).values()] };
+	});
+	if (JSON.stringify(batches) !== JSON.stringify(project.deepDives)) project.deepDives = batches;
+}
+
+export function acknowledgeIdentityStates(project: ResearchProject, paper: PaperNode): void {
+	project.identityReviewedGroups = [...new Set([...(project.identityReviewedGroups ?? []), paperRecords(paper).map((record) => record.id).sort().join("|")])];
+	project.identityConflicts = project.identityConflicts?.filter((id) => id !== paper.id);
 }
 
 export function updateProjectPaperState(
@@ -89,14 +179,19 @@ export function updateProjectPaperState(
 ): ProjectPaperState {
 	const key = seedId.toUpperCase();
 	const project = projects[key] ?? (projects[key] = { version: 1, seedId: key, name: key, updatedAt: Date.now(), views: [] });
+	paper = project.snapshot?.nodes.find((item) => paperHasId(item, paper.id)) ?? paper;
 	const previous = project.paperStates?.[paper.id];
+	const now = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
+	const fieldUpdatedAt = { ...previous?.fieldUpdatedAt };
+	for (const field of ["reading", "staged", "excluded"] as const) if (patch[field] !== undefined) fieldUpdatedAt[field] = now;
 	const state: ProjectPaperState = {
 		paper,
 		reading: patch.reading ?? previous?.reading ?? "unread",
 		staged: patch.staged ?? previous?.staged ?? false,
-		excluded: patch.excluded ?? previous?.excluded ?? false,
+		excluded: paper.isSeed ? false : patch.excluded ?? previous?.excluded ?? false,
 		source: patch.source ?? previous?.source ?? "OpenAlex",
-		updatedAt: Date.now(),
+		updatedAt: now,
+		fieldUpdatedAt,
 	};
 	project.paperStates = { ...project.paperStates, [paper.id]: state };
 	project.updatedAt = state.updatedAt;
@@ -149,7 +244,8 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 	const seed = graph.nodes.find((node) => node.isSeed);
 	if (!seed) throw new Error(tr("研究项目缺少种子论文", "Research project has no seed paper"));
 	return {
-		version: 1,
+		version: 2,
+		workIdentity: graph.workIdentity,
 		savedAt: Date.now(),
 		seedId: seed.id,
 		nodes: graph.nodes,
@@ -177,16 +273,19 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 
 export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 	if (!raw || typeof raw !== "object") return null;
-	const saved = raw as Partial<SavedGraphSnapshot>;
-	if (saved.version !== 1 || !Array.isArray(saved.nodes) || !Array.isArray(saved.edges) || !Array.isArray(saved.seedScore) || !Array.isArray(saved.referenceLists) || !Array.isArray(saved.catalog)) return null;
+	const saved = JSON.parse(JSON.stringify(raw)) as Partial<SavedGraphSnapshot>;
+	if (![1, 2].includes(saved.version ?? 0) || !Array.isArray(saved.nodes) || !Array.isArray(saved.edges) || !Array.isArray(saved.seedScore) || !Array.isArray(saved.referenceLists) || !Array.isArray(saved.catalog)) return null;
 	if (!saved.nodes.some((node) => node?.isSeed && node.id === saved.seedId)) return null;
 	try {
+		const identity = saved.workIdentity;
+		if (identity && (identity.version !== 1 || !Array.isArray(identity.records) || identity.records.length > 10000 || !identity.records.every((paper) => paper && typeof paper.id === "string" && typeof paper.title === "string" && Array.isArray(paper.authorList)) || !Array.isArray(identity.referenceLists) || !identity.referenceLists.every((entry) => Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1]) && entry[1].every((id) => typeof id === "string")) || !Array.isArray(identity.evidence) || !Array.isArray(identity.directEdges) || !Array.isArray(identity.canonicalIds) || !identity.canonicalIds.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every((id) => typeof id === "string")) || !Array.isArray(identity.separatedIds) || !identity.separatedIds.every((id) => typeof id === "string"))) return null;
 		if (saved.nodes.length > 300 || saved.edges.length > 20000 || saved.seedScore.some((entry) => !Array.isArray(entry) || entry.length !== 2)) return null;
 		const citationEvidence = new CitationEvidenceStore();
 		for (const evidence of Array.isArray(saved.citationEvidence) ? saved.citationEvidence : []) {
 			if (evidence && typeof evidence.citingId === "string" && typeof evidence.citedId === "string") citationEvidence.set(evidence);
 		}
-		return {
+		return normalizeWorkGraph({
+		workIdentity: saved.workIdentity,
 		nodes: saved.nodes,
 		edges: saved.edges,
 		seedScore: new Map(saved.seedScore),
@@ -209,7 +308,7 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 		semanticMode: saved.semanticMode,
 		semanticModel: saved.semanticModel,
 			selectionRank: saved.selectionRank ? new Map(saved.selectionRank) : undefined,
-		};
+		});
 	} catch {
 		return null;
 	}
@@ -232,6 +331,7 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 				excluded: Boolean(rawState.excluded),
 				source: typeof rawState.source === "string" ? rawState.source.slice(0, 300) : "OpenAlex",
 				updatedAt: Number.isFinite(rawState.updatedAt) ? rawState.updatedAt : 0,
+				fieldUpdatedAt: rawState.fieldUpdatedAt && Object.fromEntries(Object.entries(rawState.fieldUpdatedAt).filter(([field, time]) => ["reading", "staged", "excluded"].includes(field) && Number.isFinite(time))),
 			};
 		}
 		if (project.version !== 1 || (snapshot && snapshot.nodes.length > 300) || (!snapshot && Object.keys(paperStates).length === 0 && !project.deepDives?.length)) continue;
@@ -252,9 +352,17 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 				warnings: Array.isArray(batch.warnings) ? batch.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
 			})) : [],
 			paperStates,
+			identityOriginalStates: project.identityOriginalStates,
+			identityConflicts: project.identityConflicts,
+			identityReviewedGroups: project.identityReviewedGroups,
+			identityOriginalDeepDives: project.identityOriginalDeepDives,
+			identityOriginalViews: project.identityOriginalViews,
+			identityOriginalCurrentView: project.identityOriginalCurrentView,
 			currentView: validView(project.currentView) ? project.currentView : undefined,
 			views: Array.isArray(project.views) ? project.views.filter(validView).slice(0, 30) : [],
 		};
+		const next = out[seedId.toUpperCase()]!;
+		if (snapshot) { reconcileProjectIdentity(next, snapshot); next.snapshot = { ...saveGraphSnapshot(snapshot), savedAt: project.snapshot?.savedAt ?? 0 }; }
 	}
 	return out;
 }
