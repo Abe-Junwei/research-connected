@@ -1,5 +1,7 @@
 # Research Connected
 
+<img src="docs/images/logo.svg" width="120" height="120" alt="Research Connected logo">
+
 ![GitHub release](https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver) ![Obsidian](https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed) ![License](https://img.shields.io/github/license/Abe-Junwei/research-connected)
 
 Map how papers relate through citations, co-citations, and shared references, without leaving Obsidian. Start from one paper and get an interactive similarity graph in its own tab or inside a note.

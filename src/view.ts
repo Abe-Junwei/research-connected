@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mountGraphApp, type GraphAppHandle } from "./app";
+import { LOGO_ICON } from "./logo";
 import { VIEW_TYPE } from "./constants";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
@@ -31,7 +32,7 @@ export class ConnectedPapersView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "git-fork";
+		return LOGO_ICON;
 	}
 
 	async onOpen(): Promise<void> {

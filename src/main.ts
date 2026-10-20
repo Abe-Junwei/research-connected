@@ -1,4 +1,5 @@
-import { Plugin } from "obsidian";
+import { addIcon, Plugin } from "obsidian";
+import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
 import { registerConnectedPapersEmbed } from "./embed-block";
@@ -24,7 +25,9 @@ export default class ConnectedPapersPlugin extends Plugin {
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));
 
-		this.addRibbonIcon("git-fork", "Research Connected", () => {
+		addIcon(LOGO_ICON, LOGO_SVG);
+
+		this.addRibbonIcon(LOGO_ICON, "Research Connected", () => {
 			void this.openView();
 		});
 
