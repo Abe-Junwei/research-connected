@@ -1,0 +1,33 @@
+name: Feature request / 功能建议
+description: Suggest an improvement to your research workflow. 支持中文或英文。
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English or Chinese is welcome. Please [check existing requests](https://github.com/Abe-Junwei/research-connected/issues) first.
+        Suggestions are public and do not guarantee implementation or a delivery date. Do not include private notes or unpublished research.
+        支持中文。建议公开可见，不代表承诺开发或交付时间，请勿附上私人笔记或未公开研究材料。
+  - type: textarea
+    id: task
+    attributes:
+      label: Your research task / 你正在完成什么研究任务？
+    validations:
+      required: true
+  - type: textarea
+    id: obstacle
+    attributes:
+      label: What gets in the way? / 目前哪里受阻？
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired result / 希望得到什么结果？
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or examples / 替代办法或示例（可选）
+      description: You do not need to design a technical solution. 无需提供技术实现方案。

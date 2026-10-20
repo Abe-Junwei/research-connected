@@ -3693,3 +3693,8 @@ button.cpo-agg-item {
 	}
 
 }
+
+.cpo-help-links {
+	flex-wrap: wrap;
+	gap: 8px 12px;
+}

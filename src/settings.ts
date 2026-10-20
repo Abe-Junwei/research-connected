@@ -281,5 +281,17 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 					await this.store.saveSettings();
 				});
 			});
+
+		const setting = new Setting(containerEl)
+			.setName(tr("帮助与反馈", "Help and feedback"))
+			.setDesc(tr("使用指南、报告问题与功能建议。支持中文或英文；提交需要 GitHub 账户，内容公开可见。请勿附上密钥或私人笔记。", "User guide, bug reports, and feature requests. English or Chinese is welcome. Submitting requires a GitHub account and is public; do not include keys or private notes."));
+		setting.controlEl.addClass("cpo-help-links");
+		for (const [text, href] of [
+			[tr("使用指南", "User guide"), "https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md"],
+			[tr("报告问题", "Report a bug"), "https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml"],
+			[tr("功能建议", "Request a feature"), "https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml"],
+		]) {
+			setting.controlEl.createEl("a", { text, href, attr: { target: "_blank", rel: "noopener noreferrer" } });
+		}
 	}
 }
