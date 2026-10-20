@@ -1,6 +1,6 @@
 <h1 align="center">Research Connected</h1>
 
-<p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/README.md">English</a> | 简体中文</p>
+<p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/README.md">English</a> | 简体中文 | <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/zh-tw/README.md">繁體中文</a> | <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/ja/README.md">日本語</a> | <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/ko/README.md">한국어</a></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected 标志"></p>
 
