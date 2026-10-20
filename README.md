@@ -1,5 +1,7 @@
 # Research Connected
 
+【English | [简体中文](https://github.com/Abe-Junwei/research-connected/blob/main/docs/zh-cn/README.md)】
+
 <img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected logo">
 
 Map related papers, inspect the evidence behind each connection, and turn your reading into linked notes in Obsidian.
@@ -91,8 +93,6 @@ Projects, reading states, saved views, and service credentials are stored in thi
 - **Need setup help?** Read the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md) and [check existing issues](https://github.com/Abe-Junwei/research-connected/issues).
 
 English or Chinese is welcome. Submitting requires a GitHub account, and reports are public. Do not include API keys, private notes, unpublished research, a full vault, or `data.json`. A feature request does not guarantee implementation or a delivery date.
-
-遇到无法正常工作的情况？[报告问题](https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml)。希望改善某个研究流程？[提出功能建议](https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml)。提交前可以先[查看已有问题](https://github.com/Abe-Junwei/research-connected/issues)。支持中文或英文；反馈在 GitHub 公开显示，提交需要 GitHub 账户。请勿上传密钥、私人笔记、未公开研究材料或完整库数据。
 
 ## Updates and contributing
 
