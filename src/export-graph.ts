@@ -98,10 +98,8 @@ export interface LiteratureFields {
 	status: ReadingStatus;
 }
 
-const LITERATURE_TOKENS = ["title", "authors", "year", "doi", "openalex", "relation", "project", "status"] as const;
-
 export function fillLiteratureTemplate(template: string, paper: PaperNode, fields: LiteratureFields): string {
-	const values: Record<(typeof LITERATURE_TOKENS)[number], string> = {
+	const values: Record<"title" | "authors" | "year" | "doi" | "openalex" | "relation" | "project" | "status", string> = {
 		title: paper.title,
 		authors: paper.authors,
 		year: paper.year === null ? "" : String(paper.year),

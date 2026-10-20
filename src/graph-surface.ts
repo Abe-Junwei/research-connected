@@ -28,23 +28,23 @@ export function placeNodeMenu(stage: HTMLElement, menu: HTMLElement, x: number, 
 
 /** Shared graph canvas shell; graph pane and note embeds supply only their host-specific content/actions. */
 export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: string; title: string; hint: string; mutations?: boolean }): GraphSurface {
-	const stage = document.createElement("div");
+	const stage = createDiv();
 	stage.className = "cpo-stage";
-	const canvas = document.createElement("canvas");
+	const canvas = createEl("canvas");
 	canvas.setAttribute("aria-label", options.canvasLabel);
-	const empty = document.createElement("div");
+	const empty = createDiv();
 	empty.className = "cpo-empty";
-	const emptyTitle = document.createElement("h2");
+	const emptyTitle = createEl("h2");
 	emptyTitle.className = "cpo-empty-title";
 	emptyTitle.textContent = options.title;
 	if (!options.title) emptyTitle.hidden = true;
-	const messageText = document.createElement("p");
+	const messageText = createEl("p");
 	messageText.textContent = options.hint;
 	empty.append(emptyTitle, messageText);
-	const tooltip = document.createElement("div");
+	const tooltip = createDiv();
 	tooltip.className = "cpo-tooltip";
 	tooltip.hidden = true;
-	const nodeMenu = document.createElement("div");
+	const nodeMenu = createDiv();
 	nodeMenu.className = "cpo-node-menu";
 	nodeMenu.hidden = true;
 	nodeMenu.setAttribute("role", "menu");
@@ -54,12 +54,12 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	const seedItem = menuButton(tr("设为种子", "Set as seed"));
 	if (options.mutations === false) nodeMenu.append(seedItem);
 	else {
-		const dangerSep = document.createElement("span");
+		const dangerSep = createSpan();
 		dangerSep.className = "cpo-node-menu-sep";
 		dangerSep.setAttribute("role", "separator");
 		nodeMenu.append(expandItem, seedItem, dangerSep, deleteItem);
 	}
-	const zoom = document.createElement("div");
+	const zoom = createDiv();
 	zoom.className = "cpo-zoom";
 	const zoomIn = iconButton("+", tr("放大", "Zoom in"));
 	const zoomOut = iconButton("−", tr("缩小", "Zoom out"));
@@ -77,7 +77,7 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 }
 
 function menuButton(label: string): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.setAttribute("role", "menuitem");
 	button.textContent = label;
@@ -85,7 +85,7 @@ function menuButton(label: string): HTMLButtonElement {
 }
 
 function iconButton(label: string, aria: string): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "cpo-icon";
 	button.textContent = label;

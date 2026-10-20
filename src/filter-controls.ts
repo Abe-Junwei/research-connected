@@ -32,15 +32,15 @@ export function buildLegend(
 ): Map<(typeof KIND_ORDER)[number], HTMLElement> {
 	const counts = new Map<(typeof KIND_ORDER)[number], HTMLElement>();
 	for (const kind of KIND_ORDER) {
-		const button = document.createElement("button");
+		const button = createEl("button");
 		button.type = "button";
 		const on = read().kinds[kind];
 		button.className = on ? "cpo-legend-kind is-on" : "cpo-legend-kind";
 		button.setAttribute("aria-pressed", on ? "true" : "false");
 		button.title = RELATION_LABEL[kind];
-		const swatch = document.createElement("i");
+		const swatch = createEl("i");
 		swatch.dataset.kind = kind;
-		const n = document.createElement("span");
+		const n = createSpan();
 		n.className = "cpo-graph-key-n";
 		n.textContent = "0";
 		button.append(swatch, document.createTextNode(RELATION_LABEL[kind]), n);
@@ -58,11 +58,11 @@ export function buildLegend(
 }
 
 function markRow(className: string, label: string): { row: HTMLSpanElement; n: HTMLSpanElement } {
-	const row = document.createElement("span");
+	const row = createSpan();
 	row.className = className;
-	const swatch = document.createElement("i");
+	const swatch = createEl("i");
 	swatch.setAttribute("aria-hidden", "true");
-	const n = document.createElement("span");
+	const n = createSpan();
 	n.className = "cpo-graph-key-n";
 	n.textContent = "0";
 	row.append(swatch, document.createTextNode(label), n);
@@ -79,29 +79,29 @@ export function mountGraphKey(
 	setStats: (nodes: readonly { id: string; year: number | null; isSeed?: boolean }[], edges: readonly GraphEdge[]) => void;
 	setKinds: (selected: GraphFilter["kinds"]) => void;
 } {
-	const key = document.createElement("div");
+	const key = createDiv();
 	key.className = "cpo-graph-key";
-	const kinds = document.createElement("div");
+	const kinds = createDiv();
 	kinds.className = "cpo-graph-key-kinds";
 	const kindCounts = buildLegend(kinds, read, write);
-	const marks = document.createElement("div");
+	const marks = createDiv();
 	marks.className = "cpo-graph-key-marks";
 	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
 	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
 	marks.append(seed.row, classic.row);
-	const color = document.createElement("span");
+	const color = createSpan();
 	color.className = "cpo-graph-key-color";
-	const dots = document.createElement("span");
+	const dots = createSpan();
 	dots.className = "cpo-graph-key-dots";
 	dots.setAttribute("aria-hidden", "true");
 	for (let i = 0; i < 3; i++) {
-		const dot = document.createElement("i");
+		const dot = createEl("i");
 		dot.style.background = communityColor(i);
 		dots.append(dot);
 	}
-	const label = document.createElement("span");
+	const label = createSpan();
 	label.textContent = tr("引用团", "Citation clusters");
-	const groupN = document.createElement("span");
+	const groupN = createSpan();
 	groupN.className = "cpo-graph-key-n";
 	groupN.textContent = "0";
 	color.append(dots, label, groupN);

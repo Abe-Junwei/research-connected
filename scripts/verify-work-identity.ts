@@ -58,6 +58,16 @@ export function verifyWorkIdentity(): void {
 	const incomingSplit = separateWorkRecords(incoming, incoming.nodes.find((paper) => paper.isSeed)!);
 	assert.equal(incomingSplit.citationEvidence?.get(third.id, seed.id)?.contexts.length, 1, "splitting restores source-specific evidence");
 	assert.equal(incomingSplit.citationEvidence?.get(third.id, alias.id)?.contexts.length, 1);
+	const citingAliases = nicholsSnapshot();
+	citingAliases.nodes = citingAliases.nodes.map((paper) => ({ ...paper, origin: "citation" as const }));
+	citingAliases.catalog = citingAliases.nodes;
+	citingAliases.coCitationContextIds = [seed.id, alias.id];
+	const citingMerged = restoreGraphSnapshot(citingAliases)!;
+	assert.deepEqual(citingMerged.coCitationContextIds, [seed.id], "a merged citing work counts once");
+	const citingRoundTrip = restoreGraphSnapshot(saveGraphSnapshot(citingMerged))!;
+	assert.deepEqual([...(separateWorkRecords(citingRoundTrip, citingRoundTrip.nodes[0]!).coCitationContextIds ?? [])].sort(), [seed.id, alias.id].sort(), "splitting restores both original citing contexts");
+	const addedContext = normalizeWorkGraph({ ...citingRoundTrip, coCitationContextIds: [seed.id, "W999"] });
+	assert.ok(addedContext.workIdentity?.contextIds?.includes("W999"), "context-only changes must update reversible source data");
 	const project: ResearchProject = { version: 1, seedId: seed.id, name: "Nichols", updatedAt: 1, snapshot, views: [], paperStates: {
 		[seed.id]: { paper: seed, reading: "unread", staged: true, excluded: false, source: "OpenAlex", updatedAt: 1 },
 		[alias.id]: { paper: alias, reading: "read", staged: false, excluded: true, source: "OpenAlex", updatedAt: 2 },

@@ -50,3 +50,58 @@ try {
 	if (oldWindow === undefined) delete globalThis.window;
 	else globalThis.window = oldWindow;
 }
+
+// The settings migration must keep all controls searchable, writable, and masked.
+const settingsBundle = await build({ entryPoints: ["src/settings.ts"], bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, logLevel: "silent" });
+const settingsModule = { exports: {} };
+class SettingsTab {
+	updates = 0;
+	update() { this.updates++; }
+}
+new Function("module", "exports", "require", settingsBundle.outputFiles[0].text)(settingsModule, settingsModule.exports, () => ({ ...obsidian, PluginSettingTab: SettingsTab }));
+let saves = 0;
+const store = { settings: { ...settingsModule.exports.DEFAULT_SETTINGS }, saveSettings: async () => { saves++; } };
+const tab = new settingsModule.exports.ConnectedPapersSettingTab({}, {}, store);
+const controls = new Map();
+const helpLinks = [];
+function renderSettings() {
+	controls.clear();
+	helpLinks.length = 0;
+	for (const definition of tab.getSettingDefinitions()) {
+		assert.ok(definition.name && definition.desc, "every setting must have searchable text");
+		const control = {
+			inputEl: {},
+			setPlaceholder() { return this; }, setValue() { return this; },
+			setLimits() { return this; }, addOption() { return this; },
+			onChange(callback) { this.change = callback; return this; },
+		};
+		const render = (callback) => { callback(control); controls.set(definition.name, control); };
+		definition.render({
+			addText: render, addTextArea: render, addSlider: render, addToggle: render, addDropdown: render,
+			controlEl: { addClass() {}, createEl(tag, options) { helpLinks.push({ tag, ...options }); } },
+		});
+	}
+}
+renderSettings();
+assert.deepEqual(helpLinks.map(({ tag, text, href, attr }) => [tag, text, href, attr]), [
+	["a", "User guide", "https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md", { target: "_blank", rel: "noopener noreferrer" }],
+	["a", "Report a bug", "https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml", { target: "_blank", rel: "noopener noreferrer" }],
+	["a", "Request a feature", "https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml", { target: "_blank", rel: "noopener noreferrer" }],
+]);
+assert.equal(controls.size, 17, "all non-LLM settings must remain available");
+assert.equal(controls.get("OpenAlex API key").inputEl.type, "password");
+await controls.get("Maximum nodes").change(999);
+assert.equal(store.settings.maxNodes, 300);
+await controls.get("DOI property name").change("  ");
+assert.equal(store.settings.literatureDoiProperty, "doi");
+await controls.get("Enable LLM research narrative").change(true);
+assert.equal(tab.updates, 1, "LLM visibility must refresh through the host update API");
+renderSettings();
+assert.equal(controls.size, 21);
+assert.equal(controls.get("LLM API key").inputEl.type, "password");
+await controls.get("LLM endpoint").change(" https://example.test/chat/completions ");
+assert.equal(store.settings.llmEndpoint, "https://example.test/chat/completions");
+assert.equal(saves, 4);
+store.saveSettings = async () => { throw new Error("disk full"); };
+await assert.rejects(controls.get("Contact email (mailto)").change("a@example.test"), /disk full/);
+console.log("settings search, persistence, visibility and secret masking checks passed");

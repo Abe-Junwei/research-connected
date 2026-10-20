@@ -13,7 +13,7 @@ if (!(root instanceof HTMLElement)) {
 }
 
 const getJson: GetJson = async (url, init) => {
-	const response = await fetch(url, { headers: init.headers });
+	const response = await window.fetch(url, { headers: init.headers });
 	if (!response.ok) throw new OpenAlexError(explainStatus(response.status), response.status);
 	return (await response.json()) as unknown;
 };
@@ -25,8 +25,8 @@ const storageKey = identity ? "research-connected-preview-identity-projects" : "
 const llm = offline && new URLSearchParams(window.location.search).has("llm");
 const previewSettings = { ...DEFAULT_SETTINGS, researchProjects: { ...DEFAULT_SETTINGS.researchProjects } };
 try {
-	const saved = localStorage.getItem(storageKey);
-	if (saved) previewSettings.researchProjects = JSON.parse(saved);
+	const saved = window.localStorage.getItem(storageKey);
+	if (saved) previewSettings.researchProjects = normalizeProjects(JSON.parse(saved));
 } catch { /* Preview remains usable if storage is unavailable or malformed. */ }
 
 if (identity && !Object.keys(previewSettings.researchProjects).length) previewSettings.researchProjects = normalizeProjects({ W4245234602: { version: 1, seedId: "W4245234602", name: "Nichols 1986", updatedAt: 1, views: [], snapshot: nicholsSnapshot() } });
@@ -35,7 +35,7 @@ mountGraphApp(root, {
 	getSettings: () => ({ ...previewSettings, llmEnabled: llm, llmEndpoint: llm ? "https://example.test/chat/completions" : "", llmModel: llm ? "fixture" : "" }),
 	saveProject: (project) => {
 		previewSettings.researchProjects[project.seedId] = project;
-		localStorage.setItem(storageKey, JSON.stringify(previewSettings.researchProjects));
+		window.localStorage.setItem(storageKey, JSON.stringify(previewSettings.researchProjects));
 	},
 	getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : getJson,
 	postJson: offline ? fixturePost : undefined,

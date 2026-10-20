@@ -1,7 +1,6 @@
 import { TFile, type App } from "obsidian";
 import { indexLiteratureFiles, type IndexedNote } from "./export-graph";
 import { tr } from "./i18n";
-import { normalizeDoi } from "./paper";
 import { paperDois, paperRecords } from "./work-identity";
 import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
@@ -50,7 +49,7 @@ export async function syncLiteratureReading(app: App, paper: PaperNode, reading:
 	if (found.alternatives?.length) throw new Error(tr("匹配到多份文献笔记，请先选择并核对，阅读状态未写入笔记", "Multiple literature notes match. Review them before syncing reading status."));
 	const file = app.vault.getAbstractFileByPath(found.path);
 	if (!(file instanceof TFile)) return;
-	await app.fileManager.processFrontMatter(file, (frontmatter) => {
+	await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
 		frontmatter["rc-status"] = reading;
 	});
 	found.reading = reading;
@@ -79,7 +78,7 @@ function literatureIndex(app: App, doiProperty: string): { byDoi: Map<string, In
 	if (indexed?.property === property) return indexed;
 	const files = app.vault.getMarkdownFiles().map((file) => ({
 		path: file.path,
-		frontmatter: app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined,
+		frontmatter: app.metadataCache.getFileCache(file)?.frontmatter,
 	}));
 	indexed = { property, ...indexLiteratureFiles(files, property) };
 	return indexed;

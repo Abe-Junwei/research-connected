@@ -1,6 +1,6 @@
 {
 	"name": "research-connected",
-	"version": "1.9.3",
+	"version": "1.9.4",
 	"description": "Research Connected: a paper similarity map inside Obsidian, powered by OpenAlex.",
 	"main": "main.js",
 	"type": "module",
@@ -8,17 +8,24 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"verify": "node esbuild.config.mjs verify && node scripts/verify.cjs",
-		"test": "node scripts/verify-architecture.mjs && node scripts/verify-ui-contract.mjs && node esbuild.config.mjs verify && node scripts/verify.cjs --offline && node scripts/verify-plugin-state.mjs && node scripts/verify-feedback.mjs",
+		"test": "npm run lint && node scripts/verify-architecture.mjs && node scripts/verify-ui-contract.mjs && node esbuild.config.mjs verify && node scripts/verify.cjs --offline && node scripts/verify-plugin-state.mjs && node scripts/verify-feedback.mjs",
 		"perf": "node esbuild.config.mjs perf && node scripts/perf.cjs",
 		"mmr-sweep": "node esbuild.config.mjs sweep && node scripts/mmr-sweep.cjs",
 		"preview": "node esbuild.config.mjs preview",
-		"version": "node version-bump.mjs && git add manifest.json versions.json"
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"lint": "eslint src preview --max-warnings 0",
+		"test:browser:build": "node esbuild.config.mjs review-browser"
 	},
 	"license": "MIT",
 	"devDependencies": {
 		"@types/node": "^22.15.17",
 		"esbuild": "0.25.5",
+		"eslint": "^9.39.5",
+		"eslint-plugin-obsidianmd": "^0.4.2",
 		"obsidian": "1.13.1",
 		"typescript": "^5.8.3"
+	},
+	"overrides": {
+		"moment": "^2.31.0"
 	}
 }

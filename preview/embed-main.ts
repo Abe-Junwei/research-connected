@@ -12,7 +12,7 @@ if (!(root instanceof HTMLElement)) {
 }
 
 const getJson: GetJson = async (url, init) => {
-	const response = await fetch(url, { headers: init.headers });
+	const response = await window.fetch(url, { headers: init.headers });
 	if (!response.ok) throw new OpenAlexError(explainStatus(response.status), response.status);
 	return (await response.json()) as unknown;
 };

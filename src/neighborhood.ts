@@ -203,7 +203,7 @@ export async function loadNeighborhood(
 		if (!seed) throw new OpenAlexError(tr("已保存项目的种子记录暂时不可用", "The saved project's seed record is currently unavailable"));
 	}
 	const seedAliases = [...(existingProject?.snapshot?.nodes.find((paper) => paper.isSeed)?.records ?? []), originalSeed]
-		.filter((record) => record.id !== seed!.id).map((record) => ({ ...record, isSeed: false }));
+		.filter((record) => record.id !== seed.id).map((record) => ({ ...record, isSeed: false }));
 
 	onStage?.("fetching");
 	const tier = SAMPLE_TIERS[settings.sampleDepth] ?? SAMPLE_TIERS.standard;

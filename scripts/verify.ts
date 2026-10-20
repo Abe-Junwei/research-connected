@@ -1,3 +1,6 @@
+// Host timers for offline adapters; browser tests supply the full window.
+if (typeof window === "undefined") Object.assign(globalThis, { window: { setTimeout, clearTimeout } });
+
 import assert from "node:assert/strict";
 import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
 import { verifyEvidence } from "./verify-evidence";

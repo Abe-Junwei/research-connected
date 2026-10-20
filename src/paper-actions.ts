@@ -21,13 +21,13 @@ export function paintPaperActions(
 	},
 ): void {
 	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
-	const row = card.querySelector<HTMLElement>(":scope > .cpo-paper-actions") ?? document.createElement("div");
+	const row = card.querySelector<HTMLElement>(":scope > .cpo-paper-actions") ?? createDiv();
 	row.classList.add("cpo-paper-actions");
 	if (!row.parentElement) card.append(row);
-	const sources = document.createElement("div");
+	const sources = createDiv();
 	sources.className = "cpo-paper-sources";
 	if (seedId && options.persist) {
-		const button = document.createElement("button");
+		const button = createEl("button");
 		button.type = "button";
 		button.className = "cpo-paper-action cpo-paper-stage";
 		const paintStage = (): void => {
@@ -50,7 +50,7 @@ export function paintPaperActions(
 				paintStage();
 				let error = row.querySelector<HTMLElement>(".cpo-paper-action-error");
 				if (!error) {
-					error = document.createElement("span");
+					error = createSpan();
 					error.className = "cpo-paper-action-error";
 					error.setAttribute("role", "status");
 					card.append(error);
@@ -65,7 +65,7 @@ export function paintPaperActions(
 	for (const [label, candidate] of [["OpenAlex", paper.openAlexUrl], ["DOI", paper.doiUrl]] as const) {
 		const url = candidate ? allowedExternalUrl(candidate) : null;
 		if (!url) continue;
-		const button = document.createElement("button");
+		const button = createEl("button");
 		button.type = "button";
 		button.className = "cpo-paper-action cpo-paper-source";
 		button.append(document.createTextNode(label), createChromeIcon("external"));

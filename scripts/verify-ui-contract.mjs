@@ -62,8 +62,8 @@ assert.doesNotMatch(embed, /expandAround/, "embed does not deep-dive on its own"
 assert.match(app, /paintSelectionReasons\(detail, rankInfo, score\)/, "pane wires selection reasons");
 assert.match(embed, /paintSelectionReasons\(detail, rankInfo, graph\.seedScore\.get\(paper\.id\)\)/, "embed wires selection reasons");
 const details = readFileSync("src/detail-cards.ts", "utf8");
-assert.match(details, /createElement\("details"\)/, "入选原因 uses native details");
-assert.match(details, /createElement\("summary"\)/, "入选原因 uses native summary");
+assert.match(details, /createEl\("details"\)/, "入选原因 uses native details");
+assert.match(details, /createEl\("summary"\)/, "入选原因 uses native summary");
 assert.match(details, /选择时相关性/, "relevance meter is shown");
 assert.match(details, /建图后当前综合分/, "post-graph score is labeled as not used in selection");
 assert.match(details, /cpo-paper-venue/, "venue renders as clean editorial line");

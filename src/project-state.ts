@@ -1,6 +1,6 @@
 import { tr } from "./i18n";
 import { CitationEvidenceStore, type CitationEvidence } from "./citation-evidence";
-import { normalizeDoi, shortId } from "./paper";
+import { shortId } from "./paper";
 import { normalizeWorkGraph } from "./graph-edit";
 import { paperHasId, paperRecords, resolveWorkQuery, type WorkIdentity } from "./work-identity";
 import type { SimilarityGraph } from "./neighborhood";
@@ -279,6 +279,7 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 	try {
 		const identity = saved.workIdentity;
 		if (identity && (identity.version !== 1 || !Array.isArray(identity.records) || identity.records.length > 10000 || !identity.records.every((paper) => paper && typeof paper.id === "string" && typeof paper.title === "string" && Array.isArray(paper.authorList)) || !Array.isArray(identity.referenceLists) || !identity.referenceLists.every((entry) => Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1]) && entry[1].every((id) => typeof id === "string")) || !Array.isArray(identity.evidence) || !Array.isArray(identity.directEdges) || !Array.isArray(identity.canonicalIds) || !identity.canonicalIds.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every((id) => typeof id === "string")) || !Array.isArray(identity.separatedIds) || !identity.separatedIds.every((id) => typeof id === "string"))) return null;
+		if (identity?.contextIds !== undefined && (!Array.isArray(identity.contextIds) || identity.contextIds.length > 10000 || !identity.contextIds.every((id) => typeof id === "string"))) return null;
 		if (saved.nodes.length > 300 || saved.edges.length > 20000 || saved.seedScore.some((entry) => !Array.isArray(entry) || entry.length !== 2)) return null;
 		const citationEvidence = new CitationEvidenceStore();
 		for (const evidence of Array.isArray(saved.citationEvidence) ? saved.citationEvidence : []) {
@@ -300,7 +301,7 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 		skippedRetracted: saved.skippedRetracted ?? 0,
 		retrievalStats: saved.retrievalStats,
 		candidateAudit: Array.isArray(saved.candidateAudit)
-			? saved.candidateAudit.filter((item) => item && typeof item.id === "string" && typeof item.source === "string" && (item.doi === null || typeof item.doi === "string")).slice(0, 5000)
+			? saved.candidateAudit.filter((item: NonNullable<SavedGraphSnapshot["candidateAudit"]>[number]) => item && typeof item.id === "string" && typeof item.source === "string" && (item.doi === null || typeof item.doi === "string")).slice(0, 5000)
 			: undefined,
 		excludedIds: Array.isArray(saved.excludedIds) ? saved.excludedIds.filter((id): id is string => typeof id === "string" && /^W\d+$/i.test(id)).slice(0, 300) : undefined,
 		crossCheck: saved.crossCheck ? new Map(saved.crossCheck) : undefined,
@@ -339,8 +340,8 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 			version: 1,
 			seedId: seedId.toUpperCase(),
 			name: typeof project.name === "string" ? project.name.slice(0, 120) : snapshot?.nodes.find((node) => node.isSeed)?.title || seedId,
-			updatedAt: Number.isFinite(project.updatedAt) ? Number(project.updatedAt) : Number(project.snapshot && (project.snapshot as SavedGraphSnapshot).savedAt) || 0,
-			snapshot: snapshot ? project.snapshot as SavedGraphSnapshot : undefined,
+			updatedAt: Number.isFinite(project.updatedAt) ? Number(project.updatedAt) : Number(project.snapshot && project.snapshot.savedAt) || 0,
+			snapshot: snapshot ? project.snapshot : undefined,
 			deepDives: Array.isArray(project.deepDives) ? project.deepDives.filter((batch) => batch && typeof batch.id === "string" && typeof batch.parentId === "string" && Array.isArray(batch.additions)).slice(-100).map((batch) => ({
 				id: batch.id.slice(0, 80),
 				parentId: batch.parentId,

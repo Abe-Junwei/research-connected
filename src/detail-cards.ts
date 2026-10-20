@@ -38,11 +38,11 @@ export function paintLiteratureLink(parent: HTMLElement, path: string, open: (pa
 	const note = el(card, "p", "cpo-fact-note");
 	if (alternatives?.length) {
 		note.textContent = tr("匹配到多份笔记，请选择：", "Multiple matching notes. Choose one: ");
-		for (const file of alternatives) { const pick = el(note, "button", "cpo-text-btn", file) as HTMLButtonElement; pick.type = "button"; pick.onclick = () => open(file); }
+		for (const file of alternatives) { const pick = el(note, "button", "cpo-text-btn", file); pick.type = "button"; pick.onclick = () => open(file); }
 		if (actionRow) card.insertBefore(note, actionRow);
 		return;
 	}
-	const button = el(note, "button", "cpo-text-btn", tr("打开笔记", "Open note")) as HTMLButtonElement;
+	const button = el(note, "button", "cpo-text-btn", tr("打开笔记", "Open note"));
 	button.type = "button";
 	button.title = path;
 	button.onclick = () => open(path);
@@ -58,35 +58,35 @@ export function paintIdentitySources(parent: HTMLElement, paper: PaperNode, open
 	el(details, "p", "cpo-fact-note", tr("依据：相同 DOI，或题名、作者、年份与完整期刊题录一致。被引数分别保留。", "Matched by DOI or identical title, authors, year, and journal details. Citation counts remain separate."));
 	for (const record of paper.records) {
 		const row = el(details, "p", "cpo-fact-note", `${record.id} · ${record.citedByCount} ${tr("次被引", "citations")} · `);
-		if (record.doiUrl) { const link = el(row, "button", "cpo-text-btn", record.doiUrl.replace(/^https?:\/\/doi.org\//, "")) as HTMLButtonElement; link.type = "button"; link.onclick = () => open(record.doiUrl!); }
+		if (record.doiUrl) { const link = el(row, "button", "cpo-text-btn", record.doiUrl.replace(/^https?:\/\/doi.org\//, "")); link.type = "button"; link.onclick = () => open(record.doiUrl!); }
 	}
 	if (conflict) {
 		el(details, "p", "cpo-fact-note", tr("旧记录的阅读、暂存或排除状态不一致；已按各字段时间恢复，原值已保留。请核对当前状态。", "Legacy records have conflicting workflow states. The latest field values were restored and originals retained. Review the current state."));
-		if (acknowledge) { const done = el(details, "button", "cpo-paper-action", tr("已核对状态", "States reviewed")) as HTMLButtonElement; done.type = "button"; done.onclick = acknowledge; }
+		if (acknowledge) { const done = el(details, "button", "cpo-paper-action", tr("已核对状态", "States reviewed")); done.type = "button"; done.onclick = acknowledge; }
 	}
-	const button = el(details, "button", "cpo-paper-action", tr("保持这些记录分开", "Keep these records separate")) as HTMLButtonElement;
+	const button = el(details, "button", "cpo-paper-action", tr("保持这些记录分开", "Keep these records separate"));
 	button.type = "button"; button.onclick = separate;
 }
 
 export function paintPaperWorkflowState(
 	parent: HTMLElement, paper: PaperNode, state: ProjectPaperState,
-	onReading: (reading: ReadingStatus, previous: ReadingStatus) => void, onExclude?: () => void,
+	onReading: (reading: ReadingStatus, previous: ReadingStatus) => Promise<void> | void, onExclude?: () => Promise<void> | void,
 ): void {
 	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
 	const row = el(card, "div", "cpo-paper-actions");
-	const readingSelect = el(row, "select", "cpo-paper-reading-select") as HTMLSelectElement;
+	const readingSelect = el(row, "select", "cpo-paper-reading-select");
 	readingSelect.setAttribute("aria-label", tr(`阅读状态：${paper.title || paper.id}`, `Reading status: ${paper.title || paper.id}`));
 	let currentReading = state.reading;
 	const labels: Record<ReadingStatus, string> = { unread: tr("未读", "Unread"), "to-read": tr("待读", "To read"), read: tr("已读", "Read") };
 	for (const reading of ["unread", "to-read", "read"] as const) {
-		const option = document.createElement("option");
+		const option = createEl("option");
 		option.value = reading;
 		option.textContent = labels[reading];
 		readingSelect.append(option);
 	}
 	readingSelect.value = currentReading;
 	readingSelect.title = tr("阅读状态", "Reading status");
-	readingSelect.addEventListener("change", async () => {
+	readingSelect.onchange = async () => {
 		const next = readingSelect.value as ReadingStatus;
 		if (next === currentReading) return;
 		const previous = currentReading;
@@ -100,9 +100,9 @@ export function paintPaperWorkflowState(
 		} finally {
 			readingSelect.disabled = false;
 		}
-	});
+	};
 	if (onExclude || paper.isSeed) {
-		const exclude = el(row, "button", "cpo-paper-action cpo-paper-exclude", tr("排除", "Exclude")) as HTMLButtonElement;
+		const exclude = el(row, "button", "cpo-paper-action cpo-paper-exclude", tr("排除", "Exclude"));
 		exclude.type = "button";
 		exclude.prepend(createChromeIcon("exclude"));
 		exclude.disabled = paper.isSeed;
@@ -123,7 +123,7 @@ export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
 	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
 	const text = el(row, "span", "cpo-paper-authors", names.slice(0, 5).join(" · "));
 	if (names.length > 5) {
-		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`) as HTMLButtonElement;
+		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`);
 		more.type = "button";
 		more.setAttribute("aria-expanded", "false");
 		more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
@@ -154,7 +154,7 @@ export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: s
 	el(badges, "span", "cpo-chip", row.paper.year === null ? tr("年份不详", "Year unknown") : tr(`${row.paper.year} 年`, `${row.paper.year}`));
 	el(badges, "span", "cpo-chip cpo-chip-muted", tr(`被引 ${formatCount(row.paper.citedByCount)}`, `Cited ${formatCount(row.paper.citedByCount)} times`));
 	const heading = el(card, "h3", "cpo-card-title");
-	const open = el(heading, "button", "cpo-agg-open", row.paper.title || row.paper.id) as HTMLButtonElement;
+	const open = el(heading, "button", "cpo-agg-open", row.paper.title || row.paper.id);
 	open.type = "button";
 	open.setAttribute("aria-label", tr(`查看论文：${row.paper.title || row.paper.id}`, `View paper: ${row.paper.title || row.paper.id}`));
 	paintAuthorChips(card, row.paper);
@@ -184,7 +184,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 		topics.setAttribute("aria-label", tr("论文主题", "Paper topics"));
 		for (const name of paper.concepts.slice(0, 3)) el(topics, "span", "cpo-paper-topic", name);
 		if (paper.concepts.length > 3) {
-			const more = el(topics, "button", "cpo-paper-topic-more", `+${paper.concepts.length - 3}`) as HTMLButtonElement;
+			const more = el(topics, "button", "cpo-paper-topic-more", `+${paper.concepts.length - 3}`);
 			more.type = "button";
 			more.setAttribute("aria-expanded", "false");
 			more.setAttribute("aria-label", tr(`显示其余 ${paper.concepts.length - 3} 个主题`, `Show ${paper.concepts.length - 3} more topics`));
@@ -193,7 +193,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 				more.setAttribute("aria-expanded", String(expanded));
 				if (expanded) {
 					for (const name of paper.concepts.slice(3)) {
-						const chip = document.createElement("span");
+						const chip = createSpan();
 						chip.className = "cpo-paper-topic cpo-paper-topic-extra";
 						chip.textContent = name;
 						more.before(chip);
@@ -230,6 +230,7 @@ export function paintMeter(parent: HTMLElement, label: string, value: number | n
 		el(meter, "p", "cpo-meter-hint", tr("当前缺少可比较数据", "No comparable data is available"));
 		return;
 	}
+	meter.classList.add("cpo-meter-valued");
 	el(head, "span", "cpo-meter-value", value.toFixed(2));
 	const track = el(meter, "div", "cpo-meter-track");
 	const fill = el(track, "div", alt ? "cpo-meter-fill cpo-meter-fill-alt" : "cpo-meter-fill");
@@ -280,7 +281,7 @@ export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstrac
 	if (!paper.abstract) return;
 	para.classList.add("cpo-abstract-clamp");
 	const fade = el(wrap, "div", "cpo-abstract-fade");
-	const copy = el(head, "button", "cpo-text-btn", tr("复制", "Copy")) as HTMLButtonElement;
+	const copy = el(head, "button", "cpo-text-btn", tr("复制", "Copy"));
 	copy.type = "button";
 	copy.addEventListener("click", () => {
 		void navigator.clipboard.writeText(paper.abstract).then(() => {
@@ -288,7 +289,7 @@ export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstrac
 			window.setTimeout(() => { copy.textContent = tr("复制", "Copy"); }, 1600);
 		}, () => undefined);
 	});
-	const toggle = el(card, "button", "cpo-text-btn cpo-abstract-toggle", tr("展开全文", "Show full abstract")) as HTMLButtonElement;
+	const toggle = el(card, "button", "cpo-text-btn cpo-abstract-toggle", tr("展开全文", "Show full abstract"));
 	toggle.type = "button";
 	toggle.addEventListener("click", () => {
 		const collapsed = para.classList.toggle("cpo-abstract-clamp");
@@ -306,7 +307,7 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 	el(head, "span", "cpo-chip cpo-chip-muted", tr(`${paper.year ?? tr("年份不详", "Year unknown")} · 被引 ${formatCount(paper.citedByCount)}`, `${paper.year ?? tr("年份不详", "Year unknown")} · cited ${formatCount(paper.citedByCount)} times`));
 	el(info, "p", "cpo-jump-title", paper.title || paper.id);
 	el(info, "p", "cpo-jump-meta", paper.authors);
-	const go = el(strip, "button", "cpo-text-btn", tr("查看 →", "View →")) as HTMLButtonElement;
+	const go = el(strip, "button", "cpo-text-btn", tr("查看 →", "View →"));
 	go.type = "button";
 	go.addEventListener("click", () => onJump(paper));
 }
@@ -319,9 +320,9 @@ export function edgeSourcesText(edge: GraphEdge, getEvidence: (citingId: string,
 
 /** 「入选原因」折叠区：候选选择时的真实分数快照（仅 picked 节点有）。 */
 export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, currentScore?: number): void {
-	const details = document.createElement("details");
+	const details = createEl("details");
 	details.className = "cpo-card cpo-why";
-	const summary = document.createElement("summary");
+	const summary = createEl("summary");
 	summary.textContent = tr("入选原因", "Why selected");
 	details.append(summary);
 	paintMeter(details, tr("权威分", "Authority score"), rank.authority, tr("log 被引 × 新近度，候选池内归一", "Log citations × recency, normalized within the candidate pool"), true);
@@ -340,7 +341,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 	className?: string,
 	text?: string,
 ): HTMLElementTagNameMap[K] {
-	const node = document.createElement(tag);
+	const node = createEl(tag);
 	if (className) node.className = className;
 	if (text !== undefined) node.textContent = text;
 	parent.append(node);

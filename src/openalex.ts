@@ -240,7 +240,7 @@ export class OpenAlexClient {
 		if (!json || typeof json !== "object") {
 			throw new OpenAlexError(tr("OpenAlex 返回了无法识别的作品记录。", "OpenAlex returned an unrecognized work record."));
 		}
-		return json as RawWork;
+		return json;
 	}
 
 	private async getResults(url: URL): Promise<RawWork[]> {

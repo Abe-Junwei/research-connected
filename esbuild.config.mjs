@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import process from "process";
 import { builtinModules } from "node:module";
 
@@ -14,7 +14,7 @@ const mode = process.argv[2] ?? "dev";
 if (mode === "verify") {
 	await esbuild.build({
 		entryPoints: ["scripts/verify.ts"],
-		alias: { obsidian: "./preview/obsidian-stub.ts" },
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -27,7 +27,7 @@ if (mode === "verify") {
 if (mode === "perf") {
 	await esbuild.build({
 		entryPoints: ["scripts/perf.ts"],
-		alias: { obsidian: "./preview/obsidian-stub.ts" },
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -40,7 +40,7 @@ if (mode === "perf") {
 if (mode === "sweep") {
 	await esbuild.build({
 		entryPoints: ["scripts/mmr-sweep.ts"],
-		alias: { obsidian: "./preview/obsidian-stub.ts" },
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
 		bundle: true,
 		platform: "node",
 		format: "cjs",
@@ -53,7 +53,7 @@ if (mode === "sweep") {
 if (mode === "preview") {
 	await esbuild.build({
 		entryPoints: ["preview/main.ts"],
-		alias: { obsidian: "./preview/obsidian-stub.ts" },
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
 		bundle: true,
 		platform: "browser",
 		format: "iife",
@@ -62,13 +62,28 @@ if (mode === "preview") {
 	});
 	await esbuild.build({
 		entryPoints: ["preview/embed-main.ts"],
-		alias: { obsidian: "./preview/obsidian-stub.ts" },
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
 		bundle: true,
 		platform: "browser",
 		format: "iife",
 		outfile: "preview/embed.js",
 		logLevel: "info",
 	});
+	process.exit(0);
+}
+
+if (mode === "review-browser") {
+	mkdirSync(".superdesign/tmp", { recursive: true });
+	await esbuild.build({
+		entryPoints: ["scripts/verify-review-browser.ts"],
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
+		bundle: true, platform: "browser", format: "iife",
+		outfile: ".superdesign/tmp/review-check.js",
+	});
+	const html = readFileSync("preview/index.html", "utf8")
+		.replace("../styles.css?preview-refresh=17", "../../styles.css")
+		.replace(/<script type="module">[\s\S]*?<\/script>/, '<script type="module" src="review-check.js"></script>');
+	writeFileSync(".superdesign/tmp/review-check.html", html);
 	process.exit(0);
 }
 

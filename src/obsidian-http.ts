@@ -45,7 +45,8 @@ export const obsidianGetJson: GetJson = async (url, init) => {
 		throw new OpenAlexError(explainGet(url, response.status), response.status);
 	}
 	try {
-		return response.json;
+		const json: unknown = response.json;
+		return json;
 	} catch {
 		throw new OpenAlexError(tr(`${serviceName(url)} 返回了无法解析的内容。`, `${serviceName(url)} returned content that could not be parsed.`), response.status);
 	}
@@ -70,7 +71,8 @@ export const obsidianPostJson = async (
 	}
 	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status);
 	try {
-		return response.json;
+		const json: unknown = response.json;
+		return json;
 	} catch {
 		throw new OpenAlexError(tr(`${service} 返回了无法解析的内容。`, `${service} returned content that could not be parsed.`), response.status);
 	}
@@ -87,10 +89,10 @@ function postServiceName(url: string): string {
 
 /** requestUrl cannot physically abort; timeout bounds waiting and callers discard stale results. */
 async function bounded<T>(request: Promise<T>, ms: number): Promise<T> {
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	let timer: number | undefined;
 	try {
 		return await Promise.race([request, new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new Error(tr("请求超时", "Request timed out"))), ms);
+			timer = window.setTimeout(() => reject(new Error(tr("请求超时", "Request timed out"))), ms);
 		})]);
-	} finally { if (timer) clearTimeout(timer); }
+	} finally { if (timer) window.clearTimeout(timer); }
 }

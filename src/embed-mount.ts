@@ -1,4 +1,4 @@
-import { paperDois, paperHasId, paperRecords, resolveWorkQuery, workIndex, WORK_IDENTITY_VERSION } from "./work-identity";
+import { paperRecords, workIndex, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
@@ -15,12 +15,11 @@ import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
 import { graftNodes, normalizeWorkGraph, omitNode, separateWorkRecords } from "./graph-edit";
 import { diagnoseCandidate, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
-import { reconstructAbstract, referenceIds, shortId, toPaper } from "./paper";
+import { referenceIds, shortId, toPaper } from "./paper";
 import { findEdge } from "./relation";
 import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { acknowledgeIdentityStates, reconcileProjectIdentity, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus } from "./project-state";
-import { buildSimilarity } from "./similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
@@ -61,24 +60,24 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	root.classList.add("cpo-embed-host");
 	root.replaceChildren();
 	const parsed = parseEmbed(deps.source);
-	const shell = document.createElement("div");
+	const shell = createDiv();
 	shell.className = "cpo-embed";
 	shell.lang = isChinese() ? "zh-CN" : "en";
 	root.append(shell);
 
-	const bar = document.createElement("header");
+	const bar = createEl("header");
 	bar.className = "cpo-bar";
-	const topLine = document.createElement("div");
+	const topLine = createDiv();
 	topLine.className = "cpo-topline";
-	const brand = document.createElement("div");
+	const brand = createDiv();
 	brand.className = "cpo-brand";
-	const brandMark = document.createElement("span");
+	const brandMark = createSpan();
 	brandMark.className = "cpo-brand-mark";
 	brandMark.textContent = "R";
-	const brandName = document.createElement("strong");
+	const brandName = createEl("strong");
 	brandName.textContent = "Research Connected";
 	brand.append(brandMark, brandName);
-	const status = document.createElement("p");
+	const status = createEl("p");
 	status.className = "cpo-status";
 	status.setAttribute("role", "status");
 
@@ -86,18 +85,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	bar.append(topLine);
 	shell.append(bar);
 
-	const body = document.createElement("div");
+	const body = createDiv();
 	body.className = "cpo-body is-rail-collapsed";
 	if (parsed.ok) body.style.height = `${parsed.spec.height}px`;
 	shell.append(body);
 
-	const rail = document.createElement("aside");
+	const rail = createEl("aside");
 	rail.className = "cpo-rail";
-	const layoutHost = document.createElement("div");
+	const layoutHost = createDiv();
 	layoutHost.className = "cpo-rail-layouts";
-	const scrubHost = document.createElement("div");
+	const scrubHost = createDiv();
 	scrubHost.className = "cpo-rail-scrub";
-	const railToggle = document.createElement("button");
+	const railToggle = createEl("button");
 	railToggle.type = "button";
 	railToggle.className = "cpo-panel-toggle is-left";
 	railToggle.textContent = "›";
@@ -108,7 +107,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	body.append(rail);
 	const surface = mountGraphSurface(body, { canvasLabel: tr("论文相似度图谱", "Paper similarity graph"), title: "", hint: "", mutations: false });
 	const { stage, canvas, empty: message, messageText, tooltip, nodeMenu, seedItem, zoom, zoomIn, zoomOut, fit: zoomFit, reload } = surface;
-	const openGraphAction = document.createElement("button");
+	const openGraphAction = createEl("button");
 	openGraphAction.type = "button";
 	openGraphAction.className = "cpo-ghost cpo-open-graph";
 	openGraphAction.append(createChromeIcon("external"), document.createTextNode(tr("在图谱中打开", "Open in graph")));
@@ -116,11 +115,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	for (const button of [openGraphAction]) {
 		button.hidden = true;
 	}
-	const sidebarResize = document.createElement("div");
+	const sidebarResize = createDiv();
 	sidebarResize.className = "cpo-sidebar-resizer";
-	const sidebar = document.createElement("aside");
+	const sidebar = createEl("aside");
 	sidebar.className = "cpo-evidence-sidebar";
-	const sidebarToggle = document.createElement("button");
+	const sidebarToggle = createEl("button");
 	sidebarToggle.type = "button";
 	sidebarToggle.className = "cpo-panel-toggle is-right";
 	sidebarToggle.textContent = "›";
@@ -128,15 +127,15 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	sidebarToggle.setAttribute("aria-expanded", "true");
 	sidebar.append(sidebarToggle);
 	body.append(sidebarResize, sidebar);
-	const evidenceHeader = document.createElement("header");
+	const evidenceHeader = createEl("header");
 	evidenceHeader.className = "cpo-evidence-header";
-	const evidenceTitle = document.createElement("h2");
+	const evidenceTitle = createEl("h2");
 	evidenceTitle.textContent = tr("论文详情与关联依据", "Paper details & evidence");
-	const evidenceTools = document.createElement("div");
+	const evidenceTools = createDiv();
 	evidenceTools.className = "cpo-evidence-tools";
 	evidenceTools.setAttribute("role", "toolbar");
 	evidenceTools.setAttribute("aria-label", tr("论文操作", "Paper actions"));
-	const diagnoseButton = document.createElement("button");
+	const diagnoseButton = createEl("button");
 	diagnoseButton.type = "button";
 	diagnoseButton.className = "cpo-diagnose";
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode(tr("诊断候选", "Inspect")));
@@ -145,17 +144,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	evidenceTools.append(diagnoseButton);
 	evidenceHeader.append(evidenceTitle, evidenceTools);
 	sidebar.append(evidenceHeader);
-	const sheetHost = document.createElement("section");
+	const sheetHost = createEl("section");
 	sidebar.append(sheetHost);
 	const sheet = mountBottomSheet(sheetHost, { collapsible: false });
 	sheet.setExpanded(true);
-	const detail = document.createElement("div");
+	const detail = createDiv();
 	detail.className = "cpo-detail";
-	const listPanel = document.createElement("div");
+	const listPanel = createDiv();
 	listPanel.className = "cpo-agg";
 	listPanel.hidden = true;
 	sheet.body.append(detail, listPanel);
-	const actionsBar = document.createElement("div");
+	const actionsBar = createDiv();
 	actionsBar.className = "cpo-actions-bar";
 	sidebar.append(actionsBar);
 
@@ -293,7 +292,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				} catch {
 					updateProjectPaperState(settings.researchProjects, seed.id, paper, { excluded: false });
 					card.querySelector<HTMLElement>(".cpo-paper-action-error")?.remove();
-					const error = document.createElement("span");
+					const error = createSpan();
 					error.className = "cpo-paper-action-error";
 					error.setAttribute("role", "status");
 					error.textContent = tr("保存失败，请重试", "Could not save. Try again.");
@@ -413,7 +412,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		selected = null;
 		selectedLink = null;
 		detail.replaceChildren();
-		const empty = document.createElement("p");
+		const empty = createEl("p");
 		empty.className = "cpo-side-tip";
 		empty.textContent = tr("点选节点查看题名、年份、作者和证据。", "Select a node to view its title, year, authors, and evidence.");
 		detail.append(empty);
@@ -489,12 +488,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				}
 			} else {
 				const score = graph.seedScore.get(paper.id);
-				const card = document.createElement("section");
+				const card = createEl("section");
 				card.className = "cpo-card";
 				if (score !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), score, tr("结构 + 语义信号", "Structure and semantic signals"));
 				const semantic = graph.semanticScores?.get(paper.id);
 				if (semantic !== undefined) paintMeter(card, tr("文本相似度", "Text similarity"), semantic, semanticHintFor(graph.semanticMode), true);
-				const note = document.createElement("p");
+				const note = createEl("p");
 				note.className = "cpo-fact-note";
 				note.textContent = score === undefined ? tr("与种子没有直接连线", "No direct link to the seed") : tr(`与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`, `No direct citation to the seed recorded · ${SIMILARITY_NOT_CITATION}`);
 				card.append(note);
@@ -546,24 +545,24 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary(tr("候选诊断", "Candidate inspection"), tr("当前图谱的采样记录", "Sampling records for the current graph"));
-		const back = document.createElement("button");
+		const back = createEl("button");
 		back.type = "button";
 		back.className = "cpo-diagnose-back";
 		back.textContent = tr("‹ 返回论文", "‹ Back to paper");
 		back.disabled = !returnPaper;
 		back.onclick = () => currentGraph && showDetail(returnPaper, currentGraph, returnLink);
 		detail.append(back);
-		const form = document.createElement("form");
+		const form = createEl("form");
 		form.className = "cpo-diagnose-form";
-		const query = document.createElement("input");
+		const query = createEl("input");
 		query.placeholder = tr("DOI 或 OpenAlex ID", "DOI or OpenAlex ID");
 		query.setAttribute("aria-label", tr("要诊断的论文", "Paper to inspect"));
-		const submit = document.createElement("button");
+		const submit = createEl("button");
 		submit.type = "submit";
 		submit.className = "cpo-primary";
 		submit.textContent = tr("查询", "Search");
 		form.append(query, submit);
-		const result = document.createElement("div");
+		const result = createDiv();
 		result.className = "cpo-diagnose-result";
 		detail.append(form, result);
 		form.addEventListener("submit", (event) => {
@@ -571,15 +570,15 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (!currentGraph) return;
 			const finding = diagnoseCandidate(currentGraph, query.value, new Set(), viewFilter.scrubYear);
 			result.replaceChildren();
-			const title = document.createElement("strong");
+			const title = createEl("strong");
 			title.textContent = finding.title;
-			const text = document.createElement("p");
+			const text = createEl("p");
 			text.className = "cpo-side-tip";
 			text.textContent = finding.detail;
 			result.append(title, text);
 			const paper = finding.paperId && currentGraph.nodes.find((item) => item.id === finding.paperId);
 			if (paper) {
-				const open = document.createElement("button");
+				const open = createEl("button");
 				open.type = "button";
 				open.className = "cpo-text-btn";
 				open.textContent = tr("查看论文", "View paper");
@@ -802,7 +801,7 @@ function applyPlacement(root: HTMLElement, anchor: HTMLElement, spec: EmbedSpec)
 }
 
 function mountResizeHandle(graphArea: HTMLElement, anchor: HTMLElement, onResize: () => void): () => void {
-	const grip = document.createElement("div");
+	const grip = createDiv();
 	grip.className = "cpo-resize";
 	grip.setAttribute("role", "button");
 	grip.tabIndex = 0;
@@ -998,18 +997,18 @@ function fillAggregate(
 ): void {
 	host.hidden = false;
 	host.replaceChildren();
-	const copy = document.createElement("p");
+	const copy = createEl("p");
 	copy.className = "cpo-agg-def";
 	copy.textContent = definition;
 	host.append(copy);
 	if (rows.length === 0) {
-		const empty = document.createElement("p");
+		const empty = createEl("p");
 		empty.className = "cpo-agg-empty";
 		empty.textContent = AGGREGATE_EMPTY_TEXT;
 		host.append(empty);
 		return;
 	}
-	const list = document.createElement("ol");
+	const list = createEl("ol");
 	list.className = "cpo-agg-list";
 	for (const row of rows) paintAggregateCard(list, row, noun, onPick, onActions);
 	host.append(list);
@@ -1019,17 +1018,4 @@ function yearSpan(nodes: readonly PaperNode[]): [number, number] | null {
 	const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 	if (years.length === 0) return null;
 	return [Math.min(...years), Math.max(...years)];
-}
-
-function addLink(parent: HTMLElement, label: string, onClick: () => void): void {
-	const button = document.createElement("button");
-	button.type = "button";
-	button.className = "cpo-link";
-	button.textContent = label;
-	button.addEventListener("click", (event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		onClick();
-	});
-	parent.append(button);
 }

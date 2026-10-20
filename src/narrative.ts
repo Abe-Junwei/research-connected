@@ -38,12 +38,10 @@ export interface ResearchNarrative {
 }
 
 export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: boolean): NarrativeEvidence {
-	const nodes = new Map(graph.nodes.map((paper) => [paper.id, paper]));
 	const allKnown = new Map([...graph.catalog, ...graph.nodes].map((paper) => [paper.id, paper]));
 	const visible = new Set(graph.nodes.map((paper) => paper.id));
 	const seed = graph.nodes.find((paper) => paper.isSeed) ?? graph.nodes[0];
 	if (!seed) throw new Error(tr("当前图谱没有种子论文。", "The current graph has no seed paper."));
-	const seedRefs = new Set(graph.referenceLists?.get(seed.id) ?? []);
 	const make = (paper: PaperNode): NarrativeEvidencePaper => ({
 		id: paper.id,
 		title: paper.title,

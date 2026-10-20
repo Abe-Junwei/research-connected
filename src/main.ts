@@ -32,6 +32,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			// Preserve the published ID used by existing hotkeys and external links.
 			id: "open-research-connected",
 			name: tr("打开 Research Connected", "Open Research Connected"),
 			callback: () => {
@@ -104,7 +105,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		const data = { ...this.settings } as Partial<ConnectedPapersSettings> & { stagedPapers?: unknown; graftedBySeed?: unknown };
 		delete data.stagedPapers;
 		delete data.graftedBySeed;
-		const snapshot = JSON.parse(JSON.stringify(data));
+		const snapshot: unknown = JSON.parse(JSON.stringify(data));
 		const save = this.pendingSave.catch(() => {}).then(async () => {
 			await this.saveData(snapshot);
 			window.dispatchEvent(new Event(notify ? "research-connected-settings" : "research-connected-project"));

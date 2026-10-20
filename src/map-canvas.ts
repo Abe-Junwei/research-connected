@@ -104,14 +104,14 @@ export class SimilarityMap {
 
 	/** Headless verify stubs have no rAF; a timeout keeps the loops converging. */
 	private raf(callback: () => void): number {
-		return typeof requestAnimationFrame === "function"
-			? requestAnimationFrame(callback)
-			: (setTimeout(callback, 16) as unknown as number);
+		return typeof window.requestAnimationFrame === "function"
+			? window.requestAnimationFrame(callback)
+			: window.setTimeout(callback, 16);
 	}
 
 	private caf(id: number): void {
-		if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(id);
-		else clearTimeout(id);
+		if (typeof window.cancelAnimationFrame === "function") window.cancelAnimationFrame(id);
+		else window.clearTimeout(id);
 	}
 
 	constructor(
@@ -121,13 +121,6 @@ export class SimilarityMap {
 		options?: { wheel?: "always" | "modifier" },
 	) {
 		this.wheelNeedsModifier = options?.wheel === "modifier";
-		this.onPointerDown = this.onPointerDown.bind(this);
-		this.onPointerMove = this.onPointerMove.bind(this);
-		this.onPointerUp = this.onPointerUp.bind(this);
-		this.onWheel = this.onWheel.bind(this);
-		this.onPointerLeave = this.onPointerLeave.bind(this);
-		this.onKeyDown = this.onKeyDown.bind(this);
-		this.onContextMenu = this.onContextMenu.bind(this);
 		canvas.tabIndex = 0;
 		// Optional-call: the headless verify script stubs a bare canvas object.
 		canvas.setAttribute?.("role", "application");
@@ -551,24 +544,24 @@ export class SimilarityMap {
 		this.zoomFrame = this.raf(step);
 	}
 
-	private onWheel(event: WheelEvent): void {
+	private onWheel = (event: WheelEvent): void => {
 		if (!this.alive) return;
 		if (this.wheelNeedsModifier && !event.ctrlKey && !event.metaKey) return;
 		event.preventDefault();
 		const local = this.localPoint(event.clientX, event.clientY);
 		const factor = Math.exp(-event.deltaY * 0.0012);
 		this.zoomAt(local.x, local.y, factor);
-	}
+	};
 
-	private onContextMenu(event: MouseEvent): void {
+	private onContextMenu = (event: MouseEvent): void => {
 		event.preventDefault();
 		if (!this.alive) return;
 		const local = this.localPoint(event.clientX, event.clientY);
 		const hit = this.hit(local.x, local.y);
 		this.onNodeMenu?.(hit, event.clientX, event.clientY);
-	}
+	};
 
-	private onPointerDown(event: PointerEvent): void {
+	private onPointerDown = (event: PointerEvent): void => {
 		if (!this.alive) return;
 		this.canvas.focus({ preventScroll: true });
 		if (event.button !== 0) return;
@@ -599,7 +592,7 @@ export class SimilarityMap {
 		} else {
 			this.dragging = { kind: "pan", px: local.x, py: local.y, tx: this.tx, ty: this.ty };
 		}
-	}
+	};
 
 	private startPinch(): void {
 		const points = [...this.pointers.values()];
@@ -635,7 +628,7 @@ export class SimilarityMap {
 		this.draw();
 	}
 
-	private onPointerMove(event: PointerEvent): void {
+	private onPointerMove = (event: PointerEvent): void => {
 		if (!this.alive) return;
 		if (this.pointers.has(event.pointerId)) {
 			this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -678,9 +671,9 @@ export class SimilarityMap {
 		}
 		this.hideTooltip();
 		this.draw();
-	}
+	};
 
-	private onPointerUp(event: PointerEvent): void {
+	private onPointerUp = (event: PointerEvent): void => {
 		if (!this.alive) return;
 		this.pointers.delete(event.pointerId);
 		if (this.pinch) {
@@ -735,17 +728,17 @@ export class SimilarityMap {
 			this.onSelect?.(null);
 		}
 		this.draw();
-	}
+	};
 
-	private onPointerLeave(): void {
+	private onPointerLeave = (): void => {
 		if (this.dragging) return;
 		this.hoverId = null;
 		this.refreshFocus();
 		this.hideTooltip();
 		this.draw();
-	}
+	};
 
-	private onKeyDown(event: KeyboardEvent): void {
+	private onKeyDown = (event: KeyboardEvent): void => {
 		if (!this.alive) return;
 		const panStep = 48;
 		const key = event.key;
@@ -818,7 +811,7 @@ export class SimilarityMap {
 			event.preventDefault();
 			this.fit(true);
 		}
-	}
+	};
 
 	private placeTooltip(node: DrawNode | null, x: number, y: number): void {
 		if (!node) {

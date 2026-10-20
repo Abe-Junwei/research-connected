@@ -27,7 +27,7 @@ export class CrossrefClient {
 		if (!json || typeof json !== "object") throw new CitationSourceError(tr("Crossref 返回格式错误。", "Crossref returned an invalid response."));
 		const message = (json as { message?: unknown }).message;
 		if (!message || typeof message !== "object") throw new CitationSourceError(tr("Crossref 未返回作品元数据。", "Crossref returned no work metadata."));
-		return message as CrossrefWork;
+		return message;
 	}
 
 	async referenceDois(doi: string): Promise<string[]> {
@@ -60,7 +60,7 @@ function describeS2Shape(json: unknown): string {
 	if (json === null) return "null";
 	if (Array.isArray(json)) return tr(`数组(${json.length} 条)`, `Array (${json.length} items)`);
 	if (typeof json === "object") {
-		const keys = Object.keys(json as Record<string, unknown>).slice(0, 6).join(", ");
+		const keys = Object.keys(json).slice(0, 6).join(", ");
 		const message = (json as { message?: unknown }).message;
 		return `{${keys}}${typeof message === "string" ? tr(`，message="${message.slice(0, 160)}"`, `, message="${message.slice(0, 160)}"`) : ""}`;
 	}
@@ -80,7 +80,7 @@ function s2FormatError(context: string, json: unknown): CitationSourceError {
 }
 
 function pause(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+	return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export class OpenCitationsClient {
@@ -337,7 +337,7 @@ async function cachedGet(get: GetJson, url: string, init: { headers: Record<stri
 	if (cached && Date.now() - cached.at < 300_000) return cached.result;
 	const previous = queues.get(origin) ?? Promise.resolve();
 	const result = previous.catch(() => {}).then(async () => {
-		await new Promise(resolve => setTimeout(resolve, origin.includes("semanticscholar") ? 1100 : 400));
+		await new Promise(resolve => window.setTimeout(resolve, origin.includes("semanticscholar") ? 1100 : 400));
 		return get(url, init);
 	});
 	queues.set(origin, result);

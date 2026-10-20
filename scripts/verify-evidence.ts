@@ -166,7 +166,7 @@ export async function verifyEvidence(): Promise<void> {
 	// updateGraphData (OpenCitations enrichment path) must keep the user's view state.
 	// Headless: getContext returns null so draw/resize are no-ops; window is stubbed for listeners.
 	(globalThis as unknown as { window: unknown }).window = {
-		addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1,
+		addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, setTimeout, clearTimeout,
 	};
 	const canvas = {
 		addEventListener() {}, removeEventListener() {}, style: {}, width: 0, height: 0,

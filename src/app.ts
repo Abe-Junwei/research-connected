@@ -1,9 +1,9 @@
-import { paperDois, paperHasId, paperRecords, resolveWorkQuery, WORK_IDENTITY_VERSION } from "./work-identity";
+import { paperHasId, paperRecords, resolveWorkQuery } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-filter";
-import { createChromeIcon, mountBottomSheet, mountGraphChrome, paintEvidenceBadges, registerPopover, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
+import { createChromeIcon, mountBottomSheet, mountGraphChrome, registerPopover, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { paintPaperActions } from "./paper-actions";
 import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
@@ -45,11 +45,11 @@ import {
 	resolvePathEndpoint,
 	type CitationPathResult,
 } from "./doi-path";
-import { classifyQuery, nonResearchLabel, normalizeDoi, shortId, toPaper, toSearchHit } from "./paper";
+import { classifyQuery, normalizeDoi, shortId, toSearchHit } from "./paper";
 import { findEdge } from "./relation";
 import type { ConnectedPapersSettings } from "./settings";
 import type { GraphEdge, PaperNode, SearchHit } from "./types";
-import { formatCount, snippet } from "./visual";
+import { formatCount } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
 import { displayStageSource, groupStagedBySeed } from "./staging";
@@ -108,55 +108,55 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	el(brand, "span", "cpo-brand-mark", "R");
 	el(brand, "strong", undefined, "Research Connected");
 	const form = el(topLine, "form", "cpo-form");
-	const input = el(form, "input", "cpo-input") as HTMLInputElement;
+	const input = el(form, "input", "cpo-input");
 	input.type = "text";
 	input.placeholder = tr("DOI、OpenAlex ID 或论文标题", "DOI, OpenAlex ID, or paper title");
 	input.autocomplete = "off";
 	input.spellcheck = false;
 	input.setAttribute("aria-label", tr("种子论文", "Seed paper"));
-	const submit = el(form, "button", "cpo-primary", tr("构建", "Build")) as HTMLButtonElement;
+	const submit = el(form, "button", "cpo-primary", tr("构建", "Build"));
 	submit.type = "submit";
 	const projectTools = el(bar, "div", "cpo-project-tools");
 	const projectGroup = el(projectTools, "div", "cpo-project-group");
 	const projectLabel = el(projectGroup, "span", "cpo-project-label", tr("项目", "Project"));
 	projectLabel.prepend(createChromeIcon("project"));
-	const projectSelect = el(projectGroup, "select", "cpo-project-select") as HTMLSelectElement;
+	const projectSelect = el(projectGroup, "select", "cpo-project-select");
 	projectSelect.setAttribute("aria-label", tr("研究项目", "Research project"));
 	projectSelect.title = tr("切换研究项目", "Switch research project");
 	const viewGroup = el(projectTools, "div", "cpo-project-group cpo-view-group");
 	const viewLabel = el(viewGroup, "span", "cpo-project-label", tr("视图", "View"));
 	viewLabel.prepend(createChromeIcon("views"));
-	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select") as HTMLSelectElement;
+	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select");
 	viewSelect.setAttribute("aria-label", tr("保存的视图", "Saved views"));
 	viewSelect.title = tr("恢复保存的视图", "Restore saved view");
 	viewSelect.disabled = true;
-	const viewNameInput = el(viewGroup, "input", "cpo-project-name-input") as HTMLInputElement;
+	const viewNameInput = el(viewGroup, "input", "cpo-project-name-input");
 	viewNameInput.placeholder = tr("新视图名称", "New view name");
 	viewNameInput.setAttribute("aria-label", tr("新视图名称", "New view name"));
 	viewNameInput.hidden = true;
-	const saveViewButton = el(viewGroup, "button", "cpo-ghost", tr("保存视图", "Save view")) as HTMLButtonElement;
-	const saveViewText = document.createElement("span");
+	const saveViewButton = el(viewGroup, "button", "cpo-ghost", tr("保存视图", "Save view"));
+	const saveViewText = createSpan();
 	saveViewText.textContent = tr("保存视图", "Save view");
 	saveViewButton.replaceChildren(createChromeIcon("save"), saveViewText);
 	saveViewButton.type = "button";
 	saveViewButton.disabled = true;
-	const renameProjectInput = el(projectGroup, "input", "cpo-project-name-input cpo-project-rename-input") as HTMLInputElement;
+	const renameProjectInput = el(projectGroup, "input", "cpo-project-name-input cpo-project-rename-input");
 	renameProjectInput.placeholder = tr("项目新名称", "New project name");
 	renameProjectInput.setAttribute("aria-label", tr("项目新名称", "New project name"));
 	renameProjectInput.hidden = true;
-	const renameProjectButton = el(projectGroup, "button", "cpo-ghost", tr("重命名", "Rename")) as HTMLButtonElement;
-	const renameProjectText = document.createElement("span");
+	const renameProjectButton = el(projectGroup, "button", "cpo-ghost", tr("重命名", "Rename"));
+	const renameProjectText = createSpan();
 	renameProjectText.textContent = tr("重命名", "Rename");
 	renameProjectButton.replaceChildren(createChromeIcon("edit"), renameProjectText);
 	renameProjectButton.type = "button";
 	renameProjectButton.disabled = true;
-	const libraryButton = el(projectGroup, "button", "cpo-ghost cpo-library-open") as HTMLButtonElement;
+	const libraryButton = el(projectGroup, "button", "cpo-ghost cpo-library-open");
 	libraryButton.type = "button";
 	libraryButton.append(createChromeIcon("bookmark"), document.createTextNode(tr("清单", "Library")));
 	libraryButton.title = tr("暂存与排除", "Saved and excluded papers");
 	projectTools.append(projectGroup, viewGroup);
 
-	const status = document.createElement("p");
+	const status = createEl("p");
 	status.className = "cpo-status";
 	status.textContent = tr("从一篇种子论文开始。", "Start with a seed paper.");
 	status.setAttribute("role", "status");
@@ -177,14 +177,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	body.classList.add("is-rail-collapsed");
 	const statusBar = el(root, "footer", "cpo-statusbar");
 	statusBar.append(status);
-	const undoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", tr("撤销", "Undo")) as HTMLButtonElement;
+	const undoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", tr("撤销", "Undo"));
 	undoButton.type = "button";
 	undoButton.hidden = true;
 	undoButton.disabled = true;
 	const rail = el(body, "aside", "cpo-rail");
 	const layoutHost = el(rail, "div", "cpo-rail-layouts");
 	const scrubHost = el(rail, "div", "cpo-rail-scrub");
-	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›") as HTMLButtonElement;
+	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›");
 	railToggle.type = "button";
 	railToggle.setAttribute("aria-label", tr("展开左侧栏", "Expand left sidebar"));
 	railToggle.setAttribute("aria-expanded", "false");
@@ -193,10 +193,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		title: tr("从一篇种子论文开始", "Start with a seed paper"),
 		hint: tr("输入 DOI、OpenAlex 链接或作品 ID，也可以按标题搜索后点选。圆点按参考文献重叠和共被引聚在一起，不是引用列表。", "Enter a DOI, OpenAlex URL, or work ID, or search by title and select a result. Nodes cluster by shared references and co-citations; this is not a citation list."),
 	});
-	const { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoom, zoomIn, zoomOut, fit, reload } = surface;
+	const { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoomIn, zoomOut, fit, reload } = surface;
 
 	const sidebar = el(body, "aside", "cpo-evidence-sidebar");
-	const sidebarToggle = el(sidebar, "button", "cpo-panel-toggle is-right", "›") as HTMLButtonElement;
+	const sidebarToggle = el(sidebar, "button", "cpo-panel-toggle is-right", "›");
 	sidebarToggle.type = "button";
 	sidebarToggle.setAttribute("aria-label", tr("折叠右侧栏", "Collapse right sidebar"));
 	sidebarToggle.setAttribute("aria-expanded", "true");
@@ -207,7 +207,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const evidenceTools = el(evidenceHeader, "div", "cpo-evidence-tools");
 	evidenceTools.setAttribute("role", "toolbar");
 	evidenceTools.setAttribute("aria-label", tr("论文操作", "Paper actions"));
-	const diagnoseButton = el(evidenceTools, "button", "cpo-diagnose", "") as HTMLButtonElement;
+	const diagnoseButton = el(evidenceTools, "button", "cpo-diagnose", "");
 	diagnoseButton.append(createChromeIcon("diagnose"), document.createTextNode(tr("诊断候选", "Inspect")));
 	diagnoseButton.setAttribute("aria-label", tr("诊断候选", "Inspect candidate"));
 	diagnoseButton.type = "button";
@@ -332,18 +332,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const noun = tab === "prior" ? tr("被本图引用", "Cited by this graph") : tr("引用本图", "Cites this graph");
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
-		const copy = document.createElement("p");
+		const copy = createEl("p");
 		copy.className = "cpo-agg-def";
 		copy.textContent = definition;
 		listPanel.append(copy);
 		if (rows.length === 0) {
-			const empty = document.createElement("p");
+			const empty = createEl("p");
 			empty.className = "cpo-agg-empty";
 			empty.textContent = AGGREGATE_EMPTY_TEXT;
 			listPanel.append(empty);
 			return;
 		}
-		const list = document.createElement("ol");
+		const list = createEl("ol");
 		list.className = "cpo-agg-list";
 		for (const row of rows) {
 			paintAggregateCard(list, row, noun, (paper) => {
@@ -386,7 +386,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const paintLibrarySwitch = (parent: HTMLElement): void => {
 		const row = el(parent, "div", "cpo-library-switch");
 		for (const [next, label] of [["staged", tr("暂存", "Saved")], ["excluded", tr("排除", "Excluded")]] as const) {
-			const button = el(row, "button", "cpo-library-switch-item", label) as HTMLButtonElement;
+			const button = el(row, "button", "cpo-library-switch-item", label);
 			button.type = "button";
 			button.setAttribute("aria-pressed", tab === next ? "true" : "false");
 			button.onclick = () => {
@@ -434,14 +434,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		actionTrigger.append(createChromeIcon("export"), document.createTextNode(tr("清单操作", "List actions")), createChromeIcon("chevronDown"));
 		registerPopover(actionMenu);
 		const actionItems = el(actionMenu, "div", "cpo-library-menu-items");
-		const copyTable = el(actionItems, "button", "cpo-library-menu-item", tr("复制表格", "Copy table")) as HTMLButtonElement;
+		const copyTable = el(actionItems, "button", "cpo-library-menu-item", tr("复制表格", "Copy table"));
 		copyTable.prepend(createChromeIcon("table"));
 		copyTable.type = "button";
 		copyTable.onclick = () => {
 			const text = toMarkdownTable(orderedForExport(items.map((item) => item.paper)));
 			void chrome?.copyText(text, tr("表格", "Table"));
 		};
-		const copyBib = el(actionItems, "button", "cpo-library-menu-item", tr("复制 BibTeX", "Copy BibTeX")) as HTMLButtonElement;
+		const copyBib = el(actionItems, "button", "cpo-library-menu-item", tr("复制 BibTeX", "Copy BibTeX"));
 		copyBib.prepend(createChromeIcon("copy"));
 		copyBib.type = "button";
 		copyBib.onclick = () => {
@@ -451,7 +451,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (deps.createNote) {
 			const divider = el(actionItems, "span", "cpo-library-menu-divider");
 			divider.setAttribute("role", "separator");
-			const noteBtn = el(actionItems, "button", "cpo-library-menu-item", tr("写入清单笔记", "Write list to note")) as HTMLButtonElement;
+			const noteBtn = el(actionItems, "button", "cpo-library-menu-item", tr("写入清单笔记", "Write list to note"));
 			noteBtn.prepend(createChromeIcon("note"));
 			noteBtn.type = "button";
 			noteBtn.onclick = () => {
@@ -478,13 +478,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const list = el(listPanel, "ol", "cpo-agg-list");
 			for (const item of group.items) {
 				paintLibraryCard(list, item.paper, displayStageSource(item.source), (actions) => {
-					const open = el(actions, "button", "cpo-library-action", tr("查看", "View")) as HTMLButtonElement;
+					const open = el(actions, "button", "cpo-library-action", tr("查看", "View"));
 					open.type = "button";
 					open.onclick = () => { if (graph?.nodes.some((node) => node.id === item.paper.id)) { activateGraphTab(); showDetail(item.paper); } };
-					const reading = el(actions, "select", "cpo-paper-reading-select") as HTMLSelectElement;
+					const reading = el(actions, "select", "cpo-paper-reading-select");
 					reading.setAttribute("aria-label", tr(`阅读状态：${item.paper.title || item.paper.id}`, `Reading status: ${item.paper.title || item.paper.id}`));
 					for (const [value, label] of [["unread", tr("未读", "Unread")], ["to-read", tr("待读", "To read")], ["read", tr("已读", "Read")]] as const) {
-						const option = document.createElement("option");
+						const option = createEl("option");
 						option.value = value;
 						option.textContent = label;
 						reading.append(option);
@@ -501,7 +501,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 						}
 						catch { if (previous && project?.paperStates) project.paperStates[item.paper.id] = previous; reading.value = item.reading; status.textContent = tr("阅读状态保存失败，请重试", "Could not save reading status. Try again."); }
 					};
-					const remove = el(actions, "button", "cpo-library-action is-quiet", tr("移除", "Remove")) as HTMLButtonElement;
+					const remove = el(actions, "button", "cpo-library-action is-quiet", tr("移除", "Remove"));
 					remove.type = "button";
 					remove.onclick = async () => {
 						updateProjectPaperState(projects, item.seedId, item.paper, { staged: false });
@@ -525,7 +525,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const list = el(listPanel, "ol", "cpo-agg-list");
 		for (const state of states) {
 			paintLibraryCard(list, state.paper, state.source, (actions) => {
-				const restore = el(actions, "button", "cpo-library-action", tr("恢复到图谱", "Restore to graph")) as HTMLButtonElement;
+				const restore = el(actions, "button", "cpo-library-action", tr("恢复到图谱", "Restore to graph"));
 				restore.type = "button";
 				restore.onclick = () => { if (project && graph) restoreExcludedPaper(project.seedId, state); };
 			});
@@ -538,7 +538,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!llmReady()) { narrative = null; return; }
 		el(listPanel, "h3", "cpo-kicker", tr("研究脉络", "Research narrative"));
 		const tip = el(listPanel, "p", "cpo-side-tip", narrativeError || (narrativeBusy ? tr("正在请求模型…", "Requesting the model…") : tr("手动生成：向已配置服务发送当前种子的论文元数据、引用关系和已获取的引用上下文。摘要由设置控制。结果覆盖整张采样图，不随年份滑块变化。", "Generate manually: send the current seed's paper metadata, citation links, and available citation context to the configured service. Abstracts are controlled in settings. The result covers the sampled graph and does not change with the year slider.")));
-		const generate = el(listPanel, "button", "cpo-primary", narrative ? tr("重新生成", "Regenerate") : tr("生成研究脉络", "Generate research narrative")) as HTMLButtonElement;
+		const generate = el(listPanel, "button", "cpo-primary", narrative ? tr("重新生成", "Regenerate") : tr("生成研究脉络", "Generate research narrative"));
 		generate.type = "button";
 		generate.disabled = narrativeBusy || !graph;
 		generate.addEventListener("click", () => void generateResearch(generate, tip));
@@ -578,7 +578,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		el(listPanel, "h4", "cpo-kicker", title);
 		for (const item of items) {
 			const paper = graph?.nodes.find((node) => node.id === item.paperId) ?? graph?.catalog.find((node) => node.id === item.paperId);
-			const button = el(listPanel, "button", "cpo-agg-item") as HTMLButtonElement;
+			const button = el(listPanel, "button", "cpo-agg-item");
 			button.type = "button";
 			button.textContent = tr(`${paper?.year ?? "—"} · ${paper?.title ?? item.paperId} · 模型自评 ${item.confidence}`, `${paper?.year ?? "—"} · ${paper?.title ?? item.paperId} · Model confidence ${item.confidence}`);
 			button.addEventListener("click", () => { if (paper) { activateGraphTab(); showDetail(paper); } });
@@ -672,16 +672,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		detail.hidden = false;
 		sheet.setExpanded(true);
 		sheet.setSummary(tr("候选诊断", "Candidate inspection"), tr("当前图谱的采样记录", "Sampling records for the current graph"));
-		const back = el(detail, "button", "cpo-diagnose-back", tr("‹ 返回论文", "‹ Back to paper")) as HTMLButtonElement;
+		const back = el(detail, "button", "cpo-diagnose-back", tr("‹ 返回论文", "‹ Back to paper"));
 		back.type = "button";
 		back.disabled = !returnPaper;
 		back.onclick = () => returnEdge ? showEdgeDetail(returnEdge) : showDetail(returnPaper);
 		const form = el(detail, "form", "cpo-diagnose-form");
-		const query = el(form, "input") as HTMLInputElement;
+		const query = el(form, "input");
 		query.type = "text";
 		query.placeholder = tr("DOI 或 OpenAlex ID", "DOI or OpenAlex ID");
 		query.setAttribute("aria-label", tr("要诊断的论文", "Paper to inspect"));
-		const check = el(form, "button", "cpo-primary", tr("查询", "Search")) as HTMLButtonElement;
+		const check = el(form, "button", "cpo-primary", tr("查询", "Search"));
 		check.type = "submit";
 		const result = el(detail, "div", "cpo-diagnose-result");
 		form.addEventListener("submit", (event) => {
@@ -693,7 +693,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			el(result, "p", "cpo-side-tip", finding.detail);
 			const paper = finding.paperId && graph.nodes.find((item) => item.id === finding.paperId);
 			if (paper) {
-				const open = el(result, "button", "cpo-text-btn", tr("查看论文", "View paper")) as HTMLButtonElement;
+				const open = el(result, "button", "cpo-text-btn", tr("查看论文", "View paper"));
 				open.type = "button";
 				open.onclick = () => showDetail(paper);
 			}
@@ -800,7 +800,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const sources = [...new Set(batch.additions.filter((item) => item.paperId === paper.id).map((item) => ({ reference: tr("参考文献", "References"), citation: tr("施引文献", "Citing papers"), "shared-reference": tr("共享参考文献候选", "Shared-reference candidate"), legacy: tr("既有深挖记录", "Earlier deep-dive record") })[item.source]))].join("、");
 			const identityCard = detail.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? detail;
 			const actionRow = identityCard.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
-			const diveNote = document.createElement("p");
+			const diveNote = createEl("p");
 			diveNote.className = "cpo-fact-note";
 			diveNote.textContent = tr(`第 ${diveIndex + 1} 轮深挖 · ${parent?.title ?? batch.parentId} · ${sources}`, `Deep dive ${diveIndex + 1} · ${parent?.title ?? batch.parentId} · ${sources}`);
 			if (actionRow) identityCard.insertBefore(diveNote, actionRow);
@@ -982,7 +982,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const projects = Object.values(deps.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt);
 		projectSelect.replaceChildren();
 		if (projects.length === 0) {
-			const option = document.createElement("option");
+			const option = createEl("option");
 			option.textContent = tr("研究项目", "Research project");
 			projectSelect.append(option);
 			projectSelect.disabled = true;
@@ -992,7 +992,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			return;
 		}
 		for (const project of projects) {
-			const option = document.createElement("option");
+			const option = createEl("option");
 			option.value = project.seedId;
 			option.textContent = project.name;
 			projectSelect.append(option);
@@ -1008,12 +1008,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const refreshViews = (): void => {
 		const project = deps.getSettings().researchProjects[projectSelect.value];
 		viewSelect.replaceChildren();
-		const current = document.createElement("option");
+		const current = createEl("option");
 		current.value = "";
 		current.textContent = tr("当前视图", "Current view");
 		viewSelect.append(current);
 		for (const [index, view] of (project?.views ?? []).entries()) {
-			const option = document.createElement("option");
+			const option = createEl("option");
 			option.value = String(index);
 			option.textContent = view.name;
 			viewSelect.append(option);
@@ -1052,7 +1052,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 	});
 
-	renameProjectButton.addEventListener("click", async () => {
+	renameProjectButton.onclick = async () => {
 		const project = deps.getSettings().researchProjects[projectSelect.value];
 		if (!project) return;
 		if (renameProjectInput.hidden) {
@@ -1075,7 +1075,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		} catch (error) {
 			status.textContent = error instanceof Error ? error.message : tr("项目名称保存失败", "Could not save the project name");
 		}
-	});
+	};
 	renameProjectInput.addEventListener("keydown", (event) => {
 		if (event.key === "Enter") { event.preventDefault(); renameProjectButton.click(); }
 		if (event.key === "Escape") { renameProjectInput.hidden = true; renameProjectText.textContent = tr("重命名", "Rename"); }
@@ -1087,7 +1087,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (view) restoreNamedView(view);
 	});
 
-	saveViewButton.addEventListener("click", async () => {
+	saveViewButton.onclick = async () => {
 		if (!graph) return;
 		if (viewNameInput.hidden && !viewNameInput.value.trim()) {
 			viewNameInput.hidden = false;
@@ -1125,7 +1125,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		} catch (error) {
 			status.textContent = error instanceof Error ? error.message : tr("视图保存失败", "Could not save the view");
 		}
-	});
+	};
 
 	function clearUndo(): void {
 		undoCheckpoint = null;
@@ -1570,7 +1570,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		clearError();
 		el(results, "p", "cpo-results-label", tr("选择种子论文", "Select a seed paper"));
 		for (const hit of hits) {
-			const button = el(results, "button", "cpo-hit") as HTMLButtonElement;
+			const button = el(results, "button", "cpo-hit");
 			button.type = "button";
 			el(button, "span", "cpo-hit-title", hit.title);
 			const year = hit.year === null ? tr("年份不详", "Year unknown") : String(hit.year);
@@ -1700,7 +1700,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const observer = observeResponsiveMode(root, () => map.resize());
 	observer.observe(stage);
-	requestAnimationFrame(() => map.resize());
+	window.requestAnimationFrame(() => map.resize());
 
 	const initial = deps.initialTarget ?? (deps.initialDoi ? { kind: "doi" as const, value: deps.initialDoi } : null);
 	const saved = initial ? null : deps.loadSavedProject?.() ?? null;
@@ -1744,11 +1744,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (pathResult.paths.length > 1) {
 			const nav = el(detail, "div", "cpo-tool-row");
 			const label = el(nav, "span", "cpo-meta", tr(`同长路径 ${pathIndex + 1}/${pathResult.paths.length}`, `Equal-length path ${pathIndex + 1}/${pathResult.paths.length}`));
-			const prev = el(nav, "button", "cpo-text-btn", tr("上一条", "Previous")) as HTMLButtonElement;
+			const prev = el(nav, "button", "cpo-text-btn", tr("上一条", "Previous"));
 			prev.type = "button";
 			prev.disabled = pathIndex <= 0;
 			prev.onclick = () => { pathIndex -= 1; paintDoiPath(); };
-			const next = el(nav, "button", "cpo-text-btn", tr("下一条", "Next")) as HTMLButtonElement;
+			const next = el(nav, "button", "cpo-text-btn", tr("下一条", "Next"));
 			next.type = "button";
 			next.disabled = pathIndex >= pathResult.paths.length - 1;
 			next.onclick = () => { pathIndex += 1; paintDoiPath(); };
@@ -1763,7 +1763,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const doi = normalizeDoi(paper?.doiUrl) ?? tr("无 DOI", "No DOI");
 			el(row, "p", "cpo-meta", `${id} · ${doi}${i < path.length - 1 ? " →" : ""}`);
 			if (paper && graph?.nodes.some((node) => node.id === paper.id)) {
-				const open = el(row, "button", "cpo-text-btn", tr("查看", "View")) as HTMLButtonElement;
+				const open = el(row, "button", "cpo-text-btn", tr("查看", "View"));
 				open.type = "button";
 				open.onclick = () => { activateGraphTab(); showDetail(paper); };
 			}
@@ -1775,27 +1775,45 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			showError(tr("请先构建图谱。DOI 路径只在已抓取的引用列表上搜索。", "Build a graph first. DOI path search uses fetched reference lists only."));
 			return;
 		}
-		const raw = window.prompt(tr("起点与终点（DOI 或 OpenAlex ID，用空格或 → 分隔）", "Start and end (DOI or OpenAlex ID, separated by a space or →)"));
-		if (raw === null) return;
-		const parts = raw.split(/\s*(?:→|->|\s)\s*/).map((part) => part.trim()).filter(Boolean);
-		if (parts.length < 2) {
-			showError(tr("请提供两个端点，例如：10.1/a → 10.2/b", "Provide two endpoints, for example: 10.1/a → 10.2/b"));
-			return;
-		}
-		const pool = [...graph.nodes, ...graph.catalog];
-		const start = resolvePathEndpoint(parts[0]!, pool, normalizeDoi, shortId);
-		const end = resolvePathEndpoint(parts[1]!, pool, normalizeDoi, shortId);
-		if (!start || !end) {
-			showError(tr("端点必须是当前图谱已抓取的论文（DOI 或 OpenAlex ID）。", "Both endpoints must be papers fetched for the current graph (DOI or OpenAlex ID)."));
-			return;
-		}
-		clearError();
-		pathResult = findBudgetedCitationPath(graph.referenceLists, start, end, DEFAULT_PATH_BUDGET);
-		pathIndex = 0;
-		status.textContent = pathResult.paths.length
-			? tr(`预算内找到 ${pathResult.paths.length} 条路径（检查 ${pathResult.checked}/${pathResult.budget}）`, `Found ${pathResult.paths.length} paths within budget (${pathResult.checked}/${pathResult.budget} checked)`)
-			: tr(`预算内未找到路径（检查 ${pathResult.checked}/${pathResult.budget}${pathResult.exhausted ? "，提前耗尽" : ""}）`, `No path found within budget (${pathResult.checked}/${pathResult.budget} checked${pathResult.exhausted ? "; exhausted early" : ""})`);
-		paintDoiPath();
+		activateGraphTab();
+		if (body.classList.contains("is-sidebar-collapsed")) sidebarToggle.click();
+		detail.replaceChildren();
+		detail.hidden = false;
+		sheet.setExpanded(true);
+		sheet.setSummary(tr("DOI 引用路径", "DOI citation path"), "");
+		const form = el(detail, "form", "cpo-path-search");
+		const label = el(form, "label", "cpo-meta", tr("起点与终点（DOI 或 OpenAlex ID，用空格或 → 分隔）", "Start and end (DOI or OpenAlex ID, separated by a space or →)"));
+		const endpoints = el(label, "input");
+		endpoints.type = "text";
+		endpoints.required = true;
+		endpoints.placeholder = "10.1/a → 10.2/b";
+		const submitPath = el(form, "button", "cpo-text-btn", tr("查找路径", "Find path"));
+		submitPath.type = "submit";
+		endpoints.focus();
+		form.onsubmit = (event) => {
+			event.preventDefault();
+			if (!graph) return;
+			const raw = endpoints.value;
+			const parts = raw.split(/\s*(?:→|->|\s)\s*/).map((part) => part.trim()).filter(Boolean);
+			if (parts.length < 2) {
+				showError(tr("请提供两个端点，例如：10.1/a → 10.2/b", "Provide two endpoints, for example: 10.1/a → 10.2/b"));
+				return;
+			}
+			const pool = [...graph.nodes, ...graph.catalog];
+			const start = resolvePathEndpoint(parts[0]!, pool, normalizeDoi, shortId);
+			const end = resolvePathEndpoint(parts[1]!, pool, normalizeDoi, shortId);
+			if (!start || !end) {
+				showError(tr("端点必须是当前图谱已抓取的论文（DOI 或 OpenAlex ID）。", "Both endpoints must be papers fetched for the current graph (DOI or OpenAlex ID)."));
+				return;
+			}
+			clearError();
+			pathResult = findBudgetedCitationPath(graph.referenceLists, start, end, DEFAULT_PATH_BUDGET);
+			pathIndex = 0;
+			status.textContent = pathResult.paths.length
+				? tr(`预算内找到 ${pathResult.paths.length} 条路径（检查 ${pathResult.checked}/${pathResult.budget}）`, `Found ${pathResult.paths.length} paths within budget (${pathResult.checked}/${pathResult.budget} checked)`)
+				: tr(`预算内未找到路径（检查 ${pathResult.checked}/${pathResult.budget}${pathResult.exhausted ? "，提前耗尽" : ""}）`, `No path found within budget (${pathResult.checked}/${pathResult.budget} checked${pathResult.exhausted ? "; exhausted early" : ""})`);
+			paintDoiPath();
+		};
 	};
 
 	return {
@@ -1829,7 +1847,7 @@ function samplingText(stats: { accepted: number; requests: number; pages: number
 }
 
 function addLink(parent: HTMLElement, label: string, onClick: () => void): void {
-	const button = el(parent, "button", "cpo-link", label) as HTMLButtonElement;
+	const button = el(parent, "button", "cpo-link", label);
 	button.type = "button";
 	button.addEventListener("click", onClick);
 }
@@ -1846,7 +1864,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 	className?: string,
 	text?: string,
 ): HTMLElementTagNameMap[K] {
-	const node = document.createElement(tag);
+	const node = createEl(tag);
 	if (className) node.className = className;
 	if (text !== undefined) node.textContent = text;
 	parent.append(node);

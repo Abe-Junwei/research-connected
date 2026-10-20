@@ -1,6 +1,16 @@
 # Research Connected：插件说明页与反馈入口调研
 
-调研日期：2026-10-20。范围：8 个成熟插件的官方仓库 README、可访问的社区目录页、Obsidian 与 GitHub 官方文档；浏览器实看 Tasks README、Research Connected 与 Excalidraw 社区页。研究与规划，不代表页面已改或反馈表单已上线。
+调研日期：2026-10-20。范围：8 个成熟插件的官方仓库 README、可访问的社区目录页、Obsidian 与 GitHub 官方文档；浏览器实看 Tasks README、Research Connected 与 Excalidraw 社区页。下文「实施前现状」是调研当时的记录。
+
+## 实施进度
+
+1.9.3 已发布。对照本文建议：
+
+- GitHub：默认分支已有 `bug_report.yml`、`feature_request.yml`、`config.yml`。空白 Issue 关闭。Issues 开启，Discussions 关闭。`bug` 与 `enhancement` 标签已存在。未登录打开两个表单链接会进入 GitHub 登录，并保留模板参数。尚未用已登录账号核对字段，也未提交测试 Issue。
+- README：已按本文顺序重排。使用前须知包含桌面、网络、密钥、采样、笔记读写和 AI。文末中英文都区分报告问题与功能建议。社区 Overview 已显示同一正文；本次补上的两句须知和中文反馈句要合入 `main` 后才会出现在社区页。
+- 设置页：1.9.3 有「帮助与反馈」，链到使用指南和同一组表单。
+- 社区目录：短描述、侧栏说明，以及图谱与证据、时间线、笔记嵌入三张截图已在公开页。版本显示 1.9.3。头部仍是通用网络图标，不是 `docs/images/logo.svg`。截图尺寸为 1440×880 与 1160×880。
+- 构建失败时再提供报告链接、以及非 GitHub 备用渠道：仍按原文暂缓。
 
 ## 建议
 
@@ -16,7 +26,7 @@
 
 依据：[社区页说明](https://obsidian.md/help/community-directory)、[目录管理](https://docs.obsidian.md/community-directory/manage-entry)。官方规定桌面截图最多 5 张、1200×800，移动端最多 5 张、900×1600，单张不超过 5 MB，支持 JPEG/PNG/WebP。当前项目只支持桌面，因此只规划桌面截图。
 
-本轮浏览器看到 Research Connected 目录头部仍使用旧图标，没有 Excalidraw 那样的独立顶部截图展示；图谱截图位于 Overview 的 README 内容里。目录更新与 GitHub 发布不是同一个完成边界。网页文本工具返回版本 1.9.0，但本轮未操作刷新目录或验证索引进度，不将它直接当成更新失败。
+调研当时，目录头部是旧图标，顶部还没有独立截图，图谱截图只出现在 Overview 的 README 里。目录更新与 GitHub 发布不是同一个完成边界。当时页面文本显示版本 1.9.0。
 
 ## 8 个样本：布局与内容
 
@@ -33,7 +43,7 @@
 
 社区目录的导航、评分条和右栏属于平台外观；它们不说明 README 作者设计了自定义卡片。不同样本信息量相差很大，不能推断“成熟等于更长”。
 
-## Research Connected 现状
+## 实施前现状
 
 - README 已有真实图谱、时间线、笔记嵌入截图，以及安装、快速开始、网络与隐私、限制、指南和路线图；主要缺口是层级与反馈引导，不是缺一整套文档。
 - Features 一次列出九项，用户需要读较多文字才能判断主要工作流。
@@ -102,7 +112,7 @@
 - `https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml`
 - 已有问题：`https://github.com/Abe-Junwei/research-connected/issues`
 
-以上模板尚不存在，是实施目标，不能现在称为可用入口。GitHub 支持 YAML Issue Forms 和链接参数；提交需要登录，不能当作匿名反馈。依据：[配置表单](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository)、[创建问题](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue)、[URL 参数](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue-from-a-url-query)。
+这些模板已在默认分支生效。GitHub 支持 YAML Issue Forms 和链接参数；提交需要登录，不能当作匿名反馈。依据：[配置表单](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository)、[创建问题](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue)、[URL 参数](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue-from-a-url-query)。
 
 ## 为什么暂时不选其他渠道
 
@@ -118,6 +128,6 @@
 3. 社区目录：设置新版 logo 与三张截图；核实短长描述；确认公开页出现的是实际保存内容，版本更新单独检查。
 4. 插件设置帮助链接：复用项目已有外部链接方式和中英翻译；检查键盘焦点与可访问名称；需要代码变更时才构建发版。
 
-纯 README／模板调整无需为了入口本身发布插件版本。设置 UI 改动才需要随插件构建发布。当前报告不代替上述验收，也没有修改线上设置。
+纯 README／模板调整无需为了入口本身发布插件版本。设置 UI 改动才需要随插件构建发布。表单、README 主体和设置入口已随 1.9.3 上线。目录图标仍要在社区目录的 Edit listing 里单独替换。登录后的表单字段尚未打开核对。
 
 配套的反馈机制逐样本证据见 `docs/research/obsidian-feedback-entry-research-2026-10-20.md`。

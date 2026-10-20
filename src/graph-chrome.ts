@@ -29,12 +29,12 @@ export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "p
 		export: ["M10 3v9", "m6.5 8.5 3.5 3.5 3.5-3.5", "M4 13v4h12v-4"],
 		chevronDown: ["m5 7.5 5 5 5-5"],
 	};
-	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	const svg = createSvg("svg");
 	svg.setAttribute("viewBox", "0 0 20 20");
 	svg.setAttribute("aria-hidden", "true");
 	svg.classList.add("cpo-icon-glyph");
 	for (const d of paths[name]) {
-		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		const path = createSvg("path");
 		path.setAttribute("d", d);
 		svg.append(path);
 	}
@@ -44,10 +44,10 @@ export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "p
 /** Shared badge row; empty input paints nothing. */
 export function paintBadges(host: HTMLElement, badges: readonly EvidenceBadge[]): void {
 	if (badges.length === 0) return;
-	const row = document.createElement("span");
+	const row = createSpan();
 	row.className = "cpo-badges";
 	for (const badge of badges) {
-		const item = document.createElement("span");
+		const item = createSpan();
 		item.className = `cpo-badge cpo-badge-${badge.tone}`;
 		item.textContent = badge.label;
 		row.append(item);
@@ -118,11 +118,11 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		if (actions === host) host.replaceChildren();
 	}
 
-	const layoutRow = document.createElement("div");
+	const layoutRow = createDiv();
 	layoutRow.className = "cpo-tool-row";
-	const scrubRow = document.createElement("div");
+	const scrubRow = createDiv();
 	scrubRow.className = "cpo-tool-row cpo-scrub-row";
-	const tabRow = document.createElement("div");
+	const tabRow = createDiv();
 	tabRow.className = "cpo-tool-row cpo-tab-row";
 	let layout = options.layout;
 	let hasYears = false;
@@ -135,19 +135,19 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		readout.textContent = tr("全部年份", "All years");
 		options.onScrub(null);
 	};
-	const readout = document.createElement("span");
+	const readout = createSpan();
 	readout.className = "cpo-scrub-readout";
 	readout.textContent = tr("全部年份", "All years");
-	const output = document.createElement("div");
+	const output = createDiv();
 	output.className = "cpo-export-feedback";
 	output.hidden = true;
-	const outputMessage = document.createElement("span");
+	const outputMessage = createSpan();
 	outputMessage.className = "cpo-export-message";
 	outputMessage.setAttribute("role", "status");
-	const outputPreview = document.createElement("pre");
+	const outputPreview = createEl("pre");
 	outputPreview.className = "cpo-export-text";
 	outputPreview.hidden = true;
-	const clearOutput = document.createElement("button");
+	const clearOutput = createEl("button");
 	clearOutput.type = "button";
 	clearOutput.className = "cpo-export-clear";
 	clearOutput.textContent = tr("清除", "Clear");
@@ -186,10 +186,10 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		button.title = LAYOUT_HINT[mode];
 		button.dataset.layout = mode;
 		button.setAttribute("aria-label", LAYOUT_LABEL[mode]);
-		const label = document.createElement("span");
+		const label = createSpan();
 		label.className = "cpo-layout-label";
 		label.textContent = LAYOUT_LABEL[mode];
-		const icon = document.createElement("span");
+		const icon = createSpan();
 		icon.className = "cpo-layout-icon";
 		icon.setAttribute("aria-hidden", "true");
 		icon.append(createChromeIcon(mode === "force2d" ? "grid" : mode === "temporal" ? "clock" : "radial"));
@@ -198,7 +198,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		layoutRow.append(button);
 	}
 
-	const range = document.createElement("input");
+	const range = createEl("input");
 	range.type = "range";
 	range.min = String(minYear);
 	range.max = String(maxYear);
@@ -246,7 +246,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		}, 700);
 	});
 
-	const scrubMeta = document.createElement("div");
+	const scrubMeta = createDiv();
 	scrubMeta.className = "cpo-scrub-meta";
 	scrubMeta.append(readout, play);
 	scrubRow.append(range, scrubMeta);
@@ -269,13 +269,13 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		tabRow.append(button);
 	}
 
-	const exportMenu = document.createElement("details");
+	const exportMenu = createEl("details");
 	exportMenu.className = "cpo-export-menu";
-	const exportSummary = document.createElement("summary");
+	const exportSummary = createEl("summary");
 	exportSummary.className = "cpo-tool";
 	exportSummary.append(createChromeIcon("export"), document.createTextNode(tr("导出", "Export")), createChromeIcon("chevronDown"));
 	exportMenu.append(exportSummary);
-	const exportItems = document.createElement("div");
+	const exportItems = createDiv();
 	exportItems.className = "cpo-export-items";
 	for (const [label, kind] of [["BibTeX", "bibtex"], ["YAML", "yaml"], [tr("表格", "Table"), "table"], [options.noteButton ? tr("写入笔记", "Write to note") : tr("笔记骨架", "Note template"), "note"]] as const) {
 		exportItems.append(actionButton(label, () => options.onExport(kind)));
@@ -369,7 +369,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 export function mountBottomSheet(host: HTMLElement, options?: { collapsible?: boolean }): BottomSheet {
 	host.classList.add("cpo-sheet", "is-collapsed");
 	host.replaceChildren();
-	const body = document.createElement("div");
+	const body = createDiv();
 	body.className = "cpo-sheet-body";
 	if (options?.collapsible === false) {
 		host.classList.remove("is-collapsed");
@@ -384,19 +384,19 @@ export function mountBottomSheet(host: HTMLElement, options?: { collapsible?: bo
 			},
 		};
 	}
-	const toggle = document.createElement("button");
+	const toggle = createEl("button");
 	toggle.type = "button";
 	toggle.className = "cpo-sheet-toggle";
 	toggle.setAttribute("aria-expanded", "false");
-	const title = document.createElement("span");
+	const title = createSpan();
 	title.className = "cpo-sheet-title";
 	title.textContent = tr("点选节点查看论文", "Select a node to view its paper");
-	const langTag = document.createElement("span");
+	const langTag = createSpan();
 	langTag.className = "cpo-tag cpo-sheet-tag";
 	langTag.hidden = true;
-	const meta = document.createElement("span");
+	const meta = createSpan();
 	meta.className = "cpo-sheet-meta";
-	const chevron = document.createElement("span");
+	const chevron = createSpan();
 	chevron.className = "cpo-sheet-chevron";
 	chevron.textContent = tr("展开", "Expand");
 	toggle.append(title, langTag, meta, chevron);
@@ -465,7 +465,7 @@ export function registerPopover(menu: HTMLDetailsElement): () => void {
 }
 
 function pressButton(label: string, on: boolean, onClick: () => void): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "cpo-tool";
 	button.textContent = label;
@@ -475,7 +475,7 @@ function pressButton(label: string, on: boolean, onClick: () => void): HTMLButto
 }
 
 function actionButton(label: string, onClick: () => void): HTMLButtonElement {
-	const button = document.createElement("button");
+	const button = createEl("button");
 	button.type = "button";
 	button.className = "cpo-tool";
 	button.textContent = label;

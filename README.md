@@ -61,6 +61,8 @@ See the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/
 - **Desktop:** requires Obsidian 1.14.4 or later. Mobile support awaits device testing.
 - **Network access:** building a map queries external scholarly services. Projects and reading states are stored in your vault; this is not an offline citation index.
 - **Service keys:** an OpenAlex API key is optional but recommended. Anonymous limits and deep-sampling restrictions can affect results. Create a key at [OpenAlex settings](https://openalex.org/settings/api); see the [guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md) for configuration.
+- **Sampling:** the map is a sample of a citation neighborhood, not every paper that cites the seed.
+- **Notes:** literature-note frontmatter is read so existing notes can be recognized. A note file is created or updated only when you write one or change its reading status.
 - **AI is optional:** the research narrative is off by default. Exploring maps and inspecting citation evidence do not require an LLM. If enabled, generation uses the provider you configure, whose terms and charges apply.
 - **Languages:** the interface follows Obsidian’s language: Simplified Chinese for Chinese locales, English otherwise.
 
@@ -90,7 +92,7 @@ Projects, reading states, saved views, and service credentials are stored in thi
 
 English or Chinese is welcome. Submitting requires a GitHub account, and reports are public. Do not include API keys, private notes, unpublished research, a full vault, or `data.json`. A feature request does not guarantee implementation or a delivery date.
 
-支持中文或英文。提交需要 GitHub 账户，反馈公开可见；请勿上传密钥、私人笔记、未公开研究材料或完整库数据。
+遇到无法正常工作的情况？[报告问题](https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml)。希望改善某个研究流程？[提出功能建议](https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml)。提交前可以先[查看已有问题](https://github.com/Abe-Junwei/research-connected/issues)。支持中文或英文；反馈在 GitHub 公开显示，提交需要 GitHub 账户。请勿上传密钥、私人笔记、未公开研究材料或完整库数据。
 
 ## Updates and contributing
 

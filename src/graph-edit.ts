@@ -157,6 +157,10 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		if (graph.edges.includes(edge) && previous && edgeCitationPairs(edge).every((pair) => oldDirectPairs.has(`${pair.citingId}\0${pair.citedId}`))) continue;
 		if (edge.direct !== "none") directEdges.set(`${edge.source}\0${edge.target}\0${edge.direct}`, edge);
 	}
+	const contexts = graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id);
+	const sourceContexts = new Set(previous?.contextIds ?? contexts.flatMap((id) => previous ? previous.records.filter((record) => (oldIds.get(record.id) ?? record.id) === id && record.origin === "citation").map((record) => record.id) : [id]));
+	const oldContexts = new Set([...sourceContexts].map((id) => oldIds.get(id) ?? id));
+	for (const id of contexts) if (!previous || !oldContexts.has(id)) sourceContexts.add(id);
 	if (previous) {
 		const records = new Map(previous.records.map((record) => [record.id, record]));
 		const sameRecords = records.size === index.records.length && index.records.every((record) => JSON.stringify(record) === JSON.stringify(records.get(record.id)));
@@ -165,15 +169,12 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		const rows = graph.citationEvidence?.entries() ?? [];
 		const sameEvidence = rows.length === oldEvidence.entries().length && rows.every((row) => evidenceSignature(row) === evidenceSignature(oldEvidence.get(row.citingId, row.citedId)));
 		const canonical = [...graph.nodes, ...graph.catalog].every((paper) => resolve(paper.id) === paper.id);
-		if (sameRecords && sameIds && sameLists && sameEvidence && canonical && directEdges.size === previous.directEdges.length) return graph;
+		const sameContexts = previous.contextIds !== undefined && JSON.stringify([...sourceContexts].sort()) === JSON.stringify([...previous.contextIds].sort());
+		if (sameRecords && sameIds && sameLists && sameEvidence && sameContexts && canonical && directEdges.size === previous.directEdges.length) return graph;
 	}
 	const edges = [...directEdges.values()].map((edge) => ({ ...edge, source: resolve(edge.source), target: resolve(edge.target) })).filter((edge) => edge.source !== edge.target);
 	const visibleIds = new Set(graph.nodes.flatMap((paper) => paperRecords(paper).map((record) => resolve(record.id))));
 	const nodes = index.papers.filter((paper) => visibleIds.has(paper.id));
-	const contexts = graph.coCitationContextIds ?? graph.catalog.filter((paper) => paper.origin === "citation").map((paper) => paper.id);
-	const sourceContexts = new Set(previous?.contextIds ?? contexts.flatMap((id) => previous ? previous.records.filter((record) => (oldIds.get(record.id) ?? record.id) === id && record.origin === "citation").map((record) => record.id) : [id]));
-	const oldContexts = new Set([...sourceContexts].map((id) => oldIds.get(id) ?? id));
-	for (const id of contexts) if (!previous || !oldContexts.has(id)) sourceContexts.add(id);
 	const changedIds = new Set(index.papers.filter((paper) => (paper.records?.length ?? 0) > 1).map((paper) => paper.id));
 	return {
 		...graph, nodes, catalog: index.papers, edges, referenceLists: projectLists([...sources], index.ids), citationEvidence: evidence,
