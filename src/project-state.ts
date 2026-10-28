@@ -248,6 +248,70 @@ export function versionVisible(scope: VersionScope, id: string): boolean {
 	return !flags(scope, id).excluded;
 }
 
+function copyVersionScope(scope: VersionScope, ids: readonly string[]): VersionScope {
+	const versions: Record<string, VersionFlags> = {};
+	for (const id of ids) versions[id] = { ...(scope.versions[id] ?? { excluded: scope.wholeExcluded, staged: false, restored: false }) };
+	return { wholeExcluded: scope.wholeExcluded, versions };
+}
+
+/** Both sides inherit a whole-work exclusion. A restore exception stays on its own version. */
+export function splitExclusion(scope: VersionScope, leftIds: readonly string[], rightIds: readonly string[]): [VersionScope, VersionScope] {
+	return [copyVersionScope(scope, leftIds), copyVersionScope(scope, rightIds)];
+}
+
+export interface MergedExclusion {
+	scope: VersionScope;
+	sides: Readonly<Record<string, VersionScope>>;
+	/** An old aggregation that cannot be undone stays unconfirmed. */
+	pending: boolean;
+}
+
+export function mergeExclusion(leftId: string, left: VersionScope, rightId: string, right: VersionScope, reversible = true): MergedExclusion {
+	const versions: Record<string, VersionFlags> = {};
+	for (const scope of [left, right]) {
+		for (const [id, version] of Object.entries(scope.versions)) {
+			versions[id] = { ...version, excluded: version.excluded || (scope.wholeExcluded && !version.restored) };
+		}
+	}
+	return {
+		scope: { wholeExcluded: left.wholeExcluded && right.wholeExcluded, versions },
+		sides: { [leftId]: left, [rightId]: right },
+		pending: !reversible,
+	};
+}
+
+/** A version with a known pre-merge side follows that side. An unknown side stays off the main graph. */
+export function assignMergedVersion(merged: MergedExclusion, versionId: string, sideId: string | null): { merged: MergedExclusion; onGraph: boolean; pending: boolean } {
+	const side = sideId ? merged.sides[sideId] : undefined;
+	if (!side) return { merged, onGraph: false, pending: true };
+	const version = { excluded: side.wholeExcluded, staged: false, restored: false };
+	return {
+		merged: { ...merged, scope: { ...merged.scope, versions: { ...merged.scope.versions, [versionId]: version } } },
+		onGraph: !version.excluded,
+		pending: false,
+	};
+}
+
+export interface PendingItem {
+	id: string;
+	kind: "identity" | "exclusion-scope";
+	blocks: string;
+}
+
+export function appendPending(list: readonly PendingItem[], item: PendingItem): PendingItem[] {
+	return list.some((existing) => existing.id === item.id) ? [...list] : [...list, item];
+}
+
+export function choosePending(list: readonly PendingItem[], id: string): { pending: PendingItem[]; removed: PendingItem | null } {
+	const removed = list.find((item) => item.id === id) ?? null;
+	return { pending: removed ? list.filter((item) => item.id !== id) : [...list], removed };
+}
+
+/** Browsing stays available. Only the named blocked operation waits. */
+export function operationBlocked(list: readonly PendingItem[], operation: string): boolean {
+	return operation !== "browse" && list.some((item) => item.blocks === operation);
+}
+
 export function updateProjectPaperState(
 	projects: Record<string, ResearchProject>, seedId: string, paper: PaperNode,
 	patch: Partial<Omit<ProjectPaperState, "paper" | "updatedAt">> & { source?: string },

@@ -38,6 +38,34 @@ export function confirmedVersionRelation(a: PaperRecord, b: PaperRecord): boolea
 	return Boolean(doi && doi === normalizeDoi(b.doiUrl));
 }
 
+export type SourceRelationReport =
+	| { status: "missing" }
+	| { status: "conflict"; evidence: readonly string[] }
+	| { status: "negated"; evidence: readonly string[] };
+
+export interface SourceRelationHold {
+	/** Unchanged for a miss or a conflict. Negation is queued for split and does not keep the link. */
+	merged: boolean;
+	review: "check" | "freeze" | "split";
+	evidence: readonly string[];
+}
+
+/** One missing source does not split. A conflict freezes the current link. An explicit denial is a split review, not a miss. */
+export function holdSourceRelation(report: SourceRelationReport, merged: boolean): SourceRelationHold {
+	switch (report.status) {
+		case "missing":
+			return { merged, review: "check", evidence: [] };
+		case "conflict":
+			return { merged, review: "freeze", evidence: [...report.evidence] };
+		case "negated":
+			return { merged: false, review: "split", evidence: [...report.evidence] };
+		default: {
+			const _never: never = report;
+			return _never;
+		}
+	}
+}
+
 export function paperRecords(paper: PaperNode): PaperRecord[] {
 	const { records, recordsSeparated: _separated, ...record } = paper;
 	return records?.length ? records.map((item) => item.id === record.id ? { ...item, ...record } : item) : [record];
