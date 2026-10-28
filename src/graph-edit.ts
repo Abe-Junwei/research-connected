@@ -195,6 +195,25 @@ export function separateWorkRecords<T extends EditableGraph>(graph: T, paper: Pa
 	return normalizeWorkGraph({ ...graph, workIdentity: { ...graph.workIdentity, separatedIds: [...new Set([...graph.workIdentity.separatedIds, ...paper.records.map((record) => record.id)])] } });
 }
 
+/** Drop a keep-separate decision so workIndex may merge those records again. */
+export function releaseSeparatedRecords<T extends EditableGraph>(graph: T, ids: readonly string[]): T {
+	if (!graph.workIdentity || ids.length === 0) return graph;
+	const drop = new Set(ids);
+	const separatedIds = graph.workIdentity.separatedIds.filter((id) => !drop.has(id));
+	if (separatedIds.length === graph.workIdentity.separatedIds.length) return graph;
+	const clear = <P extends PaperNode>(paper: P): P => {
+		if (!paper.recordsSeparated || !paperRecords(paper).some((record) => drop.has(record.id))) return paper;
+		const { recordsSeparated: _flag, ...rest } = paper;
+		return rest as P;
+	};
+	return normalizeWorkGraph({
+		...graph,
+		nodes: graph.nodes.map(clear),
+		catalog: graph.catalog.map(clear),
+		workIdentity: { ...graph.workIdentity, separatedIds },
+	});
+}
+
 export function chooseExpand(
 	present: ReadonlySet<string>,
 	hidden: ReadonlySet<string>,

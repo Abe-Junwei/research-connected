@@ -1,7 +1,7 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
 import { acknowledgeIdentityStates, commitPaperReading, emptyVersionScope, excludeVersion, excludeWholeWork, normalizeProjects, noteVersion, projectsForSeedId, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, stageVersion, updateProjectPaperState, versionVisible, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
-import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../src/graph-edit";
+import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { paperDois, resolveWorkQuery, sameWork, confirmedVersionRelation, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
@@ -136,6 +136,9 @@ export function verifyWorkIdentity(): void {
 	assert.equal(split.referenceLists.get(seed.id)?.length, 16);
 	assert.equal(split.referenceLists.get(alias.id)?.length, 49);
 	assert.equal(restoreGraphSnapshot(saveGraphSnapshot(split))?.nodes.length, 2);
+	const released = releaseSeparatedRecords(split, split.workIdentity?.separatedIds ?? []);
+	assert.equal(released.nodes.length, 1, "undoing the keep-separate decision restores automatic merge");
+	assert.equal(released.workIdentity?.records.length, split.workIdentity?.records.length);
 	const third = { ...seed, id: "W3", title: "Other article", isSeed: false, origin: "citation" as const, doiUrl: "https://doi.org/10.1234/third" };
 	const input = nicholsSnapshot(); input.nodes.push(third); input.catalog.push(third);
 	input.referenceLists.push([third.id, [seed.id, alias.id]]);
