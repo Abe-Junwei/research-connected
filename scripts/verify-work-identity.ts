@@ -111,6 +111,15 @@ export function verifyWorkIdentity(): void {
 	invalidateLiteratureIndex();
 	rememberLiteratureNote(noted, "fresh.md", "to-read");
 	assert.equal(lookupLiteratureNote(vault([{ path: "fresh.md" }]), noted, "doi")?.reading, "to-read");
+	invalidateLiteratureIndex();
+	rememberLiteratureNote(noted, "gone.md", "read");
+	assert.equal(lookupLiteratureNote(vault([]), noted, "doi"), null);
+	const edited = [{ path: "edited.md", frontmatter: { doi: "10.1234/cache", openalex: "W1", "rc-status": "read" } as Record<string, unknown> }];
+	invalidateLiteratureIndex();
+	assert.equal(lookupLiteratureNote(vault(edited), noted, "doi")?.reading, "read");
+	edited[0]!.frontmatter["rc-status"] = "unread";
+	invalidateLiteratureIndex();
+	assert.equal(lookupLiteratureNote(vault(edited), noted, "doi")?.reading, "unread");
 	assert.deepEqual(normalizeWorkGraph(graph).workIdentity?.referenceLists, graph.workIdentity?.referenceLists);
 	const roundTrip = restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(graph))))!;
 	assert.equal(roundTrip.nodes.length, 1);
