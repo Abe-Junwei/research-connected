@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, assignMergedVersion, choosePending, commitPaperReading, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteVersion, operationBlocked, projectsForSeedId, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, stageVersion, updateProjectPaperState, versionVisible, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, operationBlocked, projectsForSeedId, readShared, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -138,6 +138,27 @@ export function verifyWorkIdentity(): void {
 	assert.equal(chosen.removed?.id, "rel");
 	assert.equal(operationBlocked(chosen.pending, "merge"), false);
 	assert.deepEqual(appendPending(chosen.pending, identity).map((item) => item.id), ["v7", "rel"]);
+	let readings = writeSharedReading(emptySharedReadings(), "W1", "read", 2);
+	const pane = readShared(readings, "W1");
+	const embed = readShared(readings, "W1");
+	assert.equal(pane, "read");
+	assert.equal(embed, pane);
+	readings = writeSharedReading(readings, "W1", "unread", 3);
+	assert.equal(readShared(readings, "W1"), "unread");
+	assert.equal(readShared(writeSharedReading(readings, "W1", "read", 1), "W1"), "unread");
+	const conflicted = noteReadingConflict(emptySharedReadings(), "W1", ["unread", "read"], 1);
+	assert.equal(readShared(writeSharedReading(conflicted, "W1", "read", 1), "W1"), null);
+	assert.equal(readShared(writeSharedReading(conflicted, "W1", "to-read", 2), "W1"), "to-read");
+	const confirmed = confirmVersionReading("W1", "unread", "W2", "read", true);
+	assert.equal(confirmed.reading, "read");
+	assert.deepEqual(confirmed.backup, { W1: "unread", W2: "read" });
+	assert.equal(confirmed.pending, false);
+	const heuristic = confirmVersionReading("W1", "unread", "W2", "read", confirmedVersionRelation(versionA, versionB));
+	assert.equal(heuristic.reading, null);
+	assert.equal(heuristic.backup, null);
+	assert.equal(heuristic.pending, true);
+	assert.deepEqual(editAfterVersionMerge("read", "unread"), { reading: "read", pending: true });
+	assert.deepEqual(splitSharedReading("to-read"), ["to-read", "to-read"]);
 	invalidateLiteratureIndex();
 	const noted = cited("W1", "https://doi.org/10.1234/cache");
 	const vault = (files: { path: string; frontmatter?: Record<string, unknown> }[]) => ({
@@ -242,6 +263,9 @@ export function verifyWorkIdentity(): void {
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {
+	const before = writeSharedReading(emptySharedReadings(), "W1", "unread", 3);
+	await assert.rejects(commitSharedReading(before, "W1", "read", 4, async () => { throw new Error("disk"); }));
+	assert.equal(readShared(before, "W1"), "unread");
 	const snapshot = nicholsSnapshot(); const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
 	const toRaw = (paper: PaperNode): RawWork => ({ id: `https://openalex.org/${paper.id}`, doi: paper.doiUrl, display_name: paper.title, publication_year: paper.year ?? undefined, type: paper.workType ?? undefined,
 		authorships: paper.authorList.map((name) => ({ author: { display_name: name } })), primary_location: { source: { display_name: paper.venue ?? undefined } },

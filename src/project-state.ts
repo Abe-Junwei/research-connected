@@ -357,6 +357,79 @@ export async function commitPaperReading(
 	}
 }
 
+export interface SharedReadings {
+	byWork: Record<string, { reading: ReadingStatus; at: number }>;
+	conflicts: Record<string, { values: ReadingStatus[]; at: number }>;
+}
+
+export function emptySharedReadings(): SharedReadings {
+	return { byWork: {}, conflicts: {} };
+}
+
+export function readShared(store: SharedReadings, workId: string): ReadingStatus | null {
+	return store.byWork[workId]?.reading ?? null;
+}
+
+/** Record an unresolved disagreement. Does not pick the higher status. */
+export function noteReadingConflict(store: SharedReadings, workId: string, values: readonly ReadingStatus[], at: number): SharedReadings {
+	const unique = [...new Set(values)];
+	if (unique.length < 2) return store;
+	return { ...store, conflicts: { ...store.conflicts, [workId]: { values: unique, at } } };
+}
+
+/** Latest explicit write wins, including a downgrade. An older value does not cover it, and an open conflict is not resolved by rank. */
+export function writeSharedReading(store: SharedReadings, workId: string, reading: ReadingStatus, at: number): SharedReadings {
+	const conflict = store.conflicts[workId];
+	const current = store.byWork[workId];
+	if (conflict && at <= conflict.at) return store;
+	if (current && at < current.at) return store;
+	const conflicts = { ...store.conflicts };
+	delete conflicts[workId];
+	return { byWork: { ...store.byWork, [workId]: { reading, at } }, conflicts };
+}
+
+/** Persist only after the write succeeds. The caller's previous store stays in place when this throws. */
+export async function commitSharedReading(
+	store: SharedReadings,
+	workId: string,
+	reading: ReadingStatus,
+	at: number,
+	persist: (next: SharedReadings) => Promise<void>,
+): Promise<SharedReadings> {
+	const next = writeSharedReading(store, workId, reading, at);
+	if (next === store) return store;
+	await persist(next);
+	return next;
+}
+
+const READING_RANK: Record<ReadingStatus, number> = { unread: 0, "to-read": 1, read: 2 };
+
+function higherReading(left: ReadingStatus, right: ReadingStatus): ReadingStatus {
+	return READING_RANK[left] >= READING_RANK[right] ? left : right;
+}
+
+export interface VersionReadingMerge {
+	reading: ReadingStatus | null;
+	backup: Record<string, ReadingStatus> | null;
+	pending: boolean;
+}
+
+/** First confirmed merge keeps the further status and both originals. A heuristic match does not. */
+export function confirmVersionReading(leftId: string, left: ReadingStatus, rightId: string, right: ReadingStatus, confirmed: boolean): VersionReadingMerge {
+	if (!confirmed) return { reading: null, backup: null, pending: true };
+	return { reading: higherReading(left, right), backup: { [leftId]: left, [rightId]: right }, pending: false };
+}
+
+/** A later explicit edit that disagrees with the shared status waits. It does not replace that status. */
+export function editAfterVersionMerge(shared: ReadingStatus, next: ReadingStatus): { reading: ReadingStatus; pending: boolean } {
+	if (next === shared) return { reading: shared, pending: false };
+	return { reading: shared, pending: true };
+}
+
+export function splitSharedReading(reading: ReadingStatus): [ReadingStatus, ReadingStatus] {
+	return [reading, reading];
+}
+
 export function projectStagedPapers(projects: Record<string, ResearchProject>): Array<{ seedId: string; paper: PaperNode; source: string; addedAt: string; read: boolean; reading: ReadingStatus }> {
 	return Object.values(projects).flatMap((project) => Object.values(project.paperStates ?? {})
 		.filter((state) => state.staged)
