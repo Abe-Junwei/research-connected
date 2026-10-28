@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -273,6 +273,54 @@ export function verifyWorkIdentity(): void {
 	assert.equal(grafted.nodes.length, 1);
 	assert.equal(grafted.referenceLists.get(seed.id)?.length, 52);
 	assert.equal(snapshot.nodes.length, 2, "migration must not mutate its input");
+	const representative = cited("W1", "https://doi.org/10.1/a");
+	const otherVersion = { ...cited("W2", "https://doi.org/10.1/b"), isSeed: false };
+	const single = cited("W3", "https://doi.org/10.1/c");
+	const aggregate = { ...representative, records: [representative, otherVersion] };
+	const stored = {
+		W1: { seedId: "W1", snapshot: { version: 1, seedId: "W1", nodes: [aggregate], excludedIds: ["W1", "W2"] }, paperStates: { W1: { reading: "read", source: "pane" } } },
+		W8: { seedId: "W8", snapshot: { version: 2, seedId: "W8", nodes: [single] }, paperStates: { W1: { reading: "unread", source: "embed" }, W3: { reading: "to-read" } } },
+	};
+	const storedJson = JSON.stringify(stored);
+	const preview = previewMigration(stored);
+	assert.equal(JSON.stringify(stored), storedJson);
+	assert.equal(preview.stopped, false);
+	if (!preview.stopped) {
+		assert.deepEqual(preview.keys, ["W1", "W8"]);
+		assert.equal(preview.readings.W3?.reading, "to-read");
+		assert.equal(preview.readings.W1, undefined);
+		assert.equal(preview.readings.W2, undefined);
+		assert.deepEqual(preview.readingConflicts[0]?.originals.map((item) => item.reading), ["read", "unread"]);
+		assert.equal(preview.exclusions.find((item) => item.paperId === "W1")?.pending, true);
+		assert.equal(preview.exclusions.find((item) => item.paperId === "W2")?.pending, false);
+		assert.equal(preview.exclusions.every((item) => item.whole === false), true);
+		assert.equal(operationBlocked(preview.pending, "browse"), false);
+		assert.equal(operationBlocked(preview.pending, "show"), true);
+	}
+	const onlyV2 = previewMigration({ W8: stored.W8 });
+	assert.equal(onlyV2.stopped, false);
+	if (!onlyV2.stopped) assert.deepEqual(onlyV2.keys, ["W8"]);
+	const missingPaper = previewMigration({ W1: { seedId: "W1", snapshot: { version: 1, seedId: "W1", nodes: [single], excludedIds: ["W404"] } } });
+	assert.equal(missingPaper.stopped, true);
+	if (missingPaper.stopped) assert.match(missingPaper.missing, /W404/);
+	const invalidReading = previewMigration({ W1: { seedId: "W1", paperStates: { W1: { reading: "done" } } } });
+	assert.equal(invalidReading.stopped, true);
+	const source = { W8: { seedId: "W8", snapshot: { version: 2, seedId: "W8", nodes: [single] } } };
+	const v2Preview = previewMigration(source);
+	const oldBackup = { W9: { seedId: "W9" } };
+	assert.equal(stepMigrationDrill(freshMigrationDrill(source, oldBackup), v2Preview, "save").backup, oldBackup);
+	assert.equal(stepMigrationDrill(freshMigrationDrill(source), v2Preview, "save").written, null);
+	assert.equal(stepMigrationDrill(freshMigrationDrill(source), v2Preview, "mark").stage, "saved");
+	assert.equal(stepMigrationDrill(freshMigrationDrill(source), v2Preview, "reread").stage, "marked");
+	const beforeSwitch = stepMigrationDrill(freshMigrationDrill(source), v2Preview, "switch");
+	assert.equal(beforeSwitch.stage, "reread");
+	assert.equal(beforeSwitch.switched, false);
+	const finished = stepMigrationDrill(beforeSwitch, v2Preview, null);
+	assert.equal(finished.switched, true);
+	assert.equal(finished.backup?.W8?.snapshot?.version, 2);
+	assert.equal(stepMigrationDrill(finished, previewMigration({ W1: { seedId: "W1" } }), null), finished);
+	source.W8.seedId = "changed";
+	assert.equal(finished.backup?.W8?.seedId, "W8");
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {

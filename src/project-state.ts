@@ -2,7 +2,7 @@ import { tr } from "./i18n";
 import { CitationEvidenceStore, type CitationEvidence } from "./citation-evidence";
 import { shortId } from "./paper";
 import { normalizeWorkGraph } from "./graph-edit";
-import { paperHasId, paperRecords, resolveWorkQuery, type WorkIdentity } from "./work-identity";
+import { confirmedVersionRelation, paperHasId, paperRecords, resolveWorkQuery, type WorkIdentity } from "./work-identity";
 import type { SimilarityGraph } from "./neighborhood";
 import type { GraphFilter } from "./graph-filter";
 import type { PaperNode, GraphEdge } from "./types";
@@ -294,7 +294,7 @@ export function assignMergedVersion(merged: MergedExclusion, versionId: string, 
 
 export interface PendingItem {
 	id: string;
-	kind: "identity" | "exclusion-scope";
+	kind: "identity" | "exclusion-scope" | "reading";
 	blocks: string;
 }
 
@@ -547,6 +547,140 @@ export function projectStagedPapers(projects: Record<string, ResearchProject>): 
 
 export function projectExcludedPapers(project: ResearchProject): ProjectPaperState[] {
 	return Object.values(project.paperStates ?? {}).filter((state) => state.excluded);
+}
+
+export interface MigrationProjectInput {
+	seedId: string;
+	snapshot?: { version?: number; seedId?: string; nodes?: PaperNode[]; excludedIds?: string[] } | null;
+	paperStates?: Record<string, { reading?: string; excluded?: boolean; source?: string }>;
+}
+
+export interface MigrationOriginal {
+	projectKey: string;
+	reading: ReadingStatus;
+}
+
+export interface MigrationExclusion {
+	projectKey: string;
+	paperId: string;
+	source: string;
+	whole: false;
+	pending: boolean;
+}
+
+export type MigrationPreview =
+	| {
+		stopped: false;
+		keys: string[];
+		readings: Record<string, { reading: ReadingStatus; originals: MigrationOriginal[] }>;
+		readingConflicts: Array<{ paperId: string; originals: MigrationOriginal[] }>;
+		exclusions: MigrationExclusion[];
+		pending: PendingItem[];
+	}
+	| { stopped: true; missing: string };
+
+function migrationNode(nodes: readonly PaperNode[], id: string): PaperNode | undefined {
+	return nodes.find((node) => paperHasId(node, id));
+}
+
+function unconfirmedAggregate(node: PaperNode): boolean {
+	const records = paperRecords(node);
+	const head = records[0];
+	return Boolean(head && records.length > 1 && records.some((record) => !confirmedVersionRelation(head, record)));
+}
+
+/** Read-only preview. Does not write settings or invent a reading, paper, or whole-work exclusion. */
+export function previewMigration(projects: Record<string, MigrationProjectInput>): MigrationPreview {
+	const keys = Object.keys(projects);
+	const readings = new Map<string, MigrationOriginal[]>();
+	const exclusions: MigrationExclusion[] = [];
+	const pending: PendingItem[] = [];
+	for (const key of keys) {
+		const project = projects[key];
+		if (!project?.seedId) return { stopped: true, missing: `${key} seedId` };
+		const snapshot = project.snapshot;
+		if (snapshot && (snapshot.version !== 1 && snapshot.version !== 2 || !snapshot.seedId || !Array.isArray(snapshot.nodes))) {
+			return { stopped: true, missing: `${key} snapshot` };
+		}
+		const nodes = snapshot?.nodes ?? [];
+		for (const [id, state] of Object.entries(project.paperStates ?? {})) {
+			if (!state) return { stopped: true, missing: `${key} paperStates.${id}` };
+			if (state.reading !== undefined && state.reading !== "unread" && state.reading !== "to-read" && state.reading !== "read") {
+				return { stopped: true, missing: `${key} paperStates.${id}.reading` };
+			}
+			if (state.reading === "unread" || state.reading === "to-read" || state.reading === "read") {
+				const originals = readings.get(id) ?? [];
+				originals.push({ projectKey: key, reading: state.reading });
+				readings.set(id, originals);
+			}
+			if (state.excluded) exclusions.push({ projectKey: key, paperId: id, source: state.source ?? "paper-state", whole: false, pending: false });
+		}
+		for (const id of snapshot?.excludedIds ?? []) {
+			const node = migrationNode(nodes, id);
+			if (!node) return { stopped: true, missing: `${key} excludedIds ${id}` };
+			const pendingScope = id === node.id && unconfirmedAggregate(node);
+			exclusions.push({ projectKey: key, paperId: id, source: "snapshot", whole: false, pending: pendingScope });
+			if (pendingScope && !pending.some((item) => item.id === `scope:${key}:${id}`)) pending.push({ id: `scope:${key}:${id}`, kind: "exclusion-scope", blocks: "show" });
+		}
+		for (const node of nodes) {
+			if (!unconfirmedAggregate(node) || pending.some((item) => item.id === `identity:${key}:${node.id}`)) continue;
+			pending.push({ id: `identity:${key}:${node.id}`, kind: "identity", blocks: "merge" });
+		}
+	}
+	const chosen: Record<string, { reading: ReadingStatus; originals: MigrationOriginal[] }> = {};
+	const readingConflicts: Array<{ paperId: string; originals: MigrationOriginal[] }> = [];
+	for (const [paperId, originals] of readings) {
+		if (new Set(originals.map((item) => item.reading)).size > 1) {
+			readingConflicts.push({ paperId, originals });
+			pending.push({ id: `reading:${paperId}`, kind: "reading", blocks: "commit-reading" });
+			continue;
+		}
+		chosen[paperId] = { reading: originals[0]!.reading, originals };
+	}
+	return { stopped: false, keys, readings: chosen, readingConflicts, exclusions, pending };
+}
+
+export type MigrationInterrupt = "save" | "mark" | "reread" | "switch";
+export type DrillStage = "fresh" | "backed-up" | "saved" | "marked" | "reread" | "switched";
+
+export interface MigrationDrill {
+	stage: DrillStage;
+	backup: Record<string, MigrationProjectInput> | null;
+	data: Record<string, MigrationProjectInput>;
+	written: Extract<MigrationPreview, { stopped: false }> | null;
+	switched: boolean;
+}
+
+const DRILL_RANK: Record<DrillStage, number> = { fresh: 0, "backed-up": 1, saved: 2, marked: 3, reread: 4, switched: 5 };
+
+function cloneProjects(data: Record<string, MigrationProjectInput>): Record<string, MigrationProjectInput> {
+	return JSON.parse(JSON.stringify(data)) as Record<string, MigrationProjectInput>;
+}
+
+export function freshMigrationDrill(data: Record<string, MigrationProjectInput>, backup: Record<string, MigrationProjectInput> | null = null): MigrationDrill {
+	return { stage: backup ? "backed-up" : "fresh", backup, data, written: null, switched: false };
+}
+
+/** In-memory copy. An existing backup is kept. A finished drill does not apply the preview again. */
+export function stepMigrationDrill(drill: MigrationDrill, preview: MigrationPreview, failAt: MigrationInterrupt | null): MigrationDrill {
+	if (drill.switched) return drill;
+	const protectedDrill: MigrationDrill = drill.backup
+		? { ...drill, stage: DRILL_RANK[drill.stage] >= DRILL_RANK["backed-up"] ? drill.stage : "backed-up" }
+		: { ...drill, backup: cloneProjects(drill.data), stage: "backed-up" };
+	if (preview.stopped) return protectedDrill;
+	const steps: Array<{ interrupt: MigrationInterrupt; stage: DrillStage; apply: (copy: MigrationDrill) => MigrationDrill }> = [
+		{ interrupt: "save", stage: "saved", apply: (copy) => ({ ...copy, stage: "saved", written: copy.written ?? preview }) },
+		{ interrupt: "mark", stage: "marked", apply: (copy) => ({ ...copy, stage: "marked" }) },
+		{ interrupt: "reread", stage: "reread", apply: (copy) => ({ ...copy, stage: "reread" }) },
+		{ interrupt: "switch", stage: "switched", apply: (copy) => ({ ...copy, stage: "switched", switched: true }) },
+	];
+	let next = protectedDrill;
+	for (const step of steps) {
+		if (DRILL_RANK[next.stage] >= DRILL_RANK[step.stage]) continue;
+		if (failAt === step.interrupt) return next;
+		next = step.apply(next);
+	}
+	return next;
 }
 
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
