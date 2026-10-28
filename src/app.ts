@@ -335,7 +335,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const shownNodes = (): PaperNode[] => {
 		if (!graph) return [];
 		const seedId = graph.nodes.find(node => node.isSeed)?.id;
-		return projectVersionGraph(graph, seedId ? currentProject(seedId) : undefined, { ...mapFilter, scrubYear }).nodes.filter(node => nodeMatchesFilter(node, { ...mapFilter, scrubYear }));
+		const project = seedId ? currentProject(seedId) : undefined;
+		const filter = { ...mapFilter, scrubYear };
+		return graph.nodes.flatMap(node => {
+			const shown = projectVersionNode(node, project, filter);
+			return shown && nodeMatchesFilter(shown, filter) ? [shown] : [];
+		});
 	};
 	const workflowState = (paper: PaperNode, seedId: string): ProjectPaperState & { readingConflict?: boolean } => {
 		const state = projectVersionState(currentProject(seedId), paper);
