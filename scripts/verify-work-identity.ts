@@ -6,6 +6,7 @@ import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-id
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
 import { normalizeDoi, shortId } from "../src/paper";
+import { CrossrefClient } from "../src/citation-sources";
 import { OpenAlexClient, type RawWork } from "../src/openalex";
 import { expandAround, expandSecondLayer, loadNeighborhood, restoreGraftedMembers, type SimilarityGraph } from "../src/neighborhood";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
@@ -244,4 +245,14 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	const open = await expandSecondLayer(layerClient, layer, 10, false);
 	assert.equal(open.graph.nodes.some((node) => node.id === "W10"), true);
 	assert.equal(open.graph.nodes.some((node) => node.id === "W9"), false);
+	let attempts = 0;
+	const crossref = new CrossrefClient(async () => {
+		attempts += 1;
+		if (attempts === 1) throw new Error("temporary");
+		return { message: { DOI: "10.1000/s04-retry" } };
+	}, "");
+	await assert.rejects(() => crossref.work("10.1000/s04-retry"));
+	assert.equal((await crossref.work("10.1000/s04-retry"))?.DOI, "10.1000/s04-retry");
+	assert.equal((await crossref.work("10.1000/s04-retry"))?.DOI, "10.1000/s04-retry");
+	assert.equal(attempts, 2);
 }

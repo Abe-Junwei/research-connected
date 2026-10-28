@@ -226,7 +226,15 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(internals.scrubYear, 2015, "enrichment must not reset the scrub year");
 	assert.deepEqual({ k: internals.k, tx: internals.tx, ty: internals.ty }, view, "enrichment must not refit the view");
 	assert.equal(map.hasAdjusted(), true, "enrichment must not clear the user's pan/zoom flag");
-	map.setViewState({ zoom: 8, centerX: 0, centerY: 0, selectedId: null });
+	for (const zoom of [0.02, 0.25, 1, 4, 8]) {
+		map.setViewState({ zoom, centerX: 0, centerY: 0, selectedId: "W2" });
+		const restored = map.getViewState();
+		assert.equal(restored.zoom, zoom);
+		assert.equal(restored.selectedId, "W2");
+	}
+	map.setViewState({ zoom: 0, centerX: 0, centerY: 0, selectedId: null });
+	assert.equal(map.getViewState().zoom, 0.02);
+	map.setViewState({ zoom: 100, centerX: 0, centerY: 0, selectedId: null });
 	assert.equal(map.getViewState().zoom, 8);
 	const hitMap = map as unknown as {
 		nodes: Array<{ id: string; x: number; y: number; radius: number; shown: boolean }>;

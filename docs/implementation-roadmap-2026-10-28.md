@@ -20,6 +20,7 @@
 | --- | --- | --- |
 | S02 | 反例已通过，未改生产解释 | `scripts/verify-work-identity.ts`：`10.1234/w567` 不指向 W567；混合文本不命中；平衡括号 DOI 去掉尾随句点仍保留括号；`Lovelace2020` / `Lovelace20202` / `Lovelace20200202` 并存 |
 | S10 | 样本函数，未接入 `loadSettings` 或 `updateProjectPaperState` | `retargetProjectSeed` 只改起点字段；`projectsForSeedId` 在同一种子对应多个项目时全部返回，`savedProjectForSeed` 仍拒绝猜测 |
+| S04 | 三条验收已有离线证据，未改缓存实现 | 失败后的 Crossref 请求会再打一次，成功结果在 5 分钟内复用；`excludeRetracted` 改变 `embedDataCacheKey`；缩放 0.02/0.25/1/4/8 经 `setViewState` 原样读回，0 与 100 夹到两端 |
 | S11 | 样本函数，未接入叙事输出或设置写回 | `noteVersion` / `excludeVersion` / `excludeWholeWork` / `restoreVersion` / `stageVersion`：单版排除不波及同辈；整项排除覆盖新版本；恢复一版并暂存不恢复其余；再次排除清掉恢复标记；普通暂存不取消排除；起点 `excludeVersion(..., true)` 无操作 |
 
 ## 2. 依赖主线与阶段门槛
