@@ -15,7 +15,7 @@ globalThis.window = { dispatchEvent() {} };
 try {
 	const plugin = new PluginClass();
 	const seed = { id: "W1", title: "Seed", isSeed: true, origin: "seed", doiUrl: null, year: 2000, citedByCount: 1, authors: "Author", authorList: ["Author"], abstract: "", openAlexUrl: "https://openalex.org/W1", language: "en", workType: "article", venue: null, retracted: false, concepts: [] };
-	const saved = { researchProjects: { W1: { version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [], snapshot: { version: 1, seedId: "W1", savedAt: 1, nodes: [seed], catalog: [seed], edges: [], seedScore: [], referenceLists: [], citationEvidence: [], warnings: [], strategies: { references: true, citations: true, related: true }, skippedNonResearch: 0 } } } };
+	const saved = { researchProjects: { W1: { version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [], snapshot: { version: 1, seedId: "W1", savedAt: 1, nodes: [seed], catalog: [seed], excludedIds: ["W404"], edges: [], seedScore: [], referenceLists: [], citationEvidence: [], warnings: [], strategies: { references: true, citations: true, related: true }, skippedNonResearch: 0 } } } };
 	const files = new Map(); const writes = [];
 	plugin.manifest = { dir: ".obsidian/plugins/research-connected" };
 	plugin.app = { vault: { adapter: { exists: async (path) => files.has(path), read: async path => files.get(path), write: async (path, value) => { files.set(path, value); } } } };
@@ -25,6 +25,9 @@ try {
 	await plugin.loadSettings();
 	assert.deepEqual(JSON.parse([...files.values()][0]), saved);
 	assert.equal(writes[0].researchProjects.W1.snapshot.version, 2);
+	assert.equal(writes[0].researchProjects.W1.exclusionScopes[0].scope.versions.W404.excluded, true, "an excluded ID without paper metadata must survive migration");
+	assert.equal(writes[0].researchProjects.W1.exclusionScopes[0].scope.wholeExcluded, false);
+	assert.equal(writes[0].researchProjects.W1.paperStates?.W404, undefined, "migration must not invent paper metadata or reading progress");
 	await plugin.loadSettings();
 	assert.deepEqual(JSON.parse(files.get(`${plugin.manifest.dir}/data-before-work-identity-v2.json`)), saved, "the original backup must not be overwritten by a later reading-workflow backup");
 	assert.equal(writes.length, 1, "reopening migrated settings must not migrate or save again");

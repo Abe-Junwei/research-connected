@@ -862,9 +862,9 @@ export function previewMigration(projects: Record<string, MigrationProjectInput>
 			if (state.excluded) exclusions.push({ projectKey: key, paperId: id, source: state.source ?? "paper-state", whole: false, pending: false });
 		}
 		for (const id of snapshot?.excludedIds ?? []) {
+			if (typeof id !== "string" || !/^W\d+$/i.test(id)) return { stopped: true, missing: `${key} excludedIds ${id}` };
 			const node = migrationNode([...nodes, ...(snapshot?.catalog ?? [])], id);
-			if (!node) return { stopped: true, missing: `${key} excludedIds ${id}` };
-			const pendingScope = id === node.id && unconfirmedAggregate(node);
+			const pendingScope = Boolean(node && id === node.id && unconfirmedAggregate(node));
 			exclusions.push({ projectKey: key, paperId: id, source: "snapshot", whole: false, pending: pendingScope });
 			if (pendingScope && !pending.some((item) => item.id === `scope:${key}:${id}`)) pending.push({ id: `scope:${key}:${id}`, kind: "exclusion-scope", blocks: "show" });
 		}
@@ -1370,6 +1370,10 @@ export function migrateProjectRecords(
 		if (snapshot) for (const id of snapshot.excludedIds ?? []) {
 			const paper = snapshot.nodes.find((node) => node.id === id) ?? snapshot.catalog.find((node) => node.id === id);
 			if (paper) updateProjectPaperState(projects, project.seedId, paper, { excluded: true });
+			else if (!project.exclusionScopes?.some(entry => entry.ids.includes(id))) {
+				// Old snapshots can retain exclusion IDs after evicting their paper metadata.
+				(project.exclusionScopes ??= []).push({ ids: [id], scope: excludeVersion(emptyVersionScope(), id) });
+			}
 		}
 		const existing = new Set((project.deepDives ?? []).flatMap((batch) => batch.additions.map((item) => item.paperId)));
 		const legacyIds = (legacyGrafted[project.seedId] ?? []).filter((id) => !existing.has(id));

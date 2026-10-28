@@ -334,8 +334,9 @@ export function verifyWorkIdentity(): void {
 	assert.equal(onlyV2.stopped, false);
 	if (!onlyV2.stopped) assert.deepEqual(onlyV2.keys, ["W8"]);
 	const missingPaper = previewMigration({ W1: { seedId: "W1", snapshot: { version: 1, seedId: "W1", nodes: [single], excludedIds: ["W404"] } } });
-	assert.equal(missingPaper.stopped, true);
-	if (missingPaper.stopped) assert.match(missingPaper.missing, /W404/);
+	assert.equal(missingPaper.stopped, false);
+	if (!missingPaper.stopped) assert.deepEqual(missingPaper.exclusions, [{ projectKey: "W1", paperId: "W404", source: "snapshot", whole: false, pending: false }]);
+	assert.equal(previewMigration({ W1: { seedId: "W1", snapshot: { version: 1, seedId: "W1", nodes: [single], excludedIds: ["invalid"] } } }).stopped, true);
 	const invalidReading = previewMigration({ W1: { seedId: "W1", paperStates: { W1: { reading: "done" } } } });
 	assert.equal(invalidReading.stopped, true);
 	const source = { W8: { seedId: "W8", snapshot: { version: 2, seedId: "W8", nodes: [single] } } };
