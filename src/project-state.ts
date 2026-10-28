@@ -828,6 +828,167 @@ export function closePanel<T>(shared: SharedProjectGraph<T>, panels: readonly Pa
 	return { shared, panels: panels.filter((panel) => panel.id !== id) };
 }
 
+export interface PaperView {
+	entry: "graph" | "outside";
+	detailId: string;
+	members: readonly string[];
+	staged: false;
+	addedEdges: 0;
+}
+
+/** Either entry opens the detail. Membership, staging, and edges stay as they were. */
+export function viewPaper(members: readonly string[], entry: "graph" | "outside", paperId: string): PaperView {
+	return { entry, detailId: paperId, members: [...members], staged: false, addedEdges: 0 };
+}
+
+export type NoteOpen =
+	| { versionId: string; path: string; created: false; bodyMerged: false }
+	| { versionId: string; path: null; created: true; bodyMerged: false }
+	| { blocked: "version" | "file" };
+
+/** A version is required first. Several files open only the chosen path, and creating a note does not merge bodies. */
+export function openVersionNote(versionId: string | null, paths: readonly string[], chosenPath: string | null, create: boolean): NoteOpen {
+	if (!versionId) return { blocked: "version" };
+	if (create) return { versionId, path: null, created: true, bodyMerged: false };
+	const only = paths.length === 1 ? paths[0] : undefined;
+	if (only && (chosenPath === null || chosenPath === only)) return { versionId, path: only, created: false, bodyMerged: false };
+	if (chosenPath && paths.includes(chosenPath)) return { versionId, path: chosenPath, created: false, bodyMerged: false };
+	return { blocked: "file" };
+}
+
+export interface KeptMember {
+	id: string;
+	sources: Array<"sample" | "manual" | "dive">;
+	edge: boolean;
+	reading: ReadingStatus;
+	staged: boolean;
+	positive: false;
+}
+
+export function keepManual(members: readonly KeptMember[], id: string, edge: boolean): KeptMember[] {
+	const existing = members.find((member) => member.id === id);
+	if (!existing) return [...members, { id, sources: ["manual"], edge, reading: "unread", staged: false, positive: false }];
+	if (existing.sources.includes("manual")) return [...members];
+	return members.map((member) => member.id === id ? { ...member, sources: [...member.sources, "manual"] } : member);
+}
+
+export function dropManual(members: readonly KeptMember[], id: string): KeptMember[] {
+	return members.flatMap((member) => {
+		if (member.id !== id) return [member];
+		const sources = member.sources.filter((source) => source !== "manual");
+		return sources.length ? [{ ...member, sources }] : [];
+	});
+}
+
+export interface MemberSet {
+	manual: readonly string[];
+	batches: ReadonlyArray<{ id: string; paperIds: readonly string[] }>;
+	excluded: readonly string[];
+	reading: ReadingStatus;
+	staged: boolean;
+}
+
+export function presentMembers(set: MemberSet): string[] {
+	const ids = new Set<string>(set.manual);
+	for (const batch of set.batches) for (const id of batch.paperIds) ids.add(id);
+	for (const id of set.excluded) ids.delete(id);
+	return [...ids].sort();
+}
+
+export function dropDiveBatch(set: MemberSet, batchId: string): MemberSet {
+	return { ...set, batches: set.batches.filter((batch) => batch.id !== batchId) };
+}
+
+export interface MemberCompose {
+	ids: string[];
+	sampleKept: number;
+	keptBeyondCap: number;
+	reasons: string[];
+}
+
+export function composeMembers(input: {
+	sample: readonly string[];
+	cap: number;
+	manual: readonly string[];
+	batches: ReadonlyArray<{ id: string; paperIds: readonly string[] }>;
+	cancelledManual: readonly string[];
+	retractedBatchIds: readonly string[];
+	excluded: readonly string[];
+	retracted: readonly string[];
+	seedId: string;
+	seedRebuildBlocked: boolean;
+}): MemberCompose {
+	const cancelled = new Set(input.cancelledManual);
+	const retractedBatches = new Set(input.retractedBatchIds);
+	const excluded = new Set(input.excluded);
+	const retracted = new Set(input.retracted);
+	const reserved = new Set<string>();
+	for (const id of input.manual) if (!cancelled.has(id) && !excluded.has(id) && !retracted.has(id)) reserved.add(id);
+	for (const batch of input.batches) {
+		if (retractedBatches.has(batch.id)) continue;
+		for (const id of batch.paperIds) if (!excluded.has(id) && !retracted.has(id)) reserved.add(id);
+	}
+	reserved.add(input.seedId);
+	const sample = input.seedRebuildBlocked
+		? []
+		: input.sample.filter((id) => !reserved.has(id) && !excluded.has(id) && !retracted.has(id) && !cancelled.has(id)).slice(0, Math.max(0, input.cap));
+	const ids = [...new Set([...reserved, ...sample])].sort();
+	const keptBeyondCap = Math.max(0, ids.length - input.cap);
+	return { ids, sampleKept: sample.length, keptBeyondCap, reasons: keptBeyondCap > 0 ? [`${keptBeyondCap} kept past the sample cap`] : [] };
+}
+
+export interface SeedProject<T> {
+	projectKey: string;
+	seedId: string;
+	graph: T | null;
+	generation: number;
+	manual: readonly string[];
+	reading: ReadingStatus;
+	zoom: number;
+	selectedId: string | null;
+}
+
+export function rejectSeedExclude(seedId: string, targetId: string): boolean {
+	return seedId === targetId;
+}
+
+export function openSeedSwap<T>(current: SeedProject<T>): { current: SeedProject<T>; generation: number } {
+	const generation = current.generation + 1;
+	return { current: { ...current, generation }, generation };
+}
+
+/** Only the newest successful swap replaces the graph. The project key, reading, and kept sources stay. */
+export function commitSeedSwap<T>(current: SeedProject<T>, generation: number, seedId: string, graph: T, ok: boolean): SeedProject<T> {
+	if (generation !== current.generation || !ok) return current;
+	return { ...current, seedId, graph, zoom: 1, selectedId: null };
+}
+
+export interface ProjectUndo<T> {
+	seedId: string;
+	graph: T;
+	zoom: number;
+	reading: ReadingStatus;
+	staged: boolean;
+	excludedIds: readonly string[];
+	batches: ReadonlyArray<{ id: string; paperIds: readonly string[] }>;
+	checkpoint: { seedId: string; graph: T; zoom: number } | null;
+	generation: number;
+}
+
+export function saveUndoPoint<T>(current: ProjectUndo<T>): ProjectUndo<T> {
+	return { ...current, checkpoint: { seedId: current.seedId, graph: current.graph, zoom: current.zoom } };
+}
+
+/** Restore the previous seed and graph. Reading, staging, exclusion, and batches stay at their latest values. */
+export function undoProject<T>(current: ProjectUndo<T>, persistOk: boolean): { current: ProjectUndo<T>; undone: boolean } {
+	const point = current.checkpoint;
+	if (!point || !persistOk || current.excludedIds.includes(point.seedId)) return { current, undone: false };
+	return {
+		undone: true,
+		current: { ...current, seedId: point.seedId, graph: point.graph, zoom: point.zoom, checkpoint: null, generation: current.generation + 1 },
+	};
+}
+
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
 export function migrateProjectRecords(
 	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],

@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, admitRetraction, assignMergedVersion, choosePending, commitPaperReading, commitProjectGraph, commitSharedReading, confirmVersionReading, chooseDisplayVersion, closePanel, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, failProjectGraph, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openProjectRequest, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, publishSharedGraph, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, switchProjectGraph, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, admitRetraction, assignMergedVersion, choosePending, commitPaperReading, commitProjectGraph, commitSeedSwap, commitSharedReading, confirmVersionReading, chooseDisplayVersion, closePanel, composeMembers, dropDiveBatch, dropManual, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, failProjectGraph, freshMigrationDrill, keepManual, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openProjectRequest, openSeedSwap, openSyncRetry, openVersionNote, operationBlocked, previewMigration, presentMembers, projectsForSeedId, publishSharedGraph, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, rejectSeedExclude, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, saveUndoPoint, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, switchProjectGraph, syncParticipatingNotes, updateProjectPaperState, undoProject, versionVisible, viewPaper, writeSharedReading, type MemberSet, type PendingItem, type ProjectUndo, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot, type SeedProject } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, omitSeedExceptionLinks, projectResearchRelations, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -413,6 +413,80 @@ export function verifyWorkIdentity(): void {
 	const closed = closePanel(published.shared, published.panels, "a");
 	assert.equal(closed.shared, published.shared);
 	assert.deepEqual(closed.panels.map((panel) => panel.id), ["b", "c"]);
+	const members = ["W1"];
+	assert.equal(viewPaper(members, "graph", "W9").detailId, "W9");
+	assert.deepEqual(viewPaper(members, "outside", "W9").members, ["W1"]);
+	assert.equal(viewPaper(members, "outside", "W9").staged, false);
+	assert.equal(viewPaper(members, "graph", "W9").addedEdges, 0);
+	const missingVersion = openVersionNote(null, ["a.md"], null, false);
+	const severalFiles = openVersionNote("W1", ["a.md", "b.md"], null, false);
+	const chosenFile = openVersionNote("W1", ["a.md", "b.md"], "b.md", false);
+	const oneFile = openVersionNote("W1", ["a.md"], null, false);
+	const createdNote = openVersionNote("W1", [], null, true);
+	assert.equal("blocked" in missingVersion ? missingVersion.blocked : "", "version");
+	assert.equal("blocked" in severalFiles ? severalFiles.blocked : "", "file");
+	assert.equal("path" in chosenFile ? chosenFile.path : "", "b.md");
+	assert.equal("path" in oneFile ? oneFile.path : "", "a.md");
+	assert.equal("created" in createdNote ? createdNote.created : false, true);
+	assert.equal("bodyMerged" in createdNote ? createdNote.bodyMerged : true, false);
+	const manualKept = keepManual([{ id: "W1", sources: ["sample"], edge: true, reading: "read", staged: true, positive: false }], "W2", false);
+	assert.equal(manualKept.find((member) => member.id === "W2")?.edge, false);
+	assert.equal(manualKept.find((member) => member.id === "W2")?.positive, false);
+	assert.equal(manualKept.find((member) => member.id === "W1")?.reading, "read");
+	assert.deepEqual(dropManual(manualKept, "W2").map((member) => member.id), ["W1"]);
+	const stillSample = dropManual(keepManual(manualKept, "W1", true), "W1");
+	assert.deepEqual(stillSample.find((member) => member.id === "W1")?.sources, ["sample"]);
+	const dives: MemberSet = { manual: ["M"], batches: [{ id: "d1", paperIds: ["P"] }, { id: "d2", paperIds: ["P"] }], excluded: [], reading: "to-read", staged: true };
+	const oneBatch = dropDiveBatch(dives, "d1");
+	assert.deepEqual(presentMembers(oneBatch), ["M", "P"]);
+	assert.equal(oneBatch.reading, "to-read");
+	assert.equal(oneBatch.staged, true);
+	assert.deepEqual(oneBatch.excluded, []);
+	assert.deepEqual(presentMembers(oneBatch), presentMembers(oneBatch));
+	const composed = composeMembers({
+		sample: ["S1", "S2", "S3"], cap: 1, manual: ["M", "Gone"], batches: [{ id: "d1", paperIds: ["D"] }, { id: "old", paperIds: ["Old"] }],
+		cancelledManual: ["Gone"], retractedBatchIds: ["old"], excluded: ["S2"], retracted: ["S3"], seedId: "Seed", seedRebuildBlocked: false,
+	});
+	assert.deepEqual(composed.ids, ["D", "M", "S1", "Seed"]);
+	assert.equal(composed.sampleKept, 1);
+	assert.equal(composed.keptBeyondCap > 0, true);
+	assert.equal(composed.reasons.length, 1);
+	const blockedSeed = composeMembers({ sample: ["S1"], cap: 1, manual: [], batches: [], cancelledManual: [], retractedBatchIds: [], excluded: [], retracted: ["Seed"], seedId: "Seed", seedRebuildBlocked: true });
+	assert.deepEqual(blockedSeed.ids, ["Seed"]);
+	let seedProject: SeedProject<string> = { projectKey: "W1", seedId: "W1", graph: "old", generation: 0, manual: ["M"], reading: "read", zoom: 3, selectedId: "W2" };
+	const swapA = openSeedSwap(seedProject);
+	const swapB = openSeedSwap(swapA.current);
+	seedProject = swapB.current;
+	assert.equal(commitSeedSwap(seedProject, swapA.generation, "W9", "late", true).graph, "old");
+	assert.equal(commitSeedSwap(seedProject, swapB.generation, "W9", "new", false).graph, "old");
+	const swapped = commitSeedSwap(seedProject, swapB.generation, "W9", "new", true);
+	assert.equal(swapped.projectKey, "W1");
+	assert.equal(swapped.seedId, "W9");
+	assert.equal(swapped.graph, "new");
+	assert.equal(swapped.reading, "read");
+	assert.deepEqual(swapped.manual, ["M"]);
+	assert.equal(swapped.zoom, 1);
+	assert.equal(swapped.selectedId, null);
+	assert.equal(rejectSeedExclude(swapped.seedId, swapped.seedId), true);
+	let undo: ProjectUndo<string> = { seedId: "W1", graph: "map", zoom: 2, reading: "unread", staged: false, excludedIds: [], batches: [{ id: "d1", paperIds: ["P"] }], checkpoint: null, generation: 1 };
+	undo = saveUndoPoint(undo);
+	undo = { ...undo, reading: "read", staged: true, batches: [], excludedIds: ["P"] };
+	const refused = undoProject(undo, false);
+	assert.equal(refused.undone, false);
+	assert.equal(refused.current, undo);
+	const undone = undoProject(undo, true);
+	assert.equal(undone.undone, true);
+	assert.equal(undone.current.graph, "map");
+	assert.equal(undone.current.seedId, "W1");
+	assert.equal(undone.current.reading, "read");
+	assert.equal(undone.current.staged, true);
+	assert.deepEqual(undone.current.batches, []);
+	assert.deepEqual(undone.current.excludedIds, ["P"]);
+	assert.equal(undoProject(undone.current, true).undone, false);
+	const paused = undoProject({ ...undo, excludedIds: ["W1"] }, true);
+	assert.equal(paused.undone, false);
+	assert.equal(paused.current.seedId, "W1");
+	assert.equal(commitProjectGraph({ projectKey: "W1", generation: undone.current.generation, graph: undone.current.graph, incomplete: false, userState: "read" }, undo.generation, "W1", "stale").graph, "map");
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {
