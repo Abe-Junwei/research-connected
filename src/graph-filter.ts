@@ -1,5 +1,5 @@
 import { tr } from "./i18n";
-import { explainRelation, relationKind, type RelationKind } from "./relation";
+import { comparableStructuralSimilarity, explainRelation, observedRelationCount, relationKind, type RelationKind } from "./relation";
 import { authorYear } from "./labels";
 import type { GraphEdge, PaperNode } from "./types";
 
@@ -31,8 +31,13 @@ export function emptyFilter(): GraphFilter {
 }
 
 export function nodeVisible(node: PaperNode, filter: GraphFilter): boolean {
-	if (!node.isSeed && filter.scrubYear !== null && (node.year === null || node.year > filter.scrubYear)) return false;
 	if (node.isSeed) return true;
+	return nodeMatchesFilter(node, filter);
+}
+
+/** Seed display exceptions do not participate in filtered relations or default exports. */
+export function nodeMatchesFilter(node: PaperNode, filter: GraphFilter): boolean {
+	if (filter.scrubYear !== null && (node.year === null || node.year > filter.scrubYear)) return false;
 	let yearFrom = filter.yearFrom;
 	let yearTo = filter.yearTo;
 	if (yearFrom !== null && yearTo !== null && yearFrom > yearTo) {
@@ -61,7 +66,7 @@ export function edgeVisible(
 ): boolean {
 	const source = nodes.get(edge.source);
 	const target = nodes.get(edge.target);
-	if (!source || !target || !nodeVisible(source, filter) || !nodeVisible(target, filter)) return false;
+	if (!source || !target || !nodeMatchesFilter(source, filter) || !nodeMatchesFilter(target, filter)) return false;
 	const kind = relationKind(edge);
 	if (!filter.kinds[kind]) return false;
 	if (kind === "cocitation" && edge.coCitedBy < filter.minCoCitedBy) return false;
@@ -98,8 +103,8 @@ export function evidenceText(
 	return [
 		explainRelation(edge, source, target),
 		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
-		tr(`共享参考文献 ${edge.sharedRefs} 篇`, `Shared references: ${edge.sharedRefs} papers`),
-		tr(`共被引 ${edge.coCitedBy} 次`, `Co-cited ${edge.coCitedBy} times`),
+		tr(`共享参考文献 ${observedRelationCount(edge, "references")}`, `Shared references: ${observedRelationCount(edge, "references")}`),
+		tr(`共被引 ${observedRelationCount(edge, "coCitation")}`, `Co-citations: ${observedRelationCount(edge, "coCitation")}`),
 		tr(`来源：${sources}`, `Source: ${sources}`),
 		tr("引用列表可能不完整", "Reference lists may be incomplete"),
 	].join("\n");
@@ -137,17 +142,17 @@ export function relationFacts(
 	const facts: RelationFact[] = [
 		{
 			label: tr("相似度", "Similarity"),
-			value: edge.structuralSimilarity === null
+			value: comparableStructuralSimilarity(edge) === null
 				? tr("不可用（缺少可比较数据）", "Unavailable (no comparable data)")
-				: (edge.structuralSimilarity ?? edge.weight).toFixed(2),
+				: comparableStructuralSimilarity(edge)!.toFixed(2),
 		},
-		{ label: tr("共享参考文献", "Shared references"), value: tr(`${edge.sharedRefs} 篇`, `${edge.sharedRefs} papers`) },
-		{ label: tr("共被引", "Co-citations"), value: tr(`${edge.coCitedBy} 次`, `${edge.coCitedBy} times`) },
+		{ label: tr("共享参考文献", "Shared references"), value: observedRelationCount(edge, "references") },
+		{ label: tr("共被引", "Co-citations"), value: observedRelationCount(edge, "coCitation") },
 		{ label: tr("来源", "Source"), value: sources },
 	];
 	const caveats = [
+		tr("共享参考基于当前取得的列表，共被引基于本次采样；零不代表全库为零。", "Shared references use obtained lists and co-citations use this sample; zero does not mean zero across the database."),
 		...(edge.direct === "none" ? [SIMILARITY_NOT_CITATION] : []),
-		tr("引用列表可能不完整", "Reference lists may be incomplete"),
 	];
 	return { lead, facts, caveats };
 }

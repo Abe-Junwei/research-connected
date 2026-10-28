@@ -1,13 +1,15 @@
-import { MarkdownRenderChild, Plugin, type MarkdownPostProcessorContext } from "obsidian";
+import { MarkdownRenderChild, Plugin, TFile, type MarkdownPostProcessorContext } from "obsidian";
 import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import type { ConnectedPapersSettings } from "./settings-model";
+import type { createReadingWorkflow } from "./reading-workflow";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 
 interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
+	readingWorkflow: ReturnType<typeof createReadingWorkflow>;
 	/** Open the full graph pane focused on a seed; absent in hosts that cannot. */
 	openGraph?(target: { kind: "doi" | "openalex"; value: string }): void;
 }
@@ -33,7 +35,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 		containerEl: HTMLElement,
 		private readonly source: string,
 		private readonly plugin: EmbedHost,
-		_ctx: MarkdownPostProcessorContext,
+		private readonly ctx: MarkdownPostProcessorContext,
 	) {
 		super(containerEl);
 	}
@@ -41,12 +43,27 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 	onload(): void {
 		const { plugin } = this;
 		this.destroyView = mountEmbed(this.containerEl, {
+			...plugin.readingWorkflow,
 			source: this.source,
 			getSettings: () => plugin.getSettings(),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
 			stagePaper: async () => { await plugin.saveSettings(false); },
+			persistAssociation: async key => {
+				const file = plugin.app.vault.getAbstractFileByPath(this.ctx.sourcePath);
+				const section = this.ctx.getSectionInfo(this.containerEl);
+				if (!(file instanceof TFile) || !section) throw new Error("Code block moved; reopen it before linking a project");
+				await plugin.app.vault.process(file, content => {
+					const lines = content.split("\n");
+					const body = lines.slice(section.lineStart + 1, section.lineEnd).join("\n");
+					if (body.trim() !== this.source.trim()) throw new Error("Code block changed; reopen it before linking a project");
+					const next = body.split("\n").filter(line => !/^\s*project\s*:/i.test(line));
+					if (key) next.push(`project: ${key}`);
+					lines.splice(section.lineStart + 1, section.lineEnd - section.lineStart - 1, ...next);
+					return lines.join("\n");
+				});
+			},
 			createNote: (filename, markdown, folder) => createVaultNote(plugin.app, filename, markdown, folder),
 			lookupLiteratureNote: (paper) => lookupLiteratureNote(plugin.app, paper, plugin.getSettings().literatureDoiProperty),
 			openLiteratureNote: (path) => { void openLiteratureNote(plugin.app, path); },

@@ -5,6 +5,7 @@ export interface PaperRecord {
 	title: string;
 	year: number | null;
 	citedByCount: number;
+	citationCountStatus?: "known" | "missing";
 	authors: string;
 	/** Structured author display names in authorship order; empty when unknown. */
 	authorList: string[];
@@ -46,6 +47,8 @@ export interface GraphEdge {
 	weight: number;
 	/** Reference/citation-network similarity, normalized 0–1 and excluding direct citations. */
 	structuralSimilarity?: number | null;
+	/** Whether the obtained lists and sampled contexts permit each comparison. */
+	structuralCoverage?: { references: boolean; coCitation: boolean };
 	/** Bibliographic-coupling cosine of the two reference sets. */
 	coupling: number;
 	/** Size of the reference-set intersection. */
@@ -62,5 +65,6 @@ export interface SearchHit {
 	title: string;
 	year: number | null;
 	citedByCount: number;
+	citationCountStatus?: "known" | "missing";
 	authors: string;
 }

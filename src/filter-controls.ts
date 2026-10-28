@@ -9,8 +9,9 @@ import type { GraphEdge } from "./types";
 const KIND_ORDER = ["direct", "cocitation", "coupling"] as const;
 
 export function graphKeyStats(
-	nodes: readonly { id: string; year: number | null; isSeed?: boolean }[],
+	nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
 	edges: readonly GraphEdge[],
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
 ): { kinds: Record<(typeof KIND_ORDER)[number], number>; classics: number; seeds: number; groups: number } {
 	const kinds = { direct: 0, cocitation: 0, coupling: 0 };
 	for (const edge of edges) {
@@ -19,7 +20,7 @@ export function graphKeyStats(
 	}
 	return {
 		kinds,
-		classics: classicNodeIds(nodes, edges).size,
+		classics: classicNodeIds(nodes, edges, undefined, referenceLists).size,
 		seeds: nodes.reduce((n, node) => n + (node.isSeed ? 1 : 0), 0),
 		groups: new Set(detectCommunities(nodes.map((node) => node.id), edges).values()).size,
 	};
@@ -75,7 +76,7 @@ export function mountGraphKey(
 	write: (next: GraphFilter) => void,
 ): {
 	paintColor: (mode: LayoutMode) => void;
-	setStats: (nodes: readonly { id: string; year: number | null; isSeed?: boolean }[], edges: readonly GraphEdge[]) => void;
+	setStats: (nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[], edges: readonly GraphEdge[], referenceLists?: ReadonlyMap<string, readonly string[]>) => void;
 	setKinds: (selected: GraphFilter["kinds"]) => void;
 } {
 	const key = createDiv();
@@ -105,7 +106,12 @@ export function mountGraphKey(
 	marks.className = "cpo-graph-key-marks";
 	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
 	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
-	marks.append(seed.row, classic.row);
+	classic.row.title = tr("经典候选：成熟文献的本地引用支持或累计引用影响；不是经典认证。", "Classic candidates: mature works with local citation support or cumulative citation impact; not a certification.");
+	const ordinary = markRow("cpo-graph-key-star", tr("普通文献", "Paper"));
+	ordinary.n.remove();
+	const focused = markRow("cpo-graph-key-focus", tr("悬停 / 选中", "Hovered / selected"));
+	focused.n.remove();
+	marks.append(ordinary.row, seed.row, classic.row, focused.row);
 	const color = createSpan();
 	color.className = "cpo-graph-key-color";
 	const dots = createSpan();
@@ -113,7 +119,7 @@ export function mountGraphKey(
 	dots.setAttribute("aria-hidden", "true");
 	for (let i = 0; i < 3; i++) {
 		const dot = createEl("i");
-		dot.style.background = communityColor(i);
+		dot.style.background = i === 0 ? `var(--cpo-community-primary, ${communityColor(i)})` : communityColor(i);
 		dots.append(dot);
 	}
 	const colorLabel = createSpan();
@@ -125,7 +131,19 @@ export function mountGraphKey(
 	const statsLine = createDiv();
 	statsLine.className = "cpo-key-stats";
 	statsLine.textContent = tr("0 篇", "0 papers");
-	marksSection.append(marks, color, statsLine);
+	const explanation = createDiv();
+	explanation.className = "cpo-key-explanation";
+	for (const text of [
+		tr("暗色连线：常态为银蓝轮廓；聚焦时按上方关系颜色高亮。箭头指向被引用文献。", "Dark edges: silver-blue outlines; focused edges use the relationship colors above. Arrows point to cited papers."),
+		tr("尺寸：代表版本累计被引按对数缩放；种子有最小尺寸，缺失取最小值。筛选不重标度。", "Size: log-scaled cumulative citations of the display version; seed has a minimum size, missing counts use the smallest size. Filtering keeps the scale."),
+		tr("经典候选：满八年，且有两篇图内文献引用，或累计被引≥1,000，或在至少十篇成熟文献中位于引用前10%且被引≥100。经验规则，无数量截断；并非经典认证。", "Classic candidates: at least eight years old, with two local citers, or 1,000 cumulative citations, or the top citation decile among at least ten mature works with at least 100 citations. Heuristic, uncapped; not a certification."),
+	]) {
+		const line = createDiv();
+		line.textContent = text;
+		if (explanation.childElementCount === 0) line.className = "cpo-key-night-note";
+		explanation.append(line);
+	}
+	marksSection.append(marks, color, statsLine, explanation);
 	content.append(links, marksSection);
 	key.append(label, content);
 	host.append(key);
@@ -133,10 +151,11 @@ export function mountGraphKey(
 		color.hidden = mode !== "force2d";
 	};
 	const setStats = (
-		nodes: readonly { id: string; year: number | null; isSeed?: boolean }[],
+		nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
 		edges: readonly GraphEdge[],
+		referenceLists?: ReadonlyMap<string, readonly string[]>,
 	): void => {
-		const stats = graphKeyStats(nodes, edges);
+		const stats = graphKeyStats(nodes, edges, referenceLists);
 		statsLine.textContent = tr(`${nodes.length} 篇`, `${nodes.length} papers`);
 		for (const kind of KIND_ORDER) {
 			const el = kindCounts.get(kind);

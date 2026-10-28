@@ -2,7 +2,7 @@ import { tr } from "./i18n";
 import { detectCommunities } from "./communities";
 import { runForceLayout, type ForceNode } from "./layout";
 import type { GraphEdge, PaperNode } from "./types";
-import { citationRadius, yearNormalizedCitations } from "./visual";
+import { availableCitations, citationRadii } from "./visual";
 
 /** `temporal` is the note-embed default: year on X, log citations on Y. */
 export type LayoutMode = "force2d" | "temporal" | "radial";
@@ -39,17 +39,15 @@ export function placeLayout(
 	nodes: readonly PaperNode[],
 	edges: readonly GraphEdge[],
 	seedScore: ReadonlyMap<string, number>,
-	nowYear = new Date().getFullYear(),
+	_nowYear = new Date().getFullYear(),
 ): PlacedNode[] {
-	const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year, nowYear));
-	const minCited = norms.length ? Math.min(...norms) : 0;
-	const maxCited = norms.length ? Math.max(...norms) : 0;
+	const radii = citationRadii(nodes);
 	const placed: PlacedNode[] = nodes.map((node, i) => ({
 		id: node.id,
 		x: 0,
 		y: 0,
 		z: 0,
-		radius: citationRadius(norms[i] ?? 0, minCited, maxCited, node.isSeed),
+		radius: radii[i]!,
 	}));
 	const seed = nodes.find((node) => node.isSeed);
 	if (!seed) return placed;
@@ -90,12 +88,12 @@ function placeTemporal(placed: PlacedNode[], nodes: readonly PaperNode[]): Place
 	const span = Math.max(1, yearSpan);
 	const width = 460;
 	const height = 300;
-	const maxLog = Math.log10(nodes.reduce((max, node) => Math.max(max, node.citedByCount), 1) + 1) || 1;
+	const maxLog = Math.log10(nodes.reduce((max, node) => Math.max(max, availableCitations(node) ?? 0), 1) + 1) || 1;
 	const buckets = new Map<string, number>();
 	return placed.map((node) => {
 		const paper = byId.get(node.id);
 		const year = paper?.year ?? null;
-		const cited = paper?.citedByCount ?? 0;
+		const cited = paper ? availableCitations(paper) ?? 0 : 0;
 		const bucket = year === null ? "none" : String(year);
 		const slot = buckets.get(bucket) ?? 0;
 		buckets.set(bucket, slot + 1);

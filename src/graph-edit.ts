@@ -1,7 +1,7 @@
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
 import { CitationEvidenceStore, edgeCitationPairs, type CitationEvidence } from "./citation-evidence";
-import { paperHasId, paperRecords, workIndex, type WorkIdentity } from "./work-identity";
+import { paperHasId, paperRecords, sourceVersionGroups, workIndex, type SourceVersionRelation, type WorkIdentity, type WorkIdentityDecision } from "./work-identity";
 import type { SelectionRank } from "./neighborhood";
 import type { DirectLink, GraphEdge, PaperNode } from "./types";
 
@@ -60,8 +60,8 @@ export function graftNodes<T extends EditableGraph>(
 	return normalizeWorkGraph({ ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog, coCitationContextIds: [...contexts] });
 }
 
-export function refreshDerived<T extends EditableGraph>(input: T): T {
-	const graph = canonicalizeWorkGraph(input);
+export function refreshDerived<T extends EditableGraph>(input: T, canonicalize = true): T {
+	const graph = canonicalize ? canonicalizeWorkGraph(input) : input;
 	const seed = graph.nodes.find((node) => node.isSeed);
 	if (!seed) return graph;
 	const references = new Map<string, Set<string>>();
@@ -112,7 +112,7 @@ export function refreshDerived<T extends EditableGraph>(input: T): T {
 /** Reversible source records stay alongside the derived work graph. */
 function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 	const previous = graph.workIdentity;
-	const index = workIndex([...(previous?.records ?? []), ...graph.catalog, ...graph.nodes], graph.nodes.map((paper) => paper.id), previous?.separatedIds);
+	const index = workIndex([...(previous?.records ?? []), ...graph.catalog, ...graph.nodes], graph.nodes.map((paper) => paper.id), previous?.separatedIds, previous?.confirmedGroups);
 	if (!previous && index.records.length === index.papers.length) return graph;
 	const oldIds = new Map(previous?.canonicalIds ?? []);
 	const resolve = (id: string): string => index.ids.get(id) ?? id;
@@ -181,13 +181,24 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		coCitationContextIds: [...new Set([...sourceContexts].map(resolve))],
 		excludedIds: graph.excludedIds ? [...new Set(graph.excludedIds.map(resolve))].filter((id) => !nodes.some((paper) => paper.id === id && paper.isSeed)) : undefined,
 		semanticScores: graph.semanticScores ? new Map([...graph.semanticScores].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
-		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts] },
+		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts], confirmedGroups: previous?.confirmedGroups, sourceRelations: previous?.sourceRelations },
 	};
 }
 
 export function normalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 	const normalized = canonicalizeWorkGraph(graph);
 	return normalized === graph ? graph : refreshDerived(normalized);
+}
+
+export function applyWorkIdentityDecisions<T extends EditableGraph>(graph: T, decisions: readonly WorkIdentityDecision[] = [], relations: readonly SourceVersionRelation[] = graph.workIdentity?.sourceRelations ?? []): T {
+	if (!decisions.length && !relations.length) return normalizeWorkGraph(graph);
+	const separated = new Set(graph.workIdentity?.separatedIds ?? []);
+	const groups = sourceVersionGroups(relations, decisions, (graph.workIdentity?.confirmedGroups ?? []).filter(group => !relations.some(relation => relation.ids.some(id => group.includes(id)))));
+	for (const decision of [...decisions].sort((a, b) => a.updatedAt - b.updatedAt)) {
+		for (const id of decision.ids) { if (decision.kind === "separate") separated.add(id); else separated.delete(id); }
+	}
+	const clear = (paper: PaperNode): PaperNode => ({ ...paper, recordsSeparated: separated.has(paper.id) });
+	return normalizeWorkGraph({ ...graph, nodes: graph.nodes.map(clear), catalog: graph.catalog.map(clear), workIdentity: { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], ...graph.workIdentity, separatedIds: [...separated], confirmedGroups: groups, sourceRelations: [...relations] } });
 }
 
 export function separateWorkRecords<T extends EditableGraph>(graph: T, paper: PaperNode): T {

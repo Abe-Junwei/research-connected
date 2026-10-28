@@ -3,34 +3,37 @@ import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, fallbackAbstract, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { abstractCaption, ORIGIN_TEXT, paintAggregateCard, paintPaperDetail, paintPaperWorkflowState } from "./detail-cards";
+import { abstractCaption, choosePaperVersion, ORIGIN_TEXT, paintAggregateCard, paintIdentityDecisionActions, paintPaperDetail, paintPaperWorkflowState } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, embedViewStateKey, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { mountGraphKey } from "./filter-controls";
-import { emptyFilter, visibleNodes, type GraphFilter } from "./graph-filter";
+import { emptyFilter, nodeVisible, visibleNodes, type GraphFilter } from "./graph-filter";
 import { createChromeIcon, mountBottomSheet, mountGraphChrome, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
-import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
+import { graphExportVersions, literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
 import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
 import { mountWorkspaceFrame } from "./workspace-frame";
 import { createGraphSession } from "./graph-session";
-import { normalizeWorkGraph, omitNode, separateWorkRecords } from "./graph-edit";
-import { diagnoseCandidate, expandSecondLayer, loadNeighborhood, type LoadStage, type SimilarityGraph } from "./neighborhood";
+import { applyWorkIdentityDecisions, graftNodes } from "./graph-edit";
+import { diagnoseCandidate, expandSecondLayer, loadNeighborhood, RetractedSeedError, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
-import { acknowledgeIdentityStates, commitPaperReading, reconcileProjectIdentity, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus } from "./project-state";
+import { commitSourceVersionRelations, acknowledgeIdentityStates, changeVersionExclusion, commitWorkIdentityDecision, projectVersionGraph, projectVersionState, reconcileProjectIdentity, resolveProjectPending, restoreGraphSnapshot, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus } from "./project-state";
+import type { ReadingWorkflowDeps } from "./reading-workflow";
+import { paintWorkflowLibrary } from "./workflow-library";
 import type { GraphEdge, PaperNode } from "./types";
 import { mountSidebarResize } from "./sidebar-resize";
-import { observeResponsiveMode } from "./responsive";
+import { observeResponsiveMode, setDetailCover } from "./responsive";
 
-export interface EmbedDeps {
+export interface EmbedDeps extends Partial<ReadingWorkflowDeps> {
 	source: string;
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
+	persistAssociation?: (projectKey: string | null) => Promise<void>;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
 	openLiteratureNote?: (path: string) => void;
@@ -130,6 +133,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	evidenceHeader.className = "cpo-evidence-header";
 	const evidenceTitle = createEl("h2");
 	evidenceTitle.textContent = tr("论文详情", "Paper details");
+	const returnToGraph = createEl("button");
+	returnToGraph.type = "button";
+	returnToGraph.className = "cpo-detail-return";
+	returnToGraph.textContent = tr("返回图谱", "Back to graph");
+	let detailReturn: { zoom: number; centerX: number; centerY: number; selectedId: string | null } | null = null;
+	let coverDismissed = false;
+	returnToGraph.addEventListener("click", () => {
+		const saved = detailReturn;
+		detailReturn = null;
+		coverDismissed = true;
+		shell.classList.remove("is-detail-cover");
+		if (saved) map.setViewState(saved);
+	});
 	const evidenceTools = createDiv();
 	evidenceTools.className = "cpo-evidence-tools";
 	evidenceTools.setAttribute("role", "toolbar");
@@ -141,7 +157,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	diagnoseButton.setAttribute("aria-label", tr("诊断候选", "Inspect candidate"));
 	diagnoseButton.disabled = true;
 	evidenceTools.append(diagnoseButton);
-	evidenceHeader.append(evidenceTitle, evidenceTools);
+	evidenceHeader.append(evidenceTitle, returnToGraph, evidenceTools);
 	sidebar.append(evidenceHeader);
 	const sheetHost = createEl("section");
 	sidebar.append(sheetHost);
@@ -174,6 +190,64 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	}
 
 	const spec = parsed.spec;
+	const versionDialogs = new AbortController();
+	let identityDecisions = deps.getSettings().workIdentityDecisions;
+	let sourceRelations = deps.getSettings().sourceVersionRelations;
+	let projectKey = spec.projectKey;
+	let associationDialog: HTMLDialogElement | null = null;
+	let cancelAssociation: (() => void) | null = null;
+	const associatedProject = () => projectKey ? deps.getSettings().researchProjects[projectKey] : undefined;
+	const chooseProject = (): Promise<string> => {
+		if (associatedProject() && projectKey) return Promise.resolve(projectKey);
+		if (associationDialog) return Promise.reject(new Error(tr("请先完成项目选择", "Finish choosing a project first")));
+		return new Promise((resolve, reject) => {
+			const dialog = createEl("dialog");
+			associationDialog = dialog;
+			dialog.className = "cpo-surface cpo-project-dialog";
+			dialog.setAttribute("aria-label", tr("选择操作所属项目", "Choose a project for this action"));
+			const title = createEl("h3"); title.textContent = tr("选择操作所属项目", "Choose a project for this action");
+			const select = createEl("select"); select.setAttribute("aria-label", tr("研究项目", "Research project"));
+			for (const [key, project] of Object.entries(deps.getSettings().researchProjects)) { const option = createEl("option"); option.value = key; option.textContent = `${project.name} (${key})`; select.append(option); }
+			const create = createEl("option"); create.value = "new"; create.textContent = tr("新建项目", "Create project"); select.append(create);
+			const label = createEl("label");
+			const persistent = createEl("input"); persistent.type = "checkbox"; persistent.disabled = !deps.persistAssociation;
+			label.append(persistent, document.createTextNode(tr("记住此代码块的项目关联", "Remember this block's project association")));
+			const error = createEl("p"); error.setAttribute("role", "status");
+			const confirm = createEl("button"); confirm.type = "button"; confirm.textContent = tr("选择", "Choose");
+			const cancel = createEl("button"); cancel.type = "button"; cancel.textContent = tr("取消", "Cancel");
+			const close = () => { dialog.close(); dialog.remove(); associationDialog = null; cancelAssociation = null; };
+			cancelAssociation = () => { close(); reject(new Error(tr("已取消，未保存", "Cancelled; nothing saved"))); };
+			cancel.onclick = () => cancelAssociation?.();
+			dialog.addEventListener("cancel", event => { event.preventDefault(); cancelAssociation?.(); });
+			confirm.onclick = async () => {
+				confirm.disabled = true;
+				let created: string | undefined;
+				try {
+					let key = select.value;
+					if (key === "new") {
+						const seed = sourceGraph?.nodes.find(node => node.isSeed);
+						if (!seed || !deps.stagePaper) throw new Error("Project save is unavailable");
+						key = `W${Date.now()}`;
+						while (deps.getSettings().researchProjects[key]) key += "1";
+						created = key;
+						deps.getSettings().researchProjects[key] = { version: 1, seedId: seed.id, name: seed.title || seed.id, updatedAt: Date.now(), views: [], snapshot: saveGraphSnapshot(sourceGraph!) };
+						try { await deps.stagePaper(seed, seed.id, "embed-project"); }
+						catch (reason) { delete deps.getSettings().researchProjects[key]; throw reason; }
+						created = undefined;
+						const option = createEl("option"); option.value = key; option.textContent = seed.title || key; select.append(option); select.value = key;
+					}
+					if (persistent.checked) await deps.persistAssociation?.(key);
+					if (persistent.checked) projectKey = key;
+					close(); resolve(key);
+				} catch (reason) {
+					if (created) delete deps.getSettings().researchProjects[created];
+					error.textContent = reason instanceof Error ? reason.message : String(reason);
+					confirm.disabled = false;
+				}
+			};
+			dialog.append(title, select, label, error, confirm, cancel); shell.append(dialog); dialog.showModal(); select.focus();
+		});
+	};
 	canvas.classList.add("cpo-embed-canvas");
 	const stateKey = embedViewStateKey(spec, spec.maxNodes ?? deps.getSettings().maxNodes);
 	const saved = viewStates.get(stateKey);
@@ -193,6 +267,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		onCommit: () => {},
 	});
 	const applyFilter = (): void => {
+		if (sourceGraph) {
+			currentGraph = projectVersionGraph(sourceGraph, associatedProject(), viewFilter);
+			map.adoptGraph(currentGraph.nodes, currentGraph.edges, currentGraph.seedScore, undefined, false, currentGraph.referenceLists);
+			graphKey.setStats(currentGraph.nodes, currentGraph.edges, currentGraph.referenceLists);
+		}
 		map.setContentFilter(viewFilter, currentGraph?.nodes ?? []);
 	};
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
@@ -258,12 +337,80 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		research: tr("研究脉络", "Research narrative"),
 		staged: tr("收藏列表", "Saved papers"),
 		excluded: tr("已排除论文", "Excluded papers"),
+		pending: tr("待处理（全库）", "Pending (library)"),
+	};
+	const workflowState = (paper: PaperNode, seedId: string) => {
+		const state = projectVersionState(associatedProject(), paper);
+		const shared = deps.getReadingState?.(paper);
+		return { ...state, reading: shared ? shared.reading ?? "unread" : state.reading, readingConflict: shared ? !shared.confirmed : false };
+	};
+	const commit = async (paper: PaperNode, seedId: string, patch: { reading?: ReadingStatus; staged?: boolean }): Promise<void> => {
+		const key = patch.staged !== undefined ? await chooseProject() : projectKey;
+		const selected = patch.staged !== undefined ? (await choosePaperVersion(paper, false, versionDialogs.signal)).paper : paper;
+		if (deps.commitWorkflow) await deps.commitWorkflow(selected, key ? deps.getSettings().researchProjects[key]?.seedId ?? null : null, patch, key);
+		else throw new Error(tr("阅读状态保存接口尚未接入", "Reading workflow is not connected"));
+		paintLists();
+	};
+	const setExcluded = async (paper: PaperNode, excluded: boolean): Promise<void> => {
+		const key = await chooseProject();
+		const seedId = deps.getSettings().researchProjects[key]?.seedId;
+		if (!seedId || !deps.stagePaper) throw new Error(tr("项目保存接口尚未接入", "Project save is not connected"));
+		if (paper.id === seedId || paper.isSeed) return;
+		const chosen = await choosePaperVersion(paper, excluded, versionDialogs.signal);
+		const original = deps.getSettings().researchProjects[key]!;
+		const updated = structuredClone(original);
+		changeVersionExclusion(updated, chosen.paper, excluded, chosen.whole, paper);
+		deps.getSettings().researchProjects[key] = updated;
+		try { await deps.stagePaper(paper, seedId, "OpenAlex"); }
+		catch (error) { if (deps.getSettings().researchProjects[key] === updated) deps.getSettings().researchProjects[key] = original; throw error; }
+		if (sourceGraph) {
+			if (!excluded && !sourceGraph.nodes.some(node => node.id === paper.id)) sourceGraph = graftNodes(sourceGraph, [paper], new Map());
+			renderGraph(sourceGraph, lastDepthNote);
+		}
+		if (!excluded && !nodeVisible(paper, viewFilter)) {
+			status.textContent = tr("已恢复，当前筛选下不可见", "Restored; hidden by the current filters");
+			const button = createEl("button");
+			button.type = "button";
+			button.className = "cpo-text-btn";
+			button.textContent = tr("定位论文", "Locate paper");
+			button.onclick = () => locate(paper);
+			status.append(button);
+		}
+	};
+	const locate = (paper: PaperNode): void => {
+		const node = currentGraph?.nodes.find(node => node.id === paper.id);
+		if (!node) { status.textContent = tr("论文不在当前图中；可查看详情，恢复排除后再定位。", "This paper is outside the current graph. View its details or restore it before locating."); return; }
+		if (!nodeVisible(node, viewFilter)) {
+			viewFilter = { ...viewFilter, yearFrom: null, yearTo: null, language: null, workType: null, concept: null, scrubYear: null };
+			applyFilter();
+			const histogram = session.state().histogram;
+			if (histogram) chrome?.setHistogram(histogram, null);
+		}
+		showDetail(node, currentGraph!, null, true);
+		map.focusPaper(node.id);
 	};
 
 	const paintLists = (): void => {
 		evidenceTitle.textContent = tabTitles[tab] ?? tabTitles.graph;
 		detail.hidden = tab !== "graph";
-		if (!currentGraph || tab === "graph") {
+		if (tab === "graph") {
+			listPanel.hidden = true;
+			listPanel.replaceChildren();
+			return;
+		}
+		if (tab === "staged" || tab === "excluded" || tab === "pending") {
+			if (!deps.getReadingState || !deps.commitWorkflow || !deps.getReadingIssues || !deps.resolveReading || !deps.retryReading) return;
+			paintWorkflowLibrary(listPanel, {
+				tab, projectId: projectKey ?? null, projects: deps.getSettings().researchProjects,
+				onResolvePending: (key, id, choice) => resolveProjectPending(deps.getSettings(), key, id, choice, () => deps.stagePaper?.(deps.getSettings().researchProjects[key]!.snapshot!.nodes[0]!, deps.getSettings().researchProjects[key]!.seedId, "pending")),
+				workflow: { getReadingState: deps.getReadingState, commitWorkflow: deps.commitWorkflow, getReadingIssues: deps.getReadingIssues, resolveReading: deps.resolveReading, retryReading: deps.retryReading },
+				onTab: next => { tab = next; chrome?.setTab(next); paintLists(); },
+				onView: paper => { if (currentGraph) showDetail(paper, currentGraph, null, true); },
+				onLocate: locate, onExclude: setExcluded, onRefresh: paintLists,
+			});
+			return;
+		}
+		if (!currentGraph) {
 			listPanel.hidden = true;
 			listPanel.replaceChildren();
 			return;
@@ -271,41 +418,21 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const visible = new Set(visibleNodes(currentGraph.nodes, viewFilter).map((node) => node.id));
 		const seed = currentGraph.nodes.find((node) => node.isSeed);
 		const rows = (tab === "prior" ? priorWorks(currentGraph, visible) : derivativeWorks(currentGraph, visible))
-			.filter((row) => !seed || !deps.getSettings().researchProjects[seed.id]?.paperStates?.[row.paper.id]?.excluded);
+			.filter((row) => !seed || !associatedProject()?.paperStates?.[row.paper.id]?.excluded);
 		const definition = tab === "prior" ? PRIOR_DEFINITION : DERIVATIVE_DEFINITION;
 		const noun = tab === "prior" ? tr("被本图引用", "Cited by this graph") : tr("引用本图", "Cites this graph");
 		fillAggregate(listPanel, definition, rows, noun, (paper) => {
 			if (currentGraph) showDetail(paper, currentGraph, null, true);
 		}, (card, paper) => {
 			if (!seed) return;
-			const settings = deps.getSettings();
-			const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
-			paintPaperWorkflowState(card, paper, state, (reading, previous) => commitPaperReading(
-				reading,
-				previous,
-				(next) => { updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading: next }); },
-				() => deps.stagePaper?.(paper, seed.id, state.source),
-				(next) => deps.syncLiteratureReading?.(paper, next),
-			), async () => {
-				updateProjectPaperState(settings.researchProjects, seed.id, paper, { excluded: true });
-				try {
-					await deps.stagePaper?.(paper, seed.id, state.source);
-					if (currentGraph?.nodes.some((node) => node.id === paper.id) && sourceGraph) renderGraph(sourceGraph, lastDepthNote);
-					else paintLists();
-				} catch {
-					updateProjectPaperState(settings.researchProjects, seed.id, paper, { excluded: false });
-					card.querySelector<HTMLElement>(".cpo-paper-action-error")?.remove();
-					const error = createSpan();
-					error.className = "cpo-paper-action-error";
-					error.setAttribute("role", "status");
-					error.textContent = tr("保存失败，请重试", "Could not save. Try again.");
-					card.append(error);
-				}
-			});
+			const state = workflowState(paper, seed.id);
+			paintPaperWorkflowState(card, paper, state, reading => commit(paper, seed.id, { reading }), () => setExcluded(paper, true), () => setExcluded(paper, false));
 			paintPaperActions(card, paper, seed.id, null, null, {
-				getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
+				getPaperState: (projectId) => workflowState(paper, projectId),
 				setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 				persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
+				commit: deps.commitWorkflow ? patch => commit(paper, seed.id, patch) : undefined,
+				readingConflict: state.readingConflict,
 				openExternal: deps.openExternal,
 			});
 		});
@@ -315,6 +442,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		layouts: ["force2d", "temporal", "radial"],
 		layout: layoutMode,
 		noteButton: Boolean(deps.createNote),
+		libraryTab: true,
 		actionsHost: actionsBar,
 		tabsHost: sidebarTabs,
 		tabPanel: sheetHost,
@@ -327,6 +455,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			graphKey.paintColor(layoutMode);
 		},
 		onScrub: (year) => {
+			if (year === viewFilter.scrubYear) return;
 			session.apply({ type: "scrub", year });
 			viewFilter = { ...viewFilter, scrubYear: session.state().scrubYear };
 			applyFilter();
@@ -351,15 +480,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			return;
 		}
 		if (kind === "note") {
-			const paper = selected ?? currentGraph.nodes.find((node) => node.isSeed) ?? null;
-			if (!paper) return;
+			const chosen = selected ?? currentGraph.nodes.find((node) => node.isSeed) ?? null;
+			if (!chosen) return;
+			let paper: PaperNode;
+			try { paper = (await choosePaperVersion(chosen, false, versionDialogs.signal)).paper; }
+			catch (error) { chrome?.setExportText(error instanceof Error ? error.message : String(error)); return; }
 			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper, currentGraph, selectedLink, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const fields = {
-				project: settings.researchProjects[seedId]?.name || seedId,
+				project: associatedProject()?.name || seedId,
 				relation: ORIGIN_TEXT[paper.origin],
-				status: settings.researchProjects[seedId]?.paperStates?.[paper.id]?.reading ?? "unread" as const,
+				status: workflowState(paper, seedId).reading,
 			};
 			const filename = literatureFilename(paper, settings.literatureFilename, fields);
 			const markdown = literatureMarkdown(paper, settings.literatureTemplate, fields);
@@ -377,7 +509,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			await chrome?.copyText(markdown, tr("笔记内容", "Note contents"));
 			return;
 		}
-		const nodes = orderedForExport(visibleNodes(currentGraph.nodes, viewFilter));
+		const range = chrome?.exportOptions() ?? { mode: "one" as const, includeSeedException: false };
+		const nodes = orderedForExport(graphExportVersions(currentGraph.nodes, associatedProject(), viewFilter, range.mode, range.includeSeedException));
 		const text = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
 		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
@@ -386,12 +519,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const clearPlacement = applyPlacement(root, anchor, spec);
 	const stopResize = mountResizeHandle(body, anchor, () => map.resize());
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, {
-		defaultWidth: 260,
 		onResize: () => map.resize(),
 	});
 	const narrowObserver = observeResponsiveMode(shell, () => {
 		frame.apply();
 		map.resize();
+		if (!coverDismissed && Boolean(selected) && !detail.hidden && shell.classList.contains("is-narrow")) frame.revealRight();
+		if (setDetailCover(shell, !coverDismissed && Boolean(selected) && !detail.hidden)) detailReturn = map.getViewState();
+		else if (!shell.classList.contains("is-detail-cover")) detailReturn = null;
 	});
 	narrowObserver.observe(stage);
 	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
@@ -409,6 +544,36 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	);
 	let generation = 0;
 	let alive = true;
+	let associationPaused = false;
+	const pauseExcludedSeed = (): boolean => {
+		const seed = sourceGraph?.nodes.find(node => node.isSeed);
+		const project = associatedProject();
+		const excluded = seed && projectVersionState(project, seed).excluded;
+		if (!excluded) { associationPaused = false; return false; }
+		if (!associationPaused) generation++;
+		associationPaused = true;
+		reload.disabled = true;
+		message.hidden = false;
+		messageText.textContent = tr("关联项目已排除此起点，嵌入已暂停。", "The linked project excludes this seed. This embed is paused.");
+		const restore = createEl("button"); restore.type = "button"; restore.textContent = tr("恢复此版本并继续", "Restore this version and continue");
+		restore.onclick = async () => {
+			if (!projectKey || !project || !seed || !deps.stagePaper) return;
+			restore.disabled = true;
+			const updated = structuredClone(project);
+			changeVersionExclusion(updated, seed, false, false);
+			deps.getSettings().researchProjects[projectKey] = updated;
+			try { await deps.stagePaper(seed, project.seedId, "embed-restore"); associationPaused = false; reload.disabled = false; if (sourceGraph) renderGraph(sourceGraph, lastDepthNote); }
+			catch (error) { if (deps.getSettings().researchProjects[projectKey] === updated) deps.getSettings().researchProjects[projectKey] = project; status.textContent = error instanceof Error ? error.message : String(error); restore.disabled = false; }
+		};
+		const unlink = createEl("button"); unlink.type = "button"; unlink.textContent = tr("解除关联并继续", "Unlink and continue");
+		unlink.onclick = async () => {
+			unlink.disabled = true;
+			try { if (spec.projectKey) { if (!deps.persistAssociation) throw new Error("Persistent association cannot be edited here"); await deps.persistAssociation(null); } projectKey = undefined; associationPaused = false; reload.disabled = false; if (sourceGraph) renderGraph(sourceGraph, lastDepthNote); }
+			catch (error) { status.textContent = error instanceof Error ? error.message : String(error); unlink.disabled = false; }
+		};
+		messageText.append(restore, unlink);
+		return true;
+	};
 	/** Abstract fallback: which source filled an abstract, or which DOI has no known abstract. */
 	const abstractRequested = new Set<string>();
 	const abstractFromS2 = new Set<string>();
@@ -421,6 +586,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		session.apply({ type: "select-paper", id: null, source: "refresh" });
 		selected = null;
 		selectedLink = null;
+		detailReturn = null;
+		coverDismissed = false;
+		setDetailCover(shell, false);
 		detail.replaceChildren();
 		const empty = createEl("p");
 		empty.className = "cpo-side-tip";
@@ -436,12 +604,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			return;
 		}
 		if (reveal) {
+			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读进度加载失败", "Could not load reading progress"); });
 			tab = "graph";
 			chrome?.setTab("graph");
 			evidenceTitle.textContent = tabTitles.graph;
 			listPanel.hidden = true;
 			detail.hidden = false;
+			coverDismissed = false;
 		}
+		if (!coverDismissed && shell.classList.contains("is-narrow") && !shell.classList.contains("is-detail-cover") && !detail.hidden) detailReturn = map.getViewState();
+		setDetailCover(shell, !coverDismissed && !detail.hidden);
 		map.setSelected(graph.nodes.some((node) => node.id === paper.id) ? paper.id : null);
 		if (link) session.apply({ type: "select-edge", id: `${link.source}\0${link.target}`, paperId: paper.id, source: reveal ? "user" : "refresh" });
 		else session.apply({ type: "select-paper", id: paper.id, source: reveal ? "user" : "refresh" });
@@ -451,23 +623,16 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		detail.replaceChildren();
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const seedId = seed?.id ?? paper.id;
-		const project = deps.getSettings().researchProjects[seedId];
-		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		const project = associatedProject();
+		const paperState = workflowState(paper, seedId);
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
-		if (noted?.reading && noted.reading !== paperState.reading) {
-			paperState = { ...paperState, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
-			void deps.stagePaper?.(paper, seedId, paperState.source);
-		}
 		paintPaperDetail(detail, graph, paper, {
+			isClassic: !!map.classicEvidence(paper.id),
 			abstractText: embedAbstractText,
 			openExternal: deps.openExternal,
 			separate: () => {
 				if (!currentGraph) return;
-				if (currentGraph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { status.textContent = tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."); return; }
-				const next = separateWorkRecords(sourceGraph ?? currentGraph, paper);
-				if (project) { reconcileProjectIdentity(project, next); project.snapshot = saveGraphSnapshot(next); }
-				renderGraph(next, lastDepthNote);
-				void deps.stagePaper?.(paper, seedId, "OpenAlex");
+				void commitWorkIdentityDecision(deps.getSettings(), { ids: paperRecords(paper).map(record => record.id), kind: "separate", source: "manual", updatedAt: Date.now() }, () => deps.stagePaper?.(paper, seedId, "identity")).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : String(error); });
 			},
 			conflict: project?.identityConflicts?.includes(paper.id) ?? false,
 			acknowledge: () => {
@@ -477,18 +642,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				showDetail(paper, graph, link);
 			},
 			workflow: paperState,
-			onReading: (reading, previous) => commitPaperReading(
-				reading,
-				previous,
-				(next) => { updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: next }); },
-				() => deps.stagePaper?.(paper, seedId, paperState.source),
-				(next) => deps.syncLiteratureReading?.(paper, next),
-			),
+			onReading: reading => commit(paper, seedId, { reading }),
+			onExclude: deps.stagePaper ? () => setExcluded(paper, true) : undefined,
+			onRestore: deps.stagePaper ? () => setExcluded(paper, false) : undefined,
 			literature: noted && deps.openLiteratureNote ? { path: noted.path, alternatives: noted.alternatives, open: deps.openLiteratureNote } : undefined,
+			lookupLiteratureNote: deps.lookupLiteratureNote,
+			openLiteratureNote: deps.openLiteratureNote,
+			signal: versionDialogs.signal,
 			actions: {
-				getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
+				getPaperState: (projectId) => workflowState(paper, projectId),
 				setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 				persist: deps.stagePaper && seed ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
+				commit: deps.commitWorkflow ? patch => commit(paper, seedId, patch) : undefined,
+				readingConflict: paperState.readingConflict,
 				openExternal: deps.openExternal,
 			},
 			onJump: (target) => {
@@ -496,6 +662,21 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			},
 			extraEdge: link,
 		});
+		paintIdentityDecisionActions(detail, paper, [...graph.catalog, ...Object.values(deps.getSettings().researchProjects).flatMap(project => project.snapshot?.catalog ?? project.snapshot?.nodes ?? [])], async (ids, kind) => {
+			if (!deps.stagePaper) throw new Error("Project persistence is unavailable");
+			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, () => deps.stagePaper!(paper, seedId, "identity"));
+		});
+		if (!paperState.excluded && (!graph.nodes.some(node => node.id === paper.id) || !nodeVisible(paper, viewFilter))) {
+			const hint = createEl("p");
+			hint.className = "cpo-side-tip";
+			hint.textContent = tr("论文当前不可见；恢复保留现有筛选。", "This paper is currently hidden. Restoring keeps the current filters.");
+			const button = createEl("button");
+			button.type = "button";
+			button.className = "cpo-text-btn";
+			button.textContent = tr("在图中定位", "Locate in graph");
+			button.onclick = () => locate(paper);
+			detail.append(hint, button);
+		}
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
 			const token = generation;
@@ -590,24 +771,28 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const renderGraph = (graph: SimilarityGraph, depthNote: string): void => {
-		graph = normalizeWorkGraph(graph);
+		const sameProject = sourceGraph?.nodes.find(node => node.isSeed)?.id === graph.nodes.find(node => node.isSeed)?.id;
+		const previousSelection = selected;
+		const previousLink = selectedLink;
+		graph = applyWorkIdentityDecisions(graph, deps.getSettings().workIdentityDecisions, deps.getSettings().sourceVersionRelations);
 		snapshotView();
 		message.hidden = true;
 		sourceGraph = graph;
 		lastDepthNote = depthNote;
-		const seedId = graph.nodes.find((node) => node.isSeed)?.id;
-		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
+		if (pauseExcludedSeed()) return;
+		const savedProject = associatedProject();
 		if (savedProject) reconcileProjectIdentity(savedProject, graph);
-		const excluded = seedId ? Object.entries(deps.getSettings().researchProjects[seedId]?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : [];
-		for (const id of excluded) graph = omitNode(graph, id) ?? graph;
+		graph = projectVersionGraph(graph, savedProject);
+		const excluded = Object.entries(savedProject?.versionStates ?? savedProject?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
 		graph.excludedIds = excluded;
 		currentGraph = graph;
 		diagnoseButton.disabled = false;
 		chrome?.setExportsEnabled(true);
-		map.setGraph(graph.nodes, graph.edges, graph.seedScore);
-		graphKey.setStats(graph.nodes, graph.edges);
+		if (sameProject && currentGraph) map.adoptGraph(graph.nodes, graph.edges, graph.seedScore, undefined, false, graph.referenceLists);
+		else map.setGraph(graph.nodes, graph.edges, graph.seedScore, graph.referenceLists);
+		graphKey.setStats(graph.nodes, graph.edges, graph.referenceLists);
 		graphKey.paintColor(layoutMode);
-		map.setLayout(layoutMode);
+		if (!sameProject) map.setLayout(layoutMode);
 		map.setColorMode(layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode));
 		applyFilter();
 		session.apply({ type: "sample", years: graph.nodes.map((node) => node.year), scrubYear: viewFilter.scrubYear });
@@ -622,7 +807,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}${graph.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}`);
 		status.textContent = fullStatus;
 		status.title = fullStatus;
-		if (seed) showDetail(seed, graph, null);
+		if (previousSelection) showDetail(graph.nodes.find(node => node.id === previousSelection.id) ?? previousSelection, graph, previousLink);
+		else if (seed) showDetail(seed, graph, null);
 	};
 
 	/** OpenCitations pass: verify and add citation links between visible nodes, then re-render if edges changed. */
@@ -655,12 +841,22 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (!alive || token !== generation || currentGraph !== graph) return;
 		const added = graph.edges.length - edgesBefore;
 		if (added > 0) {
-			map.updateGraphData(graph.edges);
-			graphKey.setStats(graph.nodes, graph.edges);
+			map.updateGraphData(graph.edges, graph.referenceLists);
+			graphKey.setStats(graph.nodes, graph.edges, graph.referenceLists);
 		}
+		if (!deps.stagePaper) return;
+		try {
+			const settings = deps.getSettings();
+			const reports = await new CrossrefClient(deps.getJson, settings.contactEmail).versionRelations(graph.catalog.flatMap(paperRecords), settings.sourceVersionRelations);
+			if (alive && token === generation && currentGraph === graph) {
+				const seed = graph.nodes.find(paper => paper.isSeed)!;
+				await commitSourceVersionRelations(settings, reports, () => deps.stagePaper!(seed, seed.id, "source-version-relations"), graph.catalog);
+			}
+		} catch (error) { if (alive && token === generation) status.textContent = error instanceof Error ? error.message : tr("版本关系保存失败，请重新加载重试", "Version relation save failed. Reload to retry."); }
 	};
 
-	const load = async (bypassCache: boolean): Promise<void> => {
+	const load = async (bypassCache: boolean, allowRetractedSeed = false): Promise<void> => {
+		if (pauseExcludedSeed()) return;
 		const token = ++generation;
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
@@ -680,7 +876,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				graph = await loadNeighborhood(
 					clientFor(deps, settings),
 					spec.target,
-					{ ...settings, maxNodes: firstCap },
+					{ ...settings, maxNodes: firstCap, researchProjects: {} },
 					(stage) => {
 						if (token === generation) {
 							messageText.textContent = STAGE_TEXT[stage];
@@ -689,6 +885,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					},
 					reconcileFor(deps, settings),
 					new CrossrefClient(deps.getJson, settings.contactEmail),
+					{ savedSeed: sourceGraph?.nodes.find(node => node.isSeed), allowRetractedSeed },
 				);
 				if (spec.depth === 2) {
 					const expanded = await expandSecondLayer(clientFor(deps, settings), graph, cap, settings.excludeRetracted);
@@ -704,6 +901,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (!alive || token !== generation) return;
 			message.hidden = false;
 			messageText.textContent = error instanceof Error ? error.message : tr("构建图谱失败。", "Could not build the graph.");
+			if (error instanceof RetractedSeedError) { const proceed = createEl("button"); proceed.type = "button"; proceed.textContent = tr("保留撤稿起点并重建", "Keep retracted seed and rebuild"); proceed.onclick = () => { void load(true, true); }; messageText.append(proceed); }
 			status.textContent = tr("图谱没有建起来", "The graph could not be built");
 		} finally {
 			if (token === generation) reload.disabled = false;
@@ -722,17 +920,24 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 	window.addEventListener("research-connected-theme", onTheme);
 	const onProject = (): void => {
-		if (!sourceGraph || !currentGraph) return;
-		const seedId = sourceGraph.nodes.find((node) => node.isSeed)?.id;
-		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
+		if (!sourceGraph || pauseExcludedSeed()) return;
+		if (identityDecisions !== deps.getSettings().workIdentityDecisions || sourceRelations !== deps.getSettings().sourceVersionRelations) { identityDecisions = deps.getSettings().workIdentityDecisions; sourceRelations = deps.getSettings().sourceVersionRelations; renderGraph(sourceGraph, lastDepthNote); return; }
+		if (!currentGraph) { renderGraph(sourceGraph, lastDepthNote); return; }
+		const savedProject = associatedProject();
 		if (savedProject) reconcileProjectIdentity(savedProject, sourceGraph);
-		const excluded = seedId ? Object.entries(deps.getSettings().researchProjects[seedId]?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : [];
+		const excluded = Object.entries(savedProject?.versionStates ?? savedProject?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
 		if (excluded.join("\0") !== (currentGraph.excludedIds ?? []).join("\0")) renderGraph(sourceGraph, lastDepthNote);
+		else {
+			paintLists();
+			if (selected) showDetail(selected, currentGraph, selectedLink);
+		}
 	};
 	window.addEventListener("research-connected-project", onProject);
 
 	return () => {
 		alive = false;
+		versionDialogs.abort();
+		cancelAssociation?.();
 		session.destroy();
 		generation += 1;
 		snapshotView();
@@ -894,6 +1099,7 @@ export function embedDataCacheKey(
 ): string {
 	return [
 		`identity-${WORK_IDENTITY_VERSION}`,
+		JSON.stringify(settings.sourceVersionRelations ?? []),
 		JSON.stringify(Object.values(settings.researchProjects).map((project) => [project.seedId, project.snapshot?.workIdentity?.separatedIds ?? []])),
 		target.kind,
 		target.value,

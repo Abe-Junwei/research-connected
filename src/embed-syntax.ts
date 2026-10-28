@@ -60,6 +60,7 @@ export const EMBED_HEIGHT_LIMIT = { min: 280, max: 900 } as const;
 
 export interface EmbedSpec {
 	target: { kind: "doi" | "openalex"; value: string };
+	projectKey?: string;
 	maxNodes?: number;
 	height: number;
 	depth: 1 | 2;
@@ -79,6 +80,7 @@ export interface EmbedSpec {
 }
 
 const KEYS = new Set([
+	"project",
 	"doi",
 	"openalex",
 	"id",
@@ -124,6 +126,7 @@ export function embedViewStateKey(spec: EmbedSpec, maxNodes: number): string {
 }
 
 export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok: false; error: string } {
+	let projectKey: string | undefined;
 	let target: { kind: "doi" | "openalex"; value: string } | null = null;
 	let maxNodes: number | undefined;
 	let height = 480;
@@ -155,6 +158,11 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		}
 		const key = line.slice(0, split).trim().toLowerCase();
 		const value = line.slice(split + 1).trim();
+		if (key === "project") {
+			if (!/^W\d+$/i.test(value)) return { ok: false, error: tr("project 需要项目编号。", "project requires a project key.") };
+			projectKey = value.toUpperCase();
+			continue;
+		}
 		if (key === "doi" || key === "openalex" || key === "id" || key === "seed") {
 			if (!value) return { ok: false, error: tr("种子不能为空。请写 DOI 或 OpenAlex ID。", "A seed is required. Enter a DOI or OpenAlex ID.") };
 			const parsed = asSeed(value);
@@ -262,6 +270,7 @@ export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok
 		ok: true,
 		spec: {
 			target,
+			projectKey,
 			maxNodes,
 			height,
 			depth,

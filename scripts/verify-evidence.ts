@@ -4,6 +4,7 @@ import {
 	edgeDetailStillCurrent,
 	edgePairNeedingS2Context,
 	evidenceFromSemanticCitation,
+	evidenceLabel,
 	mergeOpenCitation,
 	mergeS2CitationsForPair,
 } from "../src/citation-evidence";
@@ -27,6 +28,8 @@ import { findBudgetedCitationPath, resolvePathEndpoint } from "../src/doi-path";
 import { shortId } from "../src/paper";
 
 export async function verifyEvidence(): Promise<void> {
+	assert.equal(evidenceLabel(evidenceFromSemanticCitation("a", "b", {})), "");
+	assert.ok(evidenceLabel(evidenceFromSemanticCitation("a", "b", { intents: ["method"] })));
 	const paper = (id: string, seed = false): PaperNode => ({
 		id, isSeed: seed, title: id, year: seed ? 2010 : 2020, authors: "Author", authorList: ["Author"],
 		abstract: "private abstract", doiUrl: null, openAlexUrl: "https://openalex.org/" + id,
@@ -126,6 +129,40 @@ export async function verifyEvidence(): Promise<void> {
 	const retried = await retryClient.referenceEvidence("10.9/retry-format");
 	assert.equal(malformed, 2, "a malformed 200 must not be reused by the retry");
 	assert.equal(retried.data.length, 0);
+	assert.equal(retried.partial, false, "an empty list is a finished result, not a failure");
+	let pages = 0;
+	const paged = new SemanticScholarClient(async (url) => {
+		pages += 1;
+		const offset = Number(new URL(url).searchParams.get("offset"));
+		return { data: [{ citedPaper: { externalIds: { DOI: "10.1/page" } } }], next: offset + 1000 };
+	}, "page-key");
+	const capped = await paged.referenceEvidence("10.9/pages");
+	assert.equal(pages, 3, "citation context stops after three pages");
+	assert.equal(capped.partial, true);
+	assert.equal(capped.data.length, 3);
+	let stuck = 0;
+	const stuckClient = new SemanticScholarClient(async () => {
+		stuck += 1;
+		return { data: [], next: 0 };
+	}, "stuck-key");
+	await assert.rejects(() => stuckClient.referenceEvidence("10.9/stuck"));
+	assert.equal(stuck, 1, "a page that does not advance is not requested again");
+	let failures = 0;
+	const manual = new SemanticScholarClient(async () => {
+		failures += 1;
+		if (failures < 3) throw new Error("temporary");
+		return { data: [] };
+	}, "manual-key");
+	await assert.rejects(() => manual.referenceEvidence("10.9/manual"));
+	const recovered = await manual.referenceEvidence("10.9/manual");
+	assert.equal(recovered.partial, false);
+	assert.equal(recovered.data.length, 0);
+	assert.ok(failures >= 3, "a failed request is not cached, so the next try reaches the network");
+	const quiet = new CitationEvidenceStore();
+	assert.equal(mergeS2CitationsForPair(quiet, "W3", "W1", "10.1/quiet", [{ citedPaper: { externalIds: { DOI: "10.1/quiet" } }, contexts: [], intents: [] }], normalizeDoi), true);
+	assert.deepEqual(quiet.get("W3", "W1")?.intents, []);
+	assert.deepEqual(quiet.get("W3", "W1")?.contexts, []);
+	assert.deepEqual(quiet.get("W3", "W1")?.sources, ["semantic-scholar"]);
 
 	// Lazy-load S2 context: directed edges only; reuse by citing DOI; stale selection ignored.
 	const store = new CitationEvidenceStore();
@@ -226,7 +263,7 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(internals.scrubYear, 2015, "enrichment must not reset the scrub year");
 	assert.deepEqual({ k: internals.k, tx: internals.tx, ty: internals.ty }, view, "enrichment must not refit the view");
 	assert.equal(map.hasAdjusted(), true, "enrichment must not clear the user's pan/zoom flag");
-	for (const zoom of [0.02, 0.25, 1, 4, 8]) {
+	for (const zoom of [0.02, 0.25, 1, 4, 8, 16, 32]) {
 		map.setViewState({ zoom, centerX: 0, centerY: 0, selectedId: "W2" });
 		const restored = map.getViewState();
 		assert.equal(restored.zoom, zoom);
@@ -235,7 +272,7 @@ export async function verifyEvidence(): Promise<void> {
 	map.setViewState({ zoom: 0, centerX: 0, centerY: 0, selectedId: null });
 	assert.equal(map.getViewState().zoom, 0.02);
 	map.setViewState({ zoom: 100, centerX: 0, centerY: 0, selectedId: null });
-	assert.equal(map.getViewState().zoom, 8);
+	assert.equal(map.getViewState().zoom, 32);
 	const hitMap = map as unknown as {
 		nodes: Array<{ id: string; x: number; y: number; radius: number; shown: boolean }>;
 		k: number; tx: number; ty: number;
@@ -243,6 +280,15 @@ export async function verifyEvidence(): Promise<void> {
 	};
 	const hitNode = hitMap.nodes.find((node) => node.id === "W2");
 	assert.ok(hitNode);
+	hitNode.x = 123;
+	hitNode.y = 456;
+	const zoomBeforeLocate = map.getViewState().zoom;
+	map.focusPaper("W2");
+	assert.deepEqual(map.getViewState(), { zoom: zoomBeforeLocate, centerX: 123, centerY: 456, selectedId: "W2" });
+	const locatedView = map.getViewState();
+	map.focusPaper("missing");
+	assert.deepEqual(map.getViewState(), locatedView);
+	assert.equal(internals.scrubYear, 2015, "locating alone must not change the current filters");
 	hitNode.x = 0;
 	hitNode.y = 0;
 	hitNode.radius = 10;

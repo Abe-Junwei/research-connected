@@ -26,7 +26,8 @@ assert.match(responsive, /WIDE_SURFACE_WIDTH = 1200/, "wide breakpoint is 1200")
 assert.match(responsive, /NARROW_EMBED_WIDTH = 560/, "embed stays side-by-side in the default note column");
 assert.match(app, /observeResponsiveMode\(root/, "pane must use shared responsive state");
 assert.match(embed, /observeResponsiveMode\(shell/, "embed must use shared responsive state");
-assert.match(embed, /defaultWidth:\s*260/, "embed evidence rail starts at the minimum width");
+assert.match(readFileSync("src/sidebar-resize.ts", "utf8"), /const DEFAULT_WIDTH = 360/, "shared evidence rail defaults to 360px");
+assert.doesNotMatch(embed, /defaultWidth:\s*260/, "embed uses the shared evidence rail default");
 assert.match(app, /mountGraphKey\(stage,/, "pane legend overlays the canvas");
 assert.match(embed, /mountGraphKey\(stage,/, "embed legend overlays the canvas");
 assert.match(css, /\.cpo-stage > \.cpo-graph-legend\s*\{[^}]*left:\s*16px;[^}]*bottom:\s*12px;[^}]*background:\s*var\(--background-primary\);[^}]*box-shadow:\s*none;/, "bottom-left legend is opaque without a card");
@@ -94,7 +95,7 @@ assert.match(css, /\.cpo-surface button\.cpo-primary\b/, "pane and embed share b
 assert.doesNotMatch(css, /\.cpo-root button,\n\.cpo-embed button/, "paired root/embed button selectors collapsed");
 assert.match(app, /cpo-surface/, "pane root carries the shared surface class");
 assert.match(embed, /cpo-surface/, "embed shell carries the shared surface class");
-assert.match(app, /function switchProject[\s\S]*?buildResolved\(\{ kind: "openalex", value: project\.seedId \}, true, project\.currentView\)/, "switching a project reloads its graph");
+assert.match(app, /function switchProject[\s\S]*?restoreGraphSnapshot\(project\.snapshot\)/, "switching a project restores its saved graph without requesting a rebuild");
 assert.match(app, /cpo-project-confirm/, "delete shows a confirm button");
 assert.match(css, /\.cpo-surface\.is-narrow \.cpo-evidence-sidebar > \.cpo-panel-toggle\.is-right/, "narrow evidence toggle stays in the title bar");
 assert.match(css, /\.cpo-paper-actions\s*\{[^}]*flex-wrap:\s*wrap/, "paper actions wrap instead of clipping");

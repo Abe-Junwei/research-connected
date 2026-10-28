@@ -307,7 +307,8 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		id,
 		title,
 		year: typeof raw.publication_year === "number" ? raw.publication_year : null,
-		citedByCount: typeof raw.cited_by_count === "number" ? raw.cited_by_count : 0,
+		citedByCount: Number.isSafeInteger(raw.cited_by_count) && raw.cited_by_count! >= 0 ? raw.cited_by_count! : 0,
+		citationCountStatus: Number.isSafeInteger(raw.cited_by_count) && raw.cited_by_count! >= 0 ? "known" : "missing",
 		authors: formatAuthorNames(names),
 		authorList: names,
 		abstract: reconstructAbstract(raw.abstract_inverted_index),
@@ -338,6 +339,7 @@ export function toSearchHit(raw: RawWork): SearchHit | null {
 		title: paper.title,
 		year: paper.year,
 		citedByCount: paper.citedByCount,
+		citationCountStatus: paper.citationCountStatus,
 		authors: paper.authors,
 	};
 }

@@ -1,8 +1,8 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyEmbedAction, applyNoteReading, admitRetraction, acceptEmbedGraph, assignMergedVersion, choosePending, commitPaperReading, commitProjectGraph, commitSeedSwap, commitSharedReading, confirmVersionReading, chooseDisplayVersion, closePanel, composeMembers, dropDiveBatch, dropManual, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, failProjectGraph, followSharedReading, freshMigrationDrill, keepManual, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openProjectRequest, openSeedSwap, openSyncRetry, openVersionNote, operationBlocked, previewMigration, presentMembers, projectsForSeedId, publishSharedGraph, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, reopenEmbed, restoreGraphSnapshot, restoreVersion, resumeEmbed, rejectSeedExclude, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, saveUndoPoint, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, switchProjectGraph, syncParticipatingNotes, updateProjectPaperState, undoProject, versionVisible, viewPaper, writeSharedReading, type EmbedAssociation, type EmbedBlock, type MemberSet, type PendingItem, type ProjectUndo, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot, type SeedProject } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyEmbedAction, applyNoteReading, admitRetraction, acceptEmbedGraph, assignMergedVersion, choosePending, commitPaperReading, commitProjectGraph, commitSeedSwap, commitSharedReading, confirmVersionReading, chooseDisplayVersion, closePanel, composeMembers, dropDiveBatch, dropManual, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, failProjectGraph, followSharedReading, freshMigrationDrill, migrationRereadAccepted, keepManual, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openProjectRequest, openSeedSwap, openSyncRetry, openVersionNote, operationBlocked, previewMigration, presentMembers, projectsForSeedId, publishSharedGraph, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, reopenEmbed, restoreGraphSnapshot, restoreVersion, resumeEmbed, rejectSeedExclude, retargetProjectSeed, writeProject, savedProjectForSeed, saveGraphSnapshot, saveUndoPoint, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, switchProjectGraph, syncParticipatingNotes, updateProjectPaperState, undoProject, versionVisible, viewPaper, writeSharedReading, type EmbedAssociation, type EmbedBlock, type MemberSet, type PendingItem, type ProjectUndo, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot, type SeedProject } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, omitSeedExceptionLinks, projectResearchRelations, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
-import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
+import { confirmedVersionRelation, holdSourceRelation, paperRecords, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
 import { normalizeDoi, shortId } from "../src/paper";
@@ -12,28 +12,44 @@ import { expandAround, expandSecondLayer, loadNeighborhood, restoreGraftedMember
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import type { PaperNode } from "../src/types";
 import { invalidateLiteratureIndex, lookupLiteratureNote, rememberLiteratureNote } from "../src/vault-note";
+import { createReadingWorkflow } from "../src/reading-workflow";
+import { projectVersionState } from "../src/project-state";
 
+
+function duplicateSnapshot(): ReturnType<typeof nicholsSnapshot> {
+	const snapshot = nicholsSnapshot();
+	for (const node of [...snapshot.nodes, ...snapshot.catalog]) node.doiUrl = snapshot.nodes[0]!.doiUrl;
+	return snapshot;
+}
 
 export function verifyWorkIdentity(): void {
-	const graph = restoreGraphSnapshot(nicholsSnapshot());
+	const unconfirmed = restoreGraphSnapshot(nicholsSnapshot());
+	assert.equal(unconfirmed?.nodes.length, 2, "distinct DOI records must not merge from bibliography alone");
+	const graph = restoreGraphSnapshot(duplicateSnapshot());
 	assert.ok(graph);
-	assert.equal(graph.nodes.length, 1, "same Nichols article with two DOIs must occupy one node");
+	assert.equal(graph.nodes.length, 1, "duplicate DOI records occupy one node");
 	assert.equal(graph.referenceLists.get("W4245234602")?.length, 51, "both source reference lists must survive");
 	assert.equal(graph.edges.length, 0, "an alias-to-seed edge must not become a self loop");
-	const snapshot = nicholsSnapshot();
+	const snapshot = duplicateSnapshot();
 	const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
 	assert.equal(sameWork(seed, alias), true);
-	assert.equal(sameWork(seed, { ...alias, authorList: [] }), false, "missing authors cannot merge different DOIs");
-	assert.equal(sameWork(seed, { ...alias, year: 1987 }), false);
-	assert.equal(sameWork(seed, { ...alias, bibliography: { ...alias.bibliography, issue: "2" } }), false);
-	assert.equal(sameWork(seed, { ...alias, workType: "preprint" }), false);
-	assert.equal(sameWork(seed, { ...alias, title: `${alias.title} II` }), false);
+	assert.equal(sameWork(seed, { ...alias, authorList: [] }), true, "same DOI remains a duplicate despite incomplete metadata");
+	assert.equal(sameWork(seed, { ...alias, doiUrl: "10.1234/other", year: 1987 }), false);
 	const ambiguous = [seed, { ...alias, bibliography: { ...alias.bibliography, issue: null } }, { ...alias, id: "W3", bibliography: { ...alias.bibliography, issue: "2" } }];
-	assert.equal(workIndex(ambiguous).papers.length, 2, "missing issue cannot bridge conflicting groups");
+	assert.equal(workIndex(ambiguous).papers.length, 1, "shared DOI is authoritative despite different bibliography");
 	assert.equal(resolveWorkQuery(graph.nodes, alias.id), seed.id);
 	assert.equal(resolveWorkQuery(graph.nodes, alias.doiUrl!), seed.id);
-	assert.equal(paperDois(graph.nodes[0]!).length, 2);
+	assert.equal(paperDois(graph.nodes[0]!).length, 1);
 	assert.equal(graph.nodes[0]!.citedByCount, 404, "citation counts from separate records are not summed or maximized");
+	const statusGraph = workIndex([{ ...seed, citedByCount: 0, citationCountStatus: "missing" }, { ...alias, citedByCount: 9999, citationCountStatus: "known" }]);
+	assert.equal(statusGraph.papers[0]!.citationCountStatus, "missing", "representative cannot borrow another version's citation availability");
+	const statusSnapshot = duplicateSnapshot();
+	statusSnapshot.nodes[0]!.citationCountStatus = "missing";
+	statusSnapshot.nodes[1]!.citationCountStatus = "known";
+	const statusRestored = restoreGraphSnapshot(statusSnapshot)!;
+	const statusReopened = restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(statusRestored))))!;
+	assert.equal(statusReopened.nodes[0]!.citationCountStatus, "missing");
+	assert.ok(paperRecords(statusReopened.nodes[0]!).some(record => record.citationCountStatus === "known"));
 	assert.equal(resolvePathEndpoint(alias.doiUrl!, graph.nodes, normalizeDoi, shortId), seed.id);
 	assert.equal(resolvePathEndpoint(alias.id, graph.nodes, normalizeDoi, shortId), seed.id);
 	const notes = [{ path: "primary.md", frontmatter: { doi: seed.doiUrl } }, { path: "alternate.md", frontmatter: { doi: alias.doiUrl } }];
@@ -57,7 +73,7 @@ export function verifyWorkIdentity(): void {
 	const bibliography = { volume: "12", issue: "3", firstPage: "10", lastPage: "20" };
 	const versionA = { ...cited("W1", "https://doi.org/10.1/a"), title: "Shared title", venue: "Nature", bibliography };
 	const versionB = { ...cited("W2", "https://doi.org/10.1/b"), title: "Shared title", venue: "Nature", bibliography };
-	assert.equal(sameWork(versionA, versionB), true);
+	assert.equal(sameWork(versionA, versionB), false);
 	assert.equal(confirmedVersionRelation(versionA, versionB), false);
 	assert.equal(confirmedVersionRelation(versionA, { ...versionB, doiUrl: versionA.doiUrl }), true);
 	const bibKeys = [...toBibTeX([cited("W1"), cited("W2"), cited("W20202")]).matchAll(/@\w+\{([^,]+),/g)].map((match) => match[1]);
@@ -69,11 +85,28 @@ export function verifyWorkIdentity(): void {
 	const retargeted = retargetProjectSeed(legacy, "W1", "W9");
 	assert.deepEqual(Object.keys(retargeted), ["W1", "W8"]);
 	assert.equal(retargeted.W1?.seedId, "W9");
-	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W9" }), undefined);
-	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W1" })?.name, "Legacy");
+	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W9" })?.name, "Legacy");
+	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W1" }), undefined);
 	const shared = retargetProjectSeed(retargeted, "W8", "W9");
 	assert.deepEqual(projectsForSeedId(shared, "W9").map((project) => project.name), ["Legacy", "Other"]);
 	assert.equal(savedProjectForSeed(shared, { kind: "openalex", value: "W9" }), undefined);
+	const moved: Record<string, ResearchProject> = { W1: { version: 1, seedId: "W9", name: "Legacy", updatedAt: 1, views: [] } };
+	assert.throws(() => updateProjectPaperState(moved, "W1", cited("W3"), { staged: true }));
+	assert.equal(moved.W1?.seedId, "W9");
+	assert.equal(moved.W1?.paperStates, undefined);
+	updateProjectPaperState(moved, "W9", cited("W3"), { staged: true });
+	assert.deepEqual(Object.keys(moved), ["W1"]);
+	assert.equal(Object.values(moved)[0]?.paperStates?.W3?.staged, true);
+	writeProject(moved, { ...moved.W1!, name: "Renamed" });
+	assert.equal(moved.W1?.name, "Renamed");
+	assert.equal("W9" in moved, false);
+	const sharedSeed = {
+		W1: { version: 1 as const, seedId: "W9", name: "Legacy", updatedAt: 1, views: [] },
+		W8: { version: 1 as const, seedId: "W9", name: "Other", updatedAt: 1, views: [] },
+	};
+	assert.throws(() => writeProject(sharedSeed, { version: 1, seedId: "W9", name: "New", updatedAt: 2, views: [] }));
+	assert.equal("W9" in sharedSeed, false);
+	assert.equal(sharedSeed.W1?.name, "Legacy");
 	let scope = noteVersion(noteVersion(emptyVersionScope(), "v1"), "v2");
 	scope = excludeVersion(scope, "v1");
 	assert.equal(versionVisible(scope, "v1"), false);
@@ -157,7 +190,7 @@ export function verifyWorkIdentity(): void {
 	assert.equal(heuristic.reading, null);
 	assert.equal(heuristic.backup, null);
 	assert.equal(heuristic.pending, true);
-	assert.deepEqual(editAfterVersionMerge("read", "unread"), { reading: "read", pending: true });
+	assert.deepEqual(editAfterVersionMerge("read", "unread"), { reading: "unread", pending: false });
 	assert.deepEqual(splitSharedReading("to-read"), ["to-read", "to-read"]);
 	const echoed = applyNoteReading(readings, "W1", readNoteReading("read", "read"), 9);
 	assert.equal(echoed.store, readings);
@@ -220,7 +253,7 @@ export function verifyWorkIdentity(): void {
 	assert.equal(released.nodes.length, 1, "undoing the keep-separate decision restores automatic merge");
 	assert.equal(released.workIdentity?.records.length, split.workIdentity?.records.length);
 	const third = { ...seed, id: "W3", title: "Other article", isSeed: false, origin: "citation" as const, doiUrl: "https://doi.org/10.1234/third" };
-	const input = nicholsSnapshot(); input.nodes.push(third); input.catalog.push(third);
+	const input = duplicateSnapshot(); input.nodes.push(third); input.catalog.push(third);
 	input.referenceLists.push([third.id, [seed.id, alias.id]]);
 	input.coCitationContextIds = [third.id];
 	input.citationEvidence = [seed, alias].map((paper) => ({ citingId: third.id, citedId: paper.id, sources: ["openalex"], intents: [], contexts: [paper.id], relation: "unclear", evidenceQuotes: [], confidence: "medium" }));
@@ -230,7 +263,7 @@ export function verifyWorkIdentity(): void {
 	const incomingSplit = separateWorkRecords(incoming, incoming.nodes.find((paper) => paper.isSeed)!);
 	assert.equal(incomingSplit.citationEvidence?.get(third.id, seed.id)?.contexts.length, 1, "splitting restores source-specific evidence");
 	assert.equal(incomingSplit.citationEvidence?.get(third.id, alias.id)?.contexts.length, 1);
-	const citingAliases = nicholsSnapshot();
+	const citingAliases = duplicateSnapshot();
 	citingAliases.nodes = citingAliases.nodes.map((paper) => ({ ...paper, origin: "citation" as const }));
 	citingAliases.catalog = citingAliases.nodes;
 	citingAliases.coCitationContextIds = [seed.id, alias.id];
@@ -257,7 +290,7 @@ export function verifyWorkIdentity(): void {
 	acknowledgeIdentityStates(current, graph.nodes[0]!);
 	reconcileProjectIdentity(current, graph);
 	assert.equal(current.identityConflicts?.includes(seed.id), false, "acknowledging a legacy conflict survives future refreshes");
-	assert.equal(savedProjectForSeed(migrated, { kind: "openalex", value: alias.id }), current);
+	assert.equal(savedProjectForSeed(migrated, { kind: "openalex", value: alias.id }), undefined, "another record id is not this project's concrete seed");
 	assert.equal(savedProjectForSeed(migrated, { kind: "doi", value: alias.doiUrl! }), current);
 	updateProjectPaperState(migrated, seed.id, alias, { reading: "to-read", staged: false });
 	reconcileProjectIdentity(current, graph);
@@ -266,7 +299,7 @@ export function verifyWorkIdentity(): void {
 	assert.equal(Object.keys(current.paperStates!).length, 1);
 	reconcileProjectIdentity(current, split);
 	assert.equal(current.paperStates![alias.id]?.reading, "to-read", "explicit post-merge reading changes follow both restored records");
-	assert.equal(current.paperStates![alias.id]?.excluded, true, "splitting restores the alias's original exclusion state");
+	assert.equal(projectVersionState(current, alias).excluded, true, "splitting restores the alias's original version exclusion state");
 	assert.equal(current.currentView?.selectedId, alias.id);
 	assert.equal(current.deepDives?.[0]?.parentId, alias.id);
 	const grafted = graftNodes(graph, [alias], new Map([[alias.id, ["W999"]]]));
@@ -317,6 +350,9 @@ export function verifyWorkIdentity(): void {
 	assert.equal(beforeSwitch.switched, false);
 	const finished = stepMigrationDrill(beforeSwitch, v2Preview, null);
 	assert.equal(finished.switched, true);
+	assert.equal(migrationRereadAccepted({ version: 2 }, { version: 2 }), true);
+	assert.equal(migrationRereadAccepted({ version: 2 }, { version: 1 }), false);
+	assert.equal(migrationRereadAccepted({ version: 2 }, null), false);
 	assert.equal(finished.backup?.W8?.snapshot?.version, 2);
 	assert.equal(stepMigrationDrill(finished, previewMigration({ W1: { seedId: "W1" } }), null), finished);
 	source.W8.seedId = "changed";
@@ -565,7 +601,7 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	const left = stepSyncRetry(openSyncRetry(2), "left");
 	assert.equal(left.stopped && left.paused, true);
 	assert.equal(stepSyncRetry(left, "wrote"), left);
-	const snapshot = nicholsSnapshot(); const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
+	const snapshot = duplicateSnapshot(); const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
 	const toRaw = (paper: PaperNode): RawWork => ({ id: `https://openalex.org/${paper.id}`, doi: paper.doiUrl, display_name: paper.title, publication_year: paper.year ?? undefined, type: paper.workType ?? undefined,
 		authorships: paper.authorList.map((name) => ({ author: { display_name: name } })), primary_location: { source: { display_name: paper.venue ?? undefined } },
 		biblio: { volume: paper.bibliography?.volume, issue: paper.bibliography?.issue, first_page: paper.bibliography?.firstPage, last_page: paper.bibliography?.lastPage },
@@ -632,6 +668,37 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	const open = await expandSecondLayer(layerClient, layer, 10, false);
 	assert.equal(open.graph.nodes.some((node) => node.id === "W10"), true);
 	assert.equal(open.graph.nodes.some((node) => node.id === "W9"), false);
+	const admissionRaw = (id: string, type = "article", retracted = false): RawWork => ({
+		id: `https://openalex.org/${id}`, display_name: id, publication_year: 2020, type, is_retracted: retracted,
+		authorships: [{ author: { display_name: "A" } }], cited_by_count: 3, referenced_works: [],
+	});
+	const admissionById = (id: string): RawWork => id.endsWith("W9") ? admissionRaw("W9", "book-review") : id.endsWith("W10") ? admissionRaw("W10", "article", true) : admissionRaw(id.endsWith("W1") ? "W1" : "W11");
+	const admissionClient = new OpenAlexClient(async (url) => {
+		const query = new URL(url);
+		const filter = query.searchParams.get("filter") ?? "";
+		if (query.pathname !== "/works") return admissionById("W1");
+		if (filter.startsWith("openalex:")) return { results: filter.slice("openalex:".length).split("|").filter(Boolean).map(admissionById) };
+		if (filter.startsWith("cited_by:")) return { results: [admissionById("W9"), admissionById("W10"), admissionById("W11")], meta: { next_cursor: null } };
+		return { results: [], meta: { next_cursor: null } };
+	}, { apiKey: "", contactEmail: "" });
+	const strictAdmission = { ...DEFAULT_SETTINGS, includeReferences: true, includeCitations: false, includeRelated: false, excludeRetracted: true, s2Reconcile: false, maxNodes: 20 };
+	const openAdmission = { ...strictAdmission, excludeRetracted: false };
+	const idsOf = (nodes: Array<{ id: string }>): string[] => nodes.map((node) => node.id).sort();
+	const strictLoad = await loadNeighborhood(admissionClient, { kind: "openalex", value: "W1" }, strictAdmission);
+	assert.deepEqual(idsOf(strictLoad.nodes), ["W1", "W11"], "first load drops book reviews and retracted works");
+	const openLoad = await loadNeighborhood(admissionClient, { kind: "openalex", value: "W1" }, openAdmission);
+	assert.deepEqual(idsOf(openLoad.nodes), ["W1", "W10", "W11"], "turning retraction exclusion off still drops book reviews");
+	const seedOnly: SimilarityGraph = {
+		...layer, nodes: [layerPaper("W1", true)], catalog: [layerPaper("W1", true)], seedScore: new Map(),
+	};
+	const dived = await expandAround(admissionClient, seedOnly, seedOnly.nodes[0]!, new Set(), strictAdmission, 8);
+	assert.deepEqual(dived.papers.map((paper) => paper.id).sort(), ["W11"], "deep dive uses the same admission");
+	const divedOpen = await expandAround(admissionClient, seedOnly, seedOnly.nodes[0]!, new Set(), openAdmission, 8);
+	assert.deepEqual(divedOpen.papers.map((paper) => paper.id).sort(), ["W10", "W11"]);
+	const restoredStrict = await restoreGraftedMembers(admissionClient, seedOnly, ["W9", "W10", "W11"], strictAdmission);
+	assert.deepEqual(idsOf(restoredStrict.graph.nodes), ["W1", "W11"], "restoring a deep dive drops the same records");
+	const restoredOpen = await restoreGraftedMembers(admissionClient, seedOnly, ["W9", "W10", "W11"], openAdmission);
+	assert.deepEqual(idsOf(restoredOpen.graph.nodes), ["W1", "W10", "W11"]);
 	let attempts = 0;
 	const crossref = new CrossrefClient(async () => {
 		attempts += 1;
@@ -642,4 +709,34 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	assert.equal((await crossref.work("10.1000/s04-retry"))?.DOI, "10.1000/s04-retry");
 	assert.equal((await crossref.work("10.1000/s04-retry"))?.DOI, "10.1000/s04-retry");
 	assert.equal(attempts, 2);
+	const paper = { id: "W3", title: "W3", authors: "A", authorList: ["A"], year: 2020, citedByCount: 1, doiUrl: null, openAlexUrl: "https://openalex.org/W3", isSeed: false, origin: "reference" as const, abstract: "", concepts: [], language: "en", workType: "article", venue: null, retracted: false };
+	const workflowSettings = { ...DEFAULT_SETTINGS, researchProjects: {}, readingWorkflow: undefined };
+	let notes = [{ path: "old.md", raw: "read", revision: "1:1" }];
+	const writes: string[] = [];
+	const workflow = createReadingWorkflow({
+		getSettings: () => workflowSettings,
+		persist: async () => undefined,
+		listNotes: () => notes,
+		writeNote: async (path, _expected, reading) => {
+			writes.push(path);
+			notes = notes.map((note) => note.path === path ? { ...note, raw: reading, revision: "9:9" } : note);
+			return "9:9";
+		},
+	});
+	await workflow.commitWorkflow(paper, null, { reading: "read" });
+	notes = [{ path: "new.md", raw: "read", revision: "2:2" }];
+	await workflow.refreshReading();
+	assert.deepEqual(writes, [], "renaming a note does not write the old path");
+	assert.equal(workflow.getReadingIssues().length, 0);
+	notes = [{ path: "new.md", raw: "to-read", revision: "3:3" }];
+	await workflow.refreshReading();
+	assert.deepEqual(writes, [], "an external edit stays pending");
+	assert.equal(workflow.getReadingIssues().length, 1);
+	await workflow.resolveReading(paper, "read");
+	assert.deepEqual(writes, ["new.md"]);
+	assert.equal(workflow.getReadingIssues().length, 0);
+	writes.length = 0;
+	await workflow.refreshReading();
+	assert.deepEqual(writes, [], "refreshing after confirmation does not write again");
+	assert.equal(workflow.getReadingIssues().length, 0);
 }

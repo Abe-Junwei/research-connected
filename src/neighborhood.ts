@@ -12,7 +12,7 @@ import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
-import { chooseExpand, couplingFill, EXPAND_CAP, graftNodes, normalizeWorkGraph, omitNode, refreshDerived, type EditableGraph } from "./graph-edit";
+import { applyWorkIdentityDecisions, chooseExpand, couplingFill, EXPAND_CAP, graftNodes, refreshDerived, type EditableGraph } from "./graph-edit";
 import { paperHasId, paperRecords, resolveWorkQuery, sameWork, workIndex, type WorkIdentity } from "./work-identity";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
@@ -47,6 +47,7 @@ export const SAMPLE_TIERS: Record<
 const MAX_CONTEXT_CITERS = 400;
 
 export interface SimilarityGraph {
+	researchProjection?: import("./graph-edit").ResearchProjection;
 	workIdentity?: WorkIdentity;
 	nodes: PaperNode[];
 	edges: GraphEdge[];
@@ -169,6 +170,10 @@ const ORIGIN_RANK: Record<Origin, number> = {
  * Resolve a seed, sample its OpenAlex neighborhood, then score pairs.
  * Reference lists for coupling and co-citation come from a second batched fetch.
  */
+export class RetractedSeedError extends Error {
+	constructor(readonly paper: PaperNode) { super(tr("已保存起点现已撤稿，重建已暂停；原图保持可用。", "The saved seed is now retracted. Rebuild paused; the previous graph remains available.")); }
+}
+
 export async function loadNeighborhood(
 	client: OpenAlexClient,
 	target: { kind: "doi" | "openalex"; value: string },
@@ -176,6 +181,7 @@ export async function loadNeighborhood(
 	onStage?: (stage: LoadStage) => void,
 	reconcile?: ReconcileSource | null,
 	crossref?: CrossrefReferenceSource | null,
+	options?: { savedSeed?: PaperNode; allowRetractedSeed?: boolean },
 ): Promise<SimilarityGraph> {
 	if (!settings.includeReferences && !settings.includeCitations && !settings.includeRelated) {
 		throw new OpenAlexError(tr("请至少开启一种邻居策略（参考文献、施引或相关作品）。", "Enable at least one neighbor source: references, citing papers, or related works."));
@@ -186,6 +192,7 @@ export async function loadNeighborhood(
 		target.kind === "doi" ? await client.workByDoi(target.value) : await client.workById(target.value);
 	let seed = toPaper(seedRaw, "seed");
 	if (!seed) throw new OpenAlexError(tr("OpenAlex 返回的种子作品缺少标题或 ID。", "The seed work from OpenAlex has no title or ID."));
+	if (seed.retracted && options?.savedSeed && !options.allowRetractedSeed) throw new RetractedSeedError(seed);
 	const exactProject = settings.researchProjects?.[seed.id];
 	const matchingProjects = Object.values(settings.researchProjects ?? {}).filter((project) => project.snapshot?.nodes.some((paper) => paper.isSeed && paperRecords(paper).every((record) => sameWork(record, seed!))));
 	const existingProject = exactProject ?? (matchingProjects.length === 1 ? matchingProjects[0] : undefined);
@@ -478,8 +485,8 @@ export async function loadNeighborhood(
 		}
 	}
 
-	return normalizeWorkGraph({
-		workIdentity: separatedIds.length ? { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], separatedIds } : undefined,
+	return applyWorkIdentityDecisions({
+		workIdentity: { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], separatedIds },
 		nodes: [seed, ...picked],
 		edges,
 		seedScore,
@@ -508,7 +515,7 @@ export async function loadNeighborhood(
 		semanticMode,
 		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
 		selectionRank,
-	});
+	}, settings.workIdentityDecisions, settings.sourceVersionRelations);
 }
 
 /** Fetch up to EXPAND_CAP new neighbors of `from`, skipping graph members and hidden ids. */
@@ -656,9 +663,8 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 ): Promise<{ graph: T; added: number; displaced: number; omitted: number; failed: number }> {
 	const identityIds = new Map(graph.workIdentity?.canonicalIds ?? []);
 	const requested = [...new Set(ids.filter((id) => /^W\d+$/i.test(id)).map((id) => identityIds.get(id.toUpperCase()) ?? id.toUpperCase()))].filter((id) => !hidden.has(id));
-	const capacity = Math.max(0, settings.maxNodes - 1);
-	const pinned = requested.slice(0, capacity);
-	const omitted = requested.length - pinned.length;
+	const pinned = requested;
+	const omitted = 0;
 	const present = new Set(graph.nodes.map((node) => node.id));
 	const want = pinned.filter((id) => !present.has(id));
 	if (want.length === 0) return { graph, added: 0, displaced: 0, omitted, failed: 0 };
@@ -677,16 +683,9 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 		return { graph, added: 0, displaced: 0, omitted, failed: want.length };
 	}
 	if (papers.length === 0) return { graph, added: 0, displaced: 0, omitted, failed: want.length };
-	const pinnedSet = new Set(pinned);
-	let next = refreshDerived(graftNodes(graph, papers, lists));
+	const next = refreshDerived(graftNodes(graph, papers, lists));
 	const added = next.nodes.length - graph.nodes.length;
-	const excess = Math.max(0, next.nodes.length - settings.maxNodes);
-	const removable = graph.nodes.filter((node) => !node.isSeed && !pinnedSet.has(node.id))
-		.sort((a, b) => (graph.seedScore.get(a.id) ?? 0) - (graph.seedScore.get(b.id) ?? 0) || a.id.localeCompare(b.id))
-		.slice(0, excess);
-	for (const node of removable) next = omitNode(next, node.id) ?? next;
-	if (removable.length) next = refreshDerived(next);
-	return { graph: next, added, displaced: removable.length, omitted, failed: want.length - papers.length };
+	return { graph: next, added, displaced: 0, omitted, failed: want.length - papers.length };
 }
 
 export function selectNeighbors(

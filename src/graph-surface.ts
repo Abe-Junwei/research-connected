@@ -76,8 +76,8 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	reload.disabled = true;
 	reload.append(createChromeIcon("refresh"));
 	zoom.append(fit, zoomIn, zoomOut, reload);
-	const pause = mountStarfield(stage);
-	stage.append(canvas, empty, tooltip, nodeMenu, zoom, pause);
+	mountStarfield(stage);
+	stage.append(canvas, empty, tooltip, nodeMenu, zoom);
 	const column = createDiv();
 	column.className = "cpo-graph-column";
 	const yearHost = createDiv();
@@ -88,7 +88,7 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	return { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoom, zoomIn, zoomOut, fit, reload, yearHost };
 }
 
-function mountStarfield(stage: HTMLElement): HTMLButtonElement {
+function mountStarfield(stage: HTMLElement): void {
 	const nebula = createDiv();
 	nebula.className = "cpo-nebula";
 	nebula.setAttribute("aria-hidden", "true");
@@ -114,33 +114,6 @@ function mountStarfield(stage: HTMLElement): HTMLButtonElement {
 		stars.append(circle);
 	}
 	stage.append(nebula, stars);
-	const pause = createEl("button");
-	pause.type = "button";
-	pause.className = "cpo-icon cpo-star-pause";
-	const reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-	if (reduced) {
-		stage.classList.add("is-stars-paused");
-		pause.disabled = true;
-	}
-	const sync = (): void => {
-		const paused = stage.classList.contains("is-stars-paused");
-		const label = reduced
-			? tr("系统减少动态，星空已静止", "Motion is reduced; the starfield is still")
-			: paused
-				? tr("继续星空动效", "Resume starfield motion")
-				: tr("暂停星空动效", "Pause starfield motion");
-		pause.setAttribute("aria-pressed", String(paused));
-		pause.setAttribute("aria-label", label);
-		pause.title = label;
-		pause.replaceChildren(createChromeIcon(paused ? "play" : "pause"));
-	};
-	pause.addEventListener("click", () => {
-		if (pause.disabled) return;
-		stage.classList.toggle("is-stars-paused");
-		sync();
-	});
-	sync();
-	return pause;
 }
 
 function menuButton(label: string): HTMLButtonElement {

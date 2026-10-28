@@ -19,7 +19,9 @@ export interface RankedWork {
 const LIST_LIMIT = 15;
 const OFTEN = 2;
 const CLASSIC_AGE = 8;
-const CLASSIC_CAP = 8;
+// Project heuristics, not a universal definition of scholarly classics.
+const CLASSIC_CITATIONS = 1000;
+const CLASSIC_RELATIVE_MIN = 100;
 
 /**
  * Works cited by many papers in the visible subgraph.
@@ -82,50 +84,79 @@ function graphSeedId(graph: SimilarityGraph): string {
 	return graph.nodes.find((node) => node.isSeed)?.id ?? "";
 }
 
-/** In-graph citation hubs that have had time to become canonical. Seed excluded. */
-export function classicNodeIds(
-	nodes: readonly { id: string; year: number | null; isSeed?: boolean }[],
+export interface ClassicEvidence {
+	localCiters: number;
+	citations: number;
+	local: boolean;
+	absolute: boolean;
+	relative: boolean;
+}
+
+/** Mature foundational candidates: local support OR cumulative citation impact. */
+export function classicCandidates(
+	nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
 	edges: readonly GraphEdge[],
 	nowYear = new Date().getFullYear(),
-): Set<string> {
-	const incoming = new Map<string, number>();
-	const bump = (id: string): void => {
-		incoming.set(id, (incoming.get(id) ?? 0) + 1);
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
+): Map<string, ClassicEvidence> {
+	const known = new Set(nodes.map(node => node.id));
+	const incoming = new Map<string, Set<string>>();
+	const bump = (id: string, citer: string): void => {
+		if (id === citer || !known.has(id) || !known.has(citer)) return;
+		const citers = incoming.get(id) ?? new Set<string>();
+		citers.add(citer);
+		incoming.set(id, citers);
 	};
 	for (const edge of edges) {
-		if (edge.direct === "source-cites-target" || edge.direct === "mutual") bump(edge.target);
-		if (edge.direct === "target-cites-source" || edge.direct === "mutual") bump(edge.source);
+		if (edge.direct === "source-cites-target" || edge.direct === "mutual") bump(edge.target, edge.source);
+		if (edge.direct === "target-cites-source" || edge.direct === "mutual") bump(edge.source, edge.target);
 	}
-	return new Set(
-		nodes
-			.filter((node) => !node.isSeed && (incoming.get(node.id) ?? 0) >= OFTEN && node.year !== null && nowYear - node.year >= CLASSIC_AGE)
-			.sort((a, b) => (incoming.get(b.id) ?? 0) - (incoming.get(a.id) ?? 0) || (a.year ?? 0) - (b.year ?? 0) || a.id.localeCompare(b.id))
-			.slice(0, CLASSIC_CAP)
-			.map((node) => node.id),
+	for (const [citer, refs] of referenceLists ?? []) for (const id of refs) bump(id, citer);
+	const mature = nodes.filter(node => !node.isSeed && !node.retracted && node.year !== null && nowYear - node.year >= CLASSIC_AGE);
+	const citations = mature.map(node => Math.max(0, node.citedByCount ?? 0)).sort((a, b) => a - b);
+	const relativeThreshold = citations.length >= 10 ? Math.max(CLASSIC_RELATIVE_MIN, citations[Math.floor(citations.length * 0.9)]!) : Infinity;
+	return new Map(
+		mature
+			.filter(node => (incoming.get(node.id)?.size ?? 0) >= OFTEN || (node.citedByCount ?? 0) >= Math.min(CLASSIC_CITATIONS, relativeThreshold))
+			.sort((a, b) => (incoming.get(b.id)?.size ?? 0) - (incoming.get(a.id)?.size ?? 0) || (a.year ?? 0) - (b.year ?? 0) || a.id.localeCompare(b.id))
+			.map((node) => {
+				const localCiters = incoming.get(node.id)?.size ?? 0;
+				const count = node.citedByCount ?? 0;
+				return [node.id, { localCiters, citations: count, local: localCiters >= OFTEN, absolute: count >= CLASSIC_CITATIONS, relative: count >= relativeThreshold }];
+			}),
 	);
 }
 
-/** 0–1 influence among classics: √ of year-normalized citations on this graph. */
+export function classicNodeIds(
+	nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
+	edges: readonly GraphEdge[],
+	nowYear = new Date().getFullYear(),
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
+): Set<string> {
+	return new Set(classicCandidates(nodes, edges, nowYear, referenceLists).keys());
+}
+
+/** 0–1 cumulative influence among the selected classics. */
 export function classicInfluence(
 	nodes: readonly { id: string; year: number | null; citedByCount: number; isSeed?: boolean }[],
 	edges: readonly GraphEdge[],
 	nowYear = new Date().getFullYear(),
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
 ): Map<string, number> {
-	const ids = classicNodeIds(nodes, edges, nowYear);
+	const ids = classicNodeIds(nodes, edges, nowYear, referenceLists);
 	const out = new Map<string, number>();
 	if (ids.size === 0) return out;
 	const byId = new Map(nodes.map((node) => [node.id, node]));
 	const score = (id: string): number => {
 		const node = byId.get(id);
 		if (!node) return 0;
-		const age = node.year === null ? 1 : Math.max(1, nowYear - node.year);
-		return Math.max(0, node.citedByCount) / age;
+		return Math.max(0, node.citedByCount);
 	};
 	const values = [...ids].map(score);
 	const lo = Math.sqrt(Math.min(...values));
 	const hi = Math.sqrt(Math.max(...values));
 	for (const id of ids) {
-		const t = hi - lo < 1e-9 ? 1 : (Math.sqrt(score(id)) - lo) / (hi - lo);
+		const t = hi === 0 ? 0 : hi - lo < 1e-9 ? 0.5 : (Math.sqrt(score(id)) - lo) / (hi - lo);
 		out.set(id, t);
 	}
 	return out;

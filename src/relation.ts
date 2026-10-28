@@ -33,6 +33,19 @@ export function findEdge(edges: readonly GraphEdge[], a: string, b: string): Gra
 	return null;
 }
 
+/** Display only a fully comparable sampled score; ranking retains its original weight. */
+export function comparableStructuralSimilarity(edge: GraphEdge): number | null {
+	return edge.structuralCoverage?.references && edge.structuralCoverage.coCitation
+		? edge.structuralSimilarity ?? null
+		: null;
+}
+
+export function observedRelationCount(edge: GraphEdge, kind: "references" | "coCitation"): string {
+	const count = kind === "references" ? edge.sharedRefs : edge.coCitedBy;
+	if (count === 0 && !edge.structuralCoverage?.[kind]) return tr("证据不足", "Insufficient evidence");
+	return kind === "references" ? tr(`${count} 篇`, `${count} papers`) : tr(`${count} 次`, `${count} times`);
+}
+
 /**
  * Why this edge exists. Citation direction uses author + year.
  * Every measured signal is included; the line color is only the sharpest one.
@@ -51,10 +64,9 @@ export function explainRelation(
 	if (edge.coCitedBy > 0) bits.push(tr(`共被引 ${edge.coCitedBy} 次`, `Co-cited ${edge.coCitedBy} times`));
 	if (edge.sharedRefs > 0) bits.push(tr(`共享参考文献 ${edge.sharedRefs} 篇`, `Shared references: ${edge.sharedRefs} papers`));
 	if (bits.length === 0) bits.push(tr("采样邻域里的弱连线", "Weak link within the sampled neighborhood"));
-	const scoreLabel = edge.structuralSimilarity === null
+	const score = comparableStructuralSimilarity(edge);
+	const scoreLabel = score === null
 		? tr("结构相似度不可用（当前缺少可比较数据）", "Structural similarity unavailable (no comparable data)")
-		: edge.structuralSimilarity === undefined
-			? tr(`图谱相近度 ${edge.weight.toFixed(2)}`, `Graph similarity ${edge.weight.toFixed(2)}`)
-			: tr(`结构相似 ${edge.structuralSimilarity.toFixed(2)}`, `Structural similarity ${edge.structuralSimilarity.toFixed(2)}`);
+		: tr(`结构相似 ${score.toFixed(2)}`, `Structural similarity ${score.toFixed(2)}`);
 	return `${bits.join(" · ")} · ${scoreLabel}`;
 }

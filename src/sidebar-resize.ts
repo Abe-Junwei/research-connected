@@ -1,5 +1,5 @@
 import { tr } from "./i18n";
-const DEFAULT_WIDTH = 320;
+const DEFAULT_WIDTH = 360;
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 480;
 

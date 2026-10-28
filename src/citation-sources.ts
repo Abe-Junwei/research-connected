@@ -1,6 +1,8 @@
 import { tr } from "./i18n";
 import type { GetJson } from "./openalex";
 import { cleanAbstractText, normalizeDoi } from "./paper";
+import type { SourceVersionRelation } from "./work-identity";
+import type { PaperNode } from "./types";
 
 export interface OpenCitationRow {
 	oci?: string;
@@ -13,16 +15,18 @@ export interface CrossrefWork {
 	DOI?: string;
 	abstract?: string;
 	reference?: Array<{ DOI?: string; unstructured?: string }>;
+	relation?: Record<string, Array<{ id?: unknown; "id-type"?: unknown }>>;
 }
 
 /** Public Crossref DOI metadata, used only as a bounded fallback. */
 export class CrossrefClient {
 	constructor(private readonly getJson: GetJson, private readonly contactEmail: string) {}
 
-	async work(doi: string): Promise<CrossrefWork | null> {
+	async work(doi: string, fresh = false): Promise<CrossrefWork | null> {
 		const encodedDoi = encodeURIComponent(doi).replace(/%2F/gi, "/");
 		const url = new URL(`https://api.crossref.org/works/${encodedDoi}`);
 		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.contactEmail)) url.searchParams.set("mailto", this.contactEmail);
+		if (fresh) dropCachedGet(url.toString(), { Accept: "application/json" });
 		const json = await cachedGet(this.getJson, url.toString(), { headers: { Accept: "application/json" } });
 		if (!json || typeof json !== "object") throw new CitationSourceError(tr("Crossref 返回格式错误。", "Crossref returned an invalid response."));
 		const message = (json as { message?: unknown }).message;
@@ -47,6 +51,51 @@ export class CrossrefClient {
 			.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
 			.replace(/\s+/g, " ").trim();
 		return cleanAbstractText(text) || null;
+	}
+
+	/** Crossref's explicit intra-work types only; inter-work review/comment claims conflict with a version link. */
+	async versionRelations(papers: readonly PaperNode[], previous: readonly SourceVersionRelation[] = []): Promise<SourceVersionRelation[]> {
+		const byDoi = new Map<string, string[]>();
+		for (const paper of papers) {
+			const doi = normalizeDoi(paper.doiUrl);
+			if (doi) byDoi.set(doi, [...new Set([...(byDoi.get(doi) ?? []), paper.id])]);
+		}
+		const claims = new Map<string, { ids: string[]; positive: string[]; contrary: string[] }>();
+		const checked = new Set<string>();
+		// shortcut: inspect 20 DOI records per graph load; expand only if measured coverage requires it.
+		for (const [doi, ids] of [...byDoi].slice(0, 20)) {
+			let work: CrossrefWork | null;
+			try { work = await this.work(doi, true); } catch { continue; }
+			if (!work || normalizeDoi(work.DOI) !== doi) continue;
+			for (const id of ids) checked.add(id);
+			for (const [type, rows] of Object.entries(work.relation ?? {})) {
+				const positive = ["is-identical-to", "is-preprint-of", "has-preprint", "is-manuscript-of", "has-manuscript", "is-version-of", "has-version"].includes(type);
+				const contrary = ["is-review-of", "has-review", "is-comment-on", "has-comment", "is-reply-to", "has-reply"].includes(type);
+				if ((!positive && !contrary) || !Array.isArray(rows)) continue;
+				for (const row of rows) {
+					if (!row || row["id-type"] !== "doi" || typeof row.id !== "string") continue;
+					const target = normalizeDoi(row.id);
+					for (const a of ids) for (const b of target ? byDoi.get(target) ?? [] : []) {
+						if (a === b) continue;
+						const pair = [a, b].sort(), key = pair.join("|");
+						const claim = claims.get(key) ?? { ids: pair, positive: [], contrary: [] };
+						(positive ? claim.positive : claim.contrary).push(`crossref:${doi}:${type}:${target}`);
+						claims.set(key, claim);
+					}
+				}
+			}
+		}
+		const reports: SourceVersionRelation[] = [];
+		const keys = new Set([...claims.keys(), ...previous.filter(relation => relation.ids.some(id => checked.has(id))).map(relation => relation.ids.slice().sort().join("|"))]);
+		for (const key of keys) {
+			const claim = claims.get(key), prior = previous.find(relation => relation.ids.slice().sort().join("|") === key);
+			if (!claim?.positive.length && !prior) continue;
+			const status = claim?.contrary.length ? "conflict" : claim?.positive.length ? "confirmed" : "missing";
+			const evidence = [...new Set([...(claim?.positive ?? []), ...(claim?.contrary ?? [])])].sort();
+			if (prior?.status === status && JSON.stringify(prior.evidence) === JSON.stringify(evidence)) continue;
+			reports.push({ ids: key.split("|"), source: "crossref", status, linked: status === "confirmed" || Boolean(prior?.linked), evidence, previousEvidence: [...new Set([...(prior?.previousEvidence ?? []), ...(prior?.evidence ?? [])])], updatedAt: Date.now() });
+		}
+		return reports;
 	}
 }
 

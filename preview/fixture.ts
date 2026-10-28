@@ -12,7 +12,7 @@ export const fixtureGet: GetJson = async url => {
 	if (url.includes("opencitations")) return [{ citing: "doi:10.1234/later", cited: "doi:10.1234/seed" }];
 	if (url.includes("semanticscholar")) return { data: [{ citedPaper: { externalIds: { DOI: "10.1234/seed" } }, intents: ["method"], isInfluential: true, contexts: ["We use the seed method."] }] };
 	const query = new URL(url);
-	if (query.pathname !== "/works") return works[0];
+	if (query.pathname !== "/works") return works.find((work) => query.pathname.endsWith(`/${work.id.split("/").pop()}`)) ?? works[0];
 	const filter = query.searchParams.get("filter") ?? "";
 	return { results: filter.startsWith("cited_by:") ? [works[1], works[3], works[4]] : filter.startsWith("cites:") ? [works[2], works[4], works[5]] : filter.startsWith("related_to:") ? [] : works };
 };
