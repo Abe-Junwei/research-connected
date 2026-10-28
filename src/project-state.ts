@@ -430,6 +430,77 @@ export function splitSharedReading(reading: ReadingStatus): [ReadingStatus, Read
 	return [reading, reading];
 }
 
+export type NoteReadingField =
+	| { kind: "human"; reading: ReadingStatus }
+	| { kind: "removed" }
+	| { kind: "invalid"; raw: string }
+	| { kind: "plugin"; reading: ReadingStatus };
+
+const READING_VALUES = new Set<ReadingStatus>(["unread", "to-read", "read"]);
+
+function isReadingStatus(value: unknown): value is ReadingStatus {
+	return typeof value === "string" && READING_VALUES.has(value as ReadingStatus);
+}
+
+/** A value equal to the plugin's own last write is an echo, not a new human edit. */
+export function readNoteReading(raw: unknown, pluginWrite: ReadingStatus | null): NoteReadingField {
+	if (raw === undefined || raw === null) return { kind: "removed" };
+	if (!isReadingStatus(raw)) {
+		const text = typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? String(raw) : JSON.stringify(raw);
+		return { kind: "invalid", raw: text ?? "" };
+	}
+	if (pluginWrite !== null && raw === pluginWrite) return { kind: "plugin", reading: raw };
+	return { kind: "human", reading: raw };
+}
+
+export function applyNoteReading(store: SharedReadings, workId: string, field: NoteReadingField, at: number): { store: SharedReadings; syncing: boolean } {
+	switch (field.kind) {
+		case "human":
+			return { store: writeSharedReading(store, workId, field.reading, at), syncing: true };
+		case "removed":
+			return { store, syncing: false };
+		case "invalid":
+			return { store, syncing: false };
+		case "plugin":
+			return { store, syncing: true };
+		default: {
+			const _never: never = field;
+			return _never;
+		}
+	}
+}
+
+export interface NoteSyncResult {
+	reading: ReadingStatus;
+	wrote: string[];
+	failed: string[];
+	held: string[];
+}
+
+/** Write participating notes after the shared record is committed. One failure does not roll the reading back or rewrite a note that already succeeded. */
+export async function syncParticipatingNotes(
+	reading: ReadingStatus,
+	notes: readonly { path: string; participating: boolean; edited: boolean; write: () => Promise<void> }[],
+): Promise<NoteSyncResult> {
+	const wrote: string[] = [];
+	const failed: string[] = [];
+	const held: string[] = [];
+	for (const note of notes) {
+		if (!note.participating) continue;
+		if (note.edited) {
+			held.push(note.path);
+			continue;
+		}
+		try {
+			await note.write();
+			wrote.push(note.path);
+		} catch {
+			failed.push(note.path);
+		}
+	}
+	return { reading, wrote, failed, held };
+}
+
 export function projectStagedPapers(projects: Record<string, ResearchProject>): Array<{ seedId: string; paper: PaperNode; source: string; addedAt: string; read: boolean; reading: ReadingStatus }> {
 	return Object.values(projects).flatMap((project) => Object.values(project.paperStates ?? {})
 		.filter((state) => state.staged)

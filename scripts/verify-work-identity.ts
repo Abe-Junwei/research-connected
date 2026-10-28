@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, operationBlocked, projectsForSeedId, readShared, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, operationBlocked, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -159,6 +159,19 @@ export function verifyWorkIdentity(): void {
 	assert.equal(heuristic.pending, true);
 	assert.deepEqual(editAfterVersionMerge("read", "unread"), { reading: "read", pending: true });
 	assert.deepEqual(splitSharedReading("to-read"), ["to-read", "to-read"]);
+	const echoed = applyNoteReading(readings, "W1", readNoteReading("read", "read"), 9);
+	assert.equal(echoed.store, readings);
+	assert.equal(echoed.syncing, true);
+	const humanEdit = applyNoteReading(readings, "W1", readNoteReading("read", "unread"), 9);
+	assert.equal(readShared(humanEdit.store, "W1"), "read");
+	assert.equal(humanEdit.syncing, true);
+	const removed = applyNoteReading(readings, "W1", readNoteReading(undefined, "unread"), 9);
+	assert.equal(removed.syncing, false);
+	assert.equal(removed.store, readings);
+	const invalid = readNoteReading("done", "unread");
+	assert.equal(invalid.kind, "invalid");
+	if (invalid.kind === "invalid") assert.equal(invalid.raw, "done");
+	assert.equal(applyNoteReading(readings, "W1", invalid, 9).syncing, false);
 	invalidateLiteratureIndex();
 	const noted = cited("W1", "https://doi.org/10.1234/cache");
 	const vault = (files: { path: string; frontmatter?: Record<string, unknown> }[]) => ({
@@ -266,6 +279,18 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	const before = writeSharedReading(emptySharedReadings(), "W1", "unread", 3);
 	await assert.rejects(commitSharedReading(before, "W1", "read", 4, async () => { throw new Error("disk"); }));
 	assert.equal(readShared(before, "W1"), "unread");
+	const calls: string[] = [];
+	const synced = await syncParticipatingNotes("read", [
+		{ path: "a.md", participating: true, edited: false, write: async () => { calls.push("a"); } },
+		{ path: "b.md", participating: true, edited: false, write: async () => { throw new Error("disk"); } },
+		{ path: "c.md", participating: true, edited: true, write: async () => { calls.push("c"); } },
+		{ path: "d.md", participating: false, edited: false, write: async () => { calls.push("d"); } },
+	]);
+	assert.equal(synced.reading, "read");
+	assert.deepEqual(synced.wrote, ["a.md"]);
+	assert.deepEqual(synced.failed, ["b.md"]);
+	assert.deepEqual(synced.held, ["c.md"]);
+	assert.deepEqual(calls, ["a"]);
 	const snapshot = nicholsSnapshot(); const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
 	const toRaw = (paper: PaperNode): RawWork => ({ id: `https://openalex.org/${paper.id}`, doi: paper.doiUrl, display_name: paper.title, publication_year: paper.year ?? undefined, type: paper.workType ?? undefined,
 		authorships: paper.authorList.map((name) => ({ author: { display_name: name } })), primary_location: { source: { display_name: paper.venue ?? undefined } },
