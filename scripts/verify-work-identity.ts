@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, commitPaperReading, normalizeProjects, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, commitPaperReading, emptyVersionScope, excludeVersion, excludeWholeWork, normalizeProjects, noteVersion, projectsForSeedId, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, stageVersion, updateProjectPaperState, versionVisible, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../src/graph-edit";
 import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -50,9 +50,41 @@ export function verifyWorkIdentity(): void {
 	assert.equal(resolveWorkQuery([otherId], "https://openalex.org/works/W567"), "W567");
 	assert.equal(resolvePathEndpoint("10.1234/w567", [doiPaper, otherId], normalizeDoi, shortId), "W123");
 	assert.equal(resolvePathEndpoint("10.1234/w567", [otherId], normalizeDoi, shortId), null);
+	assert.equal(resolveWorkQuery([doiPaper, otherId], "see 10.1234/w567 and W567"), null);
 	assert.equal(doiOf(cited("W9", "https://doi.org/10.1234/example(test)")), "10.1234/example(test)");
-	const bibKeys = [...toBibTeX([cited("W11234"), cited("W21234"), cited("W31234")]).matchAll(/@\w+\{([^,]+),/g)].map((match) => match[1]);
-	assert.equal(new Set(bibKeys).size, bibKeys.length, bibKeys.join(" "));
+	assert.equal(doiOf(cited("W9", "https://doi.org/10.1234/example(test).")), "10.1234/example(test)");
+	const bibKeys = [...toBibTeX([cited("W1"), cited("W2"), cited("W20202")]).matchAll(/@\w+\{([^,]+),/g)].map((match) => match[1]);
+	assert.deepEqual(bibKeys, ["Lovelace2020", "Lovelace20202", "Lovelace20200202"]);
+	const legacy: Record<string, ResearchProject> = {
+		W1: { version: 1, seedId: "W1", name: "Legacy", updatedAt: 1, views: [] },
+		W8: { version: 1, seedId: "W8", name: "Other", updatedAt: 1, views: [] },
+	};
+	const retargeted = retargetProjectSeed(legacy, "W1", "W9");
+	assert.deepEqual(Object.keys(retargeted), ["W1", "W8"]);
+	assert.equal(retargeted.W1?.seedId, "W9");
+	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W9" }), undefined);
+	assert.equal(savedProjectForSeed(retargeted, { kind: "openalex", value: "W1" })?.name, "Legacy");
+	const shared = retargetProjectSeed(retargeted, "W8", "W9");
+	assert.deepEqual(projectsForSeedId(shared, "W9").map((project) => project.name), ["Legacy", "Other"]);
+	assert.equal(savedProjectForSeed(shared, { kind: "openalex", value: "W9" }), undefined);
+	let scope = noteVersion(noteVersion(emptyVersionScope(), "v1"), "v2");
+	scope = excludeVersion(scope, "v1");
+	assert.equal(versionVisible(scope, "v1"), false);
+	assert.equal(versionVisible(scope, "v2"), true);
+	scope = stageVersion(scope, "v1");
+	assert.equal(versionVisible(scope, "v1"), false);
+	scope = excludeWholeWork(scope);
+	scope = noteVersion(scope, "v3");
+	assert.equal(versionVisible(scope, "v3"), false);
+	scope = restoreVersion(scope, "v2");
+	scope = stageVersion(scope, "v2");
+	assert.equal(versionVisible(scope, "v2"), true);
+	assert.equal(versionVisible(scope, "v1"), false);
+	assert.equal(versionVisible(scope, "v3"), false);
+	scope = excludeVersion(scope, "v2");
+	assert.equal(versionVisible(scope, "v2"), false);
+	assert.equal(scope.versions.v2?.restored, false);
+	assert.equal(excludeVersion(scope, "seed", true), scope);
 	invalidateLiteratureIndex();
 	const noted = cited("W1", "https://doi.org/10.1234/cache");
 	const vault = (files: { path: string; frontmatter?: Record<string, unknown> }[]) => ({

@@ -12,6 +12,16 @@
 - 项目级请求失效和共用撤销放在 `project-state` 一侧。`graph-session` 只保留单次挂载的选择、年份和侧栏，不扩成项目事件总线。
 - 同设备多面板一致是首版要求；跨设备并发检测不在本路线。内部切片不改变原项目 key，也不借机建立新工作树或重建所有项目。
 
+## 进展
+
+基线 S00 为 `1599bf9`（图例、年份条、侧栏文案已在此前提交）。以下只记录样本与离线验证，不表示生产读写已切换。
+
+| 切片 | 状态 | 证据 |
+| --- | --- | --- |
+| S02 | 反例已通过，未改生产解释 | `scripts/verify-work-identity.ts`：`10.1234/w567` 不指向 W567；混合文本不命中；平衡括号 DOI 去掉尾随句点仍保留括号；`Lovelace2020` / `Lovelace20202` / `Lovelace20200202` 并存 |
+| S10 | 样本函数，未接入 `loadSettings` 或 `updateProjectPaperState` | `retargetProjectSeed` 只改起点字段；`projectsForSeedId` 在同一种子对应多个项目时全部返回，`savedProjectForSeed` 仍拒绝猜测 |
+| S11 | 样本函数，未接入叙事输出或设置写回 | `noteVersion` / `excludeVersion` / `excludeWholeWork` / `restoreVersion` / `stageVersion`：单版排除不波及同辈；整项排除覆盖新版本；恢复一版并暂存不恢复其余；再次排除清掉恢复标记；普通暂存不取消排除；起点 `excludeVersion(..., true)` 无操作 |
+
 ## 2. 依赖主线与阶段门槛
 
 ```text

@@ -173,6 +173,81 @@ export function acknowledgeIdentityStates(project: ResearchProject, paper: Paper
 	project.identityConflicts = project.identityConflicts?.filter((id) => id !== paper.id);
 }
 
+/** Storage key stays put when the seed field changes. Not used by loadSettings until S39. */
+export function retargetProjectSeed(
+	projects: Record<string, ResearchProject>,
+	key: string,
+	nextSeedId: string,
+): Record<string, ResearchProject> {
+	const stored = projects[key];
+	const seedId = nextSeedId.toUpperCase();
+	if (!stored || stored.seedId === seedId || !/^W\d+$/.test(seedId)) return projects;
+	return { ...projects, [key]: { ...stored, seedId } };
+}
+
+/** Every project whose seed field matches. Does not pick one when several share a seed. */
+export function projectsForSeedId(projects: Record<string, ResearchProject>, seedId: string): ResearchProject[] {
+	const id = seedId.toUpperCase();
+	return Object.values(projects).filter((project) => project.seedId.toUpperCase() === id);
+}
+
+export interface VersionFlags {
+	excluded: boolean;
+	staged: boolean;
+	/** Restored out of a whole-work exclusion. Cleared when this version is excluded again. */
+	restored: boolean;
+}
+
+/** Sample rules for per-version exclusion. Not written through settings until S39. */
+export interface VersionScope {
+	wholeExcluded: boolean;
+	versions: Record<string, VersionFlags>;
+}
+
+export function emptyVersionScope(): VersionScope {
+	return { wholeExcluded: false, versions: {} };
+}
+
+function flags(scope: VersionScope, id: string): VersionFlags {
+	return scope.versions[id] ?? { excluded: scope.wholeExcluded, staged: false, restored: false };
+}
+
+function put(scope: VersionScope, id: string, next: VersionFlags): VersionScope {
+	return { ...scope, versions: { ...scope.versions, [id]: next } };
+}
+
+/** A newly seen version inherits a whole-work exclusion and does not inherit a sibling's restore. */
+export function noteVersion(scope: VersionScope, id: string): VersionScope {
+	if (scope.versions[id]) return scope;
+	return put(scope, id, { excluded: scope.wholeExcluded, staged: false, restored: false });
+}
+
+export function excludeVersion(scope: VersionScope, id: string, isSeed = false): VersionScope {
+	if (isSeed) return scope;
+	const current = flags(scope, id);
+	return put(scope, id, { ...current, excluded: true, restored: false });
+}
+
+export function excludeWholeWork(scope: VersionScope): VersionScope {
+	const versions = Object.fromEntries(Object.entries(scope.versions).map(([id, version]) => [id, { ...version, excluded: true, restored: false }]));
+	return { wholeExcluded: true, versions };
+}
+
+export function restoreVersion(scope: VersionScope, id: string): VersionScope {
+	const current = flags(scope, id);
+	return put(scope, id, { ...current, excluded: false, restored: scope.wholeExcluded || current.excluded });
+}
+
+/** Staging does not clear an exclusion. Restore-then-stage is what leaves the version visible. */
+export function stageVersion(scope: VersionScope, id: string): VersionScope {
+	const current = flags(scope, id);
+	return put(scope, id, { ...current, staged: true });
+}
+
+export function versionVisible(scope: VersionScope, id: string): boolean {
+	return !flags(scope, id).excluded;
+}
+
 export function updateProjectPaperState(
 	projects: Record<string, ResearchProject>, seedId: string, paper: PaperNode,
 	patch: Partial<Omit<ProjectPaperState, "paper" | "updatedAt">> & { source?: string },
