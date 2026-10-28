@@ -22,10 +22,16 @@ async function verify(): Promise<void> {
 	const root = document.querySelector<HTMLElement>("#app")!;
 	const settings = { ...DEFAULT_SETTINGS, s2Reconcile: false, researchProjects: {} };
 	let failSave = false;
+	let openedUrl = "";
+	let favoriteWrites = 0;
 	const handle = mountGraphApp(root, {
 		getSettings: () => settings,
 		getJson: fixtureGet,
-		openExternal() {},
+		openExternal(url) { openedUrl = url; },
+		stagePaper: async () => {
+			if (failSave) throw new Error("disk full");
+			favoriteWrites += 1;
+		},
 		initialDoi: "10.1234/seed",
 		persistSettings: async () => { if (failSave) throw new Error("disk full"); },
 	});
@@ -105,6 +111,26 @@ async function verify(): Promise<void> {
 	laterTab.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
 	check(graphTab.getAttribute("aria-selected") === "true", "Home returns to the graph tab");
 	check(Math.abs(tablist.getBoundingClientRect().bottom - tabSidebar.getBoundingClientRect().bottom) < 2, "tabs stay at the sidebar bottom");
+	const identity = root.querySelector<HTMLElement>(".cpo-paper-identity")!;
+	const sourceLink = identity.querySelector<HTMLButtonElement>(".cpo-card-title .cpo-paper-title-source")!;
+	check(sourceLink?.textContent?.includes("OpenAlex"), "OpenAlex link follows the paper title");
+	check(!identity.querySelector(".cpo-paper-sources")?.textContent?.includes("OpenAlex"), "OpenAlex is not duplicated in the action row");
+	sourceLink.click();
+	check(openedUrl.startsWith("https://openalex.org/"), "title link opens the original OpenAlex URL");
+	const favorite = identity.querySelector<HTMLButtonElement>(".cpo-paper-stage")!;
+	check(favorite.nextElementSibling?.classList.contains("cpo-paper-exclude"), "favorite appears immediately before exclude");
+	check(String(favorite.textContent) === "收藏", "save action is labeled favorite");
+	favorite.click();
+	await new Promise((resolve) => window.setTimeout(resolve, 0));
+	check(favorite.getAttribute("aria-pressed") === "true" && String(favorite.textContent) === "已收藏" && favoriteWrites === 1, "favorite reuses persisted staged state");
+	failSave = true;
+	favorite.click();
+	await new Promise((resolve) => window.setTimeout(resolve, 0));
+	check(favorite.getAttribute("aria-pressed") === "true" && !favorite.disabled, "failed favorite removal rolls back");
+	failSave = false;
+	favorite.click();
+	await new Promise((resolve) => window.setTimeout(resolve, 0));
+	check(favorite.getAttribute("aria-pressed") === "false" && String(favorite.textContent) === "收藏", "favorite can be removed");
 	const reading = root.querySelector<HTMLSelectElement>(".cpo-paper-reading-select")!;
 	reading.value = "read";
 	reading.dispatchEvent(new Event("change"));

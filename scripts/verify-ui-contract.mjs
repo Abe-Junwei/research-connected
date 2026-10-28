@@ -16,7 +16,7 @@ assert.match(css, /\.cpo-detail-source-actions/, "source links sit beside the se
 assert.match(css, /\.cpo-sidebar-resizer\.is-dragging \+ \.cpo-evidence-sidebar/, "sidebar drag does not animate width");
 assert.match(app, /tabsHost:\s*sidebarTabs/, "pane tabs live in the evidence sidebar");
 assert.match(app, /libraryTab:\s*true/, "pane library is a right-sidebar tab");
-assert.match(readFileSync("src/graph-chrome.ts", "utf8"), /libraryTab[\s\S]*?暂存与排除/, "library tab is labeled 暂存与排除");
+assert.match(readFileSync("src/graph-chrome.ts", "utf8"), /libraryTab[\s\S]*?收藏与排除/, "library tab is labeled 收藏与排除");
 assert.doesNotMatch(app, /cpo-library-open/, "top-right library button is gone");
 assert.match(embed, /tabsHost:\s*sidebarTabs/, "embed tabs live in the evidence sidebar");
 assert.match(css, /\.cpo-sidebar-tabs\s*\{[^}]*margin-top:\s*auto/, "tabs stay at the sidebar bottom");

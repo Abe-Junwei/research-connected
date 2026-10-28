@@ -32,7 +32,7 @@ export function paintPaperActions(
 		button.className = "cpo-paper-action cpo-paper-stage";
 		const paintStage = (): void => {
 			const staged = Boolean(options.getPaperState(seedId, paper.id)?.staged);
-			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"), document.createTextNode(staged ? tr("已暂存", "Saved") : tr("暂存", "Save")));
+			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"), document.createTextNode(staged ? tr("已收藏", "Saved") : tr("收藏", "Save")));
 			button.setAttribute("aria-pressed", String(staged));
 		};
 		paintStage();
@@ -60,7 +60,7 @@ export function paintPaperActions(
 				button.disabled = false;
 			}
 		};
-		row.append(button);
+		row.insertBefore(button, row.querySelector(".cpo-paper-exclude"));
 	}
 	for (const [label, candidate] of [["OpenAlex", paper.openAlexUrl], ["DOI", paper.doiUrl]] as const) {
 		const url = candidate ? allowedExternalUrl(candidate) : null;
@@ -70,7 +70,11 @@ export function paintPaperActions(
 		button.className = "cpo-paper-action cpo-paper-source";
 		button.append(document.createTextNode(label), createChromeIcon("external"));
 		button.onclick = () => options.openExternal(url);
-		sources.append(button);
+		const heading = label === "OpenAlex" ? card.querySelector<HTMLElement>(":scope > .cpo-card-title") : null;
+		if (heading) {
+			button.classList.add("cpo-paper-title-source");
+			heading.append(button);
+		} else sources.append(button);
 	}
 	if (sources.childElementCount) row.append(sources);
 }

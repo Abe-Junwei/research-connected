@@ -256,7 +256,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		prior: tr("先验工作", "Prior works"),
 		derivative: tr("衍生工作", "Derivative works"),
 		research: tr("研究脉络", "Research narrative"),
-		staged: tr("暂存列表", "Saved papers"),
+		staged: tr("收藏列表", "Saved papers"),
 		excluded: tr("已排除论文", "Excluded papers"),
 	};
 

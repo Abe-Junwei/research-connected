@@ -2981,6 +2981,7 @@ button.cpo-agg-item {
 .cpo-surface button.cpo-paper-action:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .cpo-surface button.cpo-paper-action:disabled { opacity: .48; cursor: default; }
 .cpo-paper-action .cpo-icon-glyph { width: 12px; height: 12px; flex: none; }
+.cpo-paper-title-source { margin-inline-start: 8px; vertical-align: middle; }
 .cpo-paper-action-error { color: var(--text-error, #b42318); font-size: 11px; }
 .cpo-diagnose-back {
 	display: inline-flex;

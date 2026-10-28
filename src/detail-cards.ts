@@ -63,7 +63,7 @@ export function paintIdentitySources(parent: HTMLElement, paper: PaperNode, open
 		if (record.doiUrl) { const link = el(row, "button", "cpo-text-btn", record.doiUrl.replace(/^https?:\/\/doi.org\//, "")); link.type = "button"; link.onclick = () => open(record.doiUrl!); }
 	}
 	if (conflict) {
-		el(details, "p", "cpo-fact-note", tr("旧记录的阅读、暂存或排除状态不一致；已按各字段时间恢复，原值已保留。请核对当前状态。", "Legacy records have conflicting workflow states. The latest field values were restored and originals retained. Review the current state."));
+		el(details, "p", "cpo-fact-note", tr("旧记录的阅读、收藏或排除状态不一致；已按各字段时间恢复，原值已保留。请核对当前状态。", "Legacy records have conflicting workflow states. The latest field values were restored and originals retained. Review the current state."));
 		if (acknowledge) { const done = el(details, "button", "cpo-paper-action", tr("已核对状态", "States reviewed")); done.type = "button"; done.onclick = acknowledge; }
 	}
 	const button = el(details, "button", "cpo-paper-action", tr("保持这些记录分开", "Keep these records separate"));

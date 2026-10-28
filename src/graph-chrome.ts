@@ -306,7 +306,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		["derivative", tr("衍生工作", "Later work")],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", tr("研究脉络", "Research narrative")]);
-	if (options.libraryTab) tabs.push(["staged", tr("暂存与排除", "Saved and excluded")]);
+	if (options.libraryTab) tabs.push(["staged", tr("收藏与排除", "Saved and excluded")]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	const selectTab = (next: GraphTab): void => {
 		const shown: GraphTab = next === "excluded" && tabButtons.has("staged") ? "staged" : next;

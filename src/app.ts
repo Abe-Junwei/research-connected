@@ -295,7 +295,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		prior: tr("先验工作", "Prior works"),
 		derivative: tr("衍生工作", "Derivative works"),
 		research: tr("研究脉络", "Research narrative"),
-		staged: tr("暂存列表", "Saved papers"),
+		staged: tr("收藏列表", "Saved papers"),
 		excluded: tr("已排除论文", "Excluded papers"),
 	};
 
@@ -377,7 +377,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const paintLibrarySwitch = (parent: HTMLElement): void => {
 		const row = el(parent, "div", "cpo-library-switch");
-		for (const [next, label] of [["staged", tr("暂存", "Saved")], ["excluded", tr("排除", "Excluded")]] as const) {
+		for (const [next, label] of [["staged", tr("收藏", "Saved")], ["excluded", tr("排除", "Excluded")]] as const) {
 			const button = el(row, "button", "cpo-library-switch-item", label);
 			button.type = "button";
 			button.setAttribute("aria-pressed", tab === next ? "true" : "false");
@@ -415,11 +415,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		paintLibrarySwitch(listPanel);
 		const libraryHeader = el(listPanel, "div", "cpo-library-header");
 		const libraryHeading = el(libraryHeader, "div", "cpo-library-heading");
-		el(libraryHeading, "h3", "cpo-kicker", tr("暂存列表", "Saved papers"));
+		el(libraryHeading, "h3", "cpo-kicker", tr("收藏列表", "Saved papers"));
 		const projects = deps.getSettings().researchProjects ?? {};
 		const items = projectStagedPapers(projects);
 		el(libraryHeading, "span", "cpo-library-count", tr(`${items.length} 篇`, `${items.length} papers`));
-		if (items.length === 0) { el(listPanel, "p", "cpo-agg-empty", tr("还没有暂存论文。", "No saved papers yet.")); return; }
+		if (items.length === 0) { el(listPanel, "p", "cpo-agg-empty", tr("还没有收藏论文。", "No saved papers yet.")); return; }
 		const actionMenu = el(libraryHeader, "details", "cpo-library-menu");
 		const actionTrigger = el(actionMenu, "summary", "cpo-ghost cpo-library-menu-trigger");
 		actionTrigger.setAttribute("aria-label", tr("清单操作", "List actions"));
@@ -447,7 +447,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			noteBtn.prepend(createChromeIcon("note"));
 			noteBtn.type = "button";
 			noteBtn.onclick = () => {
-				const lines = [tr("# 暂存文献清单", "# Saved papers"), ""];
+				const lines = [tr("# 收藏文献清单", "# Saved papers"), ""];
 				for (const group of groupStagedBySeed(items)) {
 					lines.push(tr(`## 种子 ${group.seedId}`, `## Seed ${group.seedId}`), "");
 					for (const item of group.items) {
@@ -457,8 +457,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					}
 					lines.push("");
 				}
-				void deps.createNote!(tr("暂存文献清单.md", "Saved papers.md"), lines.join("\n")).then(() => {
-					chrome?.setExportText(tr("已写入笔记：暂存文献清单.md", "Written to note: Saved papers.md"));
+				void deps.createNote!(tr("收藏文献清单.md", "Saved papers.md"), lines.join("\n")).then(() => {
+					chrome?.setExportText(tr("已写入笔记：收藏文献清单.md", "Written to note: Saved papers.md"));
 				}).catch((error) => {
 					chrome?.setExportText(error instanceof Error ? error.message : tr("笔记没有写成。", "Could not write the note."));
 				});
@@ -503,7 +503,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					remove.onclick = async () => {
 						updateProjectPaperState(projects, item.seedId, item.paper, { staged: false });
 						try { await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); }
-						catch { updateProjectPaperState(projects, item.seedId, item.paper, { staged: true }); status.textContent = tr("暂存状态保存失败，请重试", "Could not save the saved-paper state. Try again."); }
+						catch { updateProjectPaperState(projects, item.seedId, item.paper, { staged: true }); status.textContent = tr("收藏状态保存失败，请重试", "Could not save the saved-paper state. Try again."); }
 					};
 				});
 			}
