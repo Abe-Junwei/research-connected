@@ -775,6 +775,59 @@ export function selectExportVersions(versions: readonly ExportVersion[], mode: "
 	return chosen;
 }
 
+export interface ProjectGraphRequest<T> {
+	projectKey: string;
+	generation: number;
+	graph: T | null;
+	/** True only when a request failed before any graph was stored. */
+	incomplete: boolean;
+	userState: string;
+}
+
+export function openProjectRequest<T>(current: ProjectGraphRequest<T>): { current: ProjectGraphRequest<T>; generation: number } {
+	const generation = current.generation + 1;
+	return { current: { ...current, generation }, generation };
+}
+
+/** A late or foreign response cannot change the graph or the user state. */
+export function commitProjectGraph<T>(current: ProjectGraphRequest<T>, generation: number, projectKey: string, graph: T): ProjectGraphRequest<T> {
+	if (generation !== current.generation || projectKey !== current.projectKey) return current;
+	return { ...current, graph, incomplete: false };
+}
+
+export function failProjectGraph<T>(current: ProjectGraphRequest<T>, generation: number, projectKey: string): ProjectGraphRequest<T> {
+	if (generation !== current.generation || projectKey !== current.projectKey) return current;
+	return { ...current, incomplete: current.graph === null };
+}
+
+export function switchProjectGraph<T>(current: ProjectGraphRequest<T>, projectKey: string): ProjectGraphRequest<T> {
+	if (projectKey === current.projectKey) return current;
+	return { ...current, projectKey, generation: current.generation + 1, graph: null, incomplete: false };
+}
+
+export interface PanelView {
+	id: string;
+	projectKey: string;
+	zoom: number;
+	filter: string;
+	selectedId: string | null;
+}
+
+export interface SharedProjectGraph<T> {
+	projectKey: string;
+	graph: T;
+	evidence: readonly string[];
+}
+
+/** Replace the shared graph. Panel zoom, filter, and selection stay on each panel. */
+export function publishSharedGraph<T>(shared: SharedProjectGraph<T>, panels: readonly PanelView[], graph: T, evidence: readonly string[]): { shared: SharedProjectGraph<T>; panels: PanelView[] } {
+	return { shared: { ...shared, graph, evidence }, panels: panels.map((panel) => ({ ...panel })) };
+}
+
+export function closePanel<T>(shared: SharedProjectGraph<T>, panels: readonly PanelView[], id: string): { shared: SharedProjectGraph<T>; panels: PanelView[] } {
+	return { shared, panels: panels.filter((panel) => panel.id !== id) };
+}
+
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
 export function migrateProjectRecords(
 	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],

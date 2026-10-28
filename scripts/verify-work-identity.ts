@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, admitRetraction, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, chooseDisplayVersion, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, admitRetraction, assignMergedVersion, choosePending, commitPaperReading, commitProjectGraph, commitSharedReading, confirmVersionReading, chooseDisplayVersion, closePanel, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, failProjectGraph, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openProjectRequest, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, publishSharedGraph, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, switchProjectGraph, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, omitSeedExceptionLinks, projectResearchRelations, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -379,6 +379,40 @@ export function verifyWorkIdentity(): void {
 	assert.deepEqual(selectExportVersions(exportRows, "all", false).map((version) => version.id), ["W1"]);
 	assert.deepEqual(selectExportVersions(exportRows, "all", true).map((version) => version.id).sort(), ["W1", "W2"]);
 	assert.equal(selectExportVersions(exportRows, "one", true).find((version) => version.id === "W1")?.title, "title-W1");
+	let request = { projectKey: "W1", generation: 0, graph: null as string | null, incomplete: false, userState: "unread" };
+	const first = openProjectRequest(request);
+	const second = openProjectRequest(first.current);
+	request = { ...second.current, userState: "read" };
+	assert.equal(commitProjectGraph(request, first.generation, "W1", "stale"), request);
+	request = commitProjectGraph(request, second.generation, "W1", "fresh");
+	assert.equal(request.graph, "fresh");
+	assert.equal(request.userState, "read");
+	const failed = failProjectGraph(request, second.generation, "W1");
+	assert.equal(failed.graph, "fresh");
+	assert.equal(failed.incomplete, false);
+	const empty = failProjectGraph({ ...request, graph: null, generation: second.generation }, second.generation, "W1");
+	assert.equal(empty.graph, null);
+	assert.equal(empty.incomplete, true);
+	const switched = switchProjectGraph(request, "W8");
+	assert.equal(switched.graph, null);
+	assert.equal(commitProjectGraph(switched, second.generation, "W1", "late"), switched);
+	const panels = [
+		{ id: "a", projectKey: "W1", zoom: 1, filter: "", selectedId: "W1" },
+		{ id: "b", projectKey: "W1", zoom: 2, filter: "fr", selectedId: "W2" },
+		{ id: "c", projectKey: "W8", zoom: 4, filter: "en", selectedId: "W8" },
+	];
+	const published = publishSharedGraph({ projectKey: "W1", graph: "old", evidence: [] }, panels, "new", ["edge"]);
+	assert.equal(published.shared.graph, "new");
+	assert.equal(published.shared.projectKey, "W1");
+	assert.deepEqual(published.shared.evidence, ["edge"]);
+	assert.equal(published.panels[1]?.zoom, 2);
+	assert.equal(published.panels[1]?.filter, "fr");
+	assert.equal(published.panels[1]?.selectedId, "W2");
+	assert.equal(published.panels[2]?.projectKey, "W8");
+	assert.equal(published.panels[2]?.zoom, 4);
+	const closed = closePanel(published.shared, published.panels, "a");
+	assert.equal(closed.shared, published.shared);
+	assert.deepEqual(closed.panels.map((panel) => panel.id), ["b", "c"]);
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {
