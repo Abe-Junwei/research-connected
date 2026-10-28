@@ -2,7 +2,7 @@ import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
 import { acknowledgeIdentityStates, commitPaperReading, emptyVersionScope, excludeVersion, excludeWholeWork, normalizeProjects, noteVersion, projectsForSeedId, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, stageVersion, updateProjectPaperState, versionVisible, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../src/graph-edit";
-import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
+import { paperDois, resolveWorkQuery, sameWork, confirmedVersionRelation, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
 import { normalizeDoi, shortId } from "../src/paper";
@@ -54,6 +54,12 @@ export function verifyWorkIdentity(): void {
 	assert.equal(resolveWorkQuery([doiPaper, otherId], "see 10.1234/w567 and W567"), null);
 	assert.equal(doiOf(cited("W9", "https://doi.org/10.1234/example(test)")), "10.1234/example(test)");
 	assert.equal(doiOf(cited("W9", "https://doi.org/10.1234/example(test).")), "10.1234/example(test)");
+	const bibliography = { volume: "12", issue: "3", firstPage: "10", lastPage: "20" };
+	const versionA = { ...cited("W1", "https://doi.org/10.1/a"), title: "Shared title", venue: "Nature", bibliography };
+	const versionB = { ...cited("W2", "https://doi.org/10.1/b"), title: "Shared title", venue: "Nature", bibliography };
+	assert.equal(sameWork(versionA, versionB), true);
+	assert.equal(confirmedVersionRelation(versionA, versionB), false);
+	assert.equal(confirmedVersionRelation(versionA, { ...versionB, doiUrl: versionA.doiUrl }), true);
 	const bibKeys = [...toBibTeX([cited("W1"), cited("W2"), cited("W20202")]).matchAll(/@\w+\{([^,]+),/g)].map((match) => match[1]);
 	assert.deepEqual(bibKeys, ["Lovelace2020", "Lovelace20202", "Lovelace20200202"]);
 	const legacy: Record<string, ResearchProject> = {

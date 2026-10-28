@@ -31,6 +31,13 @@ export function sameWork(a: PaperRecord, b: PaperRecord): boolean {
 	return key !== null && key === bibliographyKey(b) && (!a.bibliography?.issue || !b.bibliography?.issue || text(a.bibliography.issue) === text(b.bibliography.issue));
 }
 
+/** Shared id or DOI only. A matching bibliography is not a confirmed version link. Not consulted by workIndex. */
+export function confirmedVersionRelation(a: PaperRecord, b: PaperRecord): boolean {
+	if (a.id === b.id) return true;
+	const doi = normalizeDoi(a.doiUrl);
+	return Boolean(doi && doi === normalizeDoi(b.doiUrl));
+}
+
 export function paperRecords(paper: PaperNode): PaperRecord[] {
 	const { records, recordsSeparated: _separated, ...record } = paper;
 	return records?.length ? records.map((item) => item.id === record.id ? { ...item, ...record } : item) : [record];
