@@ -683,6 +683,46 @@ export function stepMigrationDrill(drill: MigrationDrill, preview: MigrationPrev
 	return next;
 }
 
+export interface DisplayVersion {
+	id: string;
+	title: string;
+	authors: string;
+	year: number | null;
+	workType: string | null;
+	excluded: boolean;
+	passesFilter: boolean;
+}
+
+export interface DisplayChoice {
+	version: DisplayVersion;
+	seedException: boolean;
+	hidden: DisplayVersion[];
+}
+
+function byNewestThenId(left: DisplayVersion, right: DisplayVersion): number {
+	return (right.year ?? -1) - (left.year ?? -1) || left.id.localeCompare(right.id);
+}
+
+/** One concrete version supplies every display field. A seed that fails the filter stays visible and marked. */
+export function chooseDisplayVersion(versions: readonly DisplayVersion[], seedId: string | null): DisplayChoice | null {
+	const ordered = [...versions].sort((left, right) => left.id.localeCompare(right.id));
+	if (seedId) {
+		const seed = ordered.find((version) => version.id === seedId);
+		if (seed) return { version: seed, seedException: seed.excluded || !seed.passesFilter, hidden: ordered.filter((version) => version.id !== seed.id) };
+	}
+	const eligible = ordered.filter((version) => !version.excluded && version.passesFilter);
+	const articles = eligible.filter((version) => version.workType === "article").sort(byNewestThenId);
+	const preprints = eligible.filter((version) => version.workType === "preprint").sort(byNewestThenId);
+	const rest = eligible.filter((version) => version.workType !== "article" && version.workType !== "preprint");
+	const version = articles[0] ?? preprints[0] ?? rest[0];
+	if (!version) return null;
+	return { version, seedException: false, hidden: ordered.filter((item) => item.id !== version.id) };
+}
+
+export function expandDisplayVersion(choice: DisplayChoice, id: string): DisplayVersion | null {
+	return [choice.version, ...choice.hidden].find((version) => version.id === id) ?? null;
+}
+
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
 export function migrateProjectRecords(
 	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],

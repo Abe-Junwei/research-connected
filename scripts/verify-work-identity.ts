@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, chooseDisplayVersion, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -321,6 +321,23 @@ export function verifyWorkIdentity(): void {
 	assert.equal(stepMigrationDrill(finished, previewMigration({ W1: { seedId: "W1" } }), null), finished);
 	source.W8.seedId = "changed";
 	assert.equal(finished.backup?.W8?.seedId, "W8");
+	const versionOf = (id: string, workType: string | null, year: number | null, extra: Partial<{ excluded: boolean; passesFilter: boolean }> = {}) => ({
+		id, title: `title-${id}`, authors: `authors-${id}`, year, workType, excluded: false, passesFilter: true, ...extra,
+	});
+	assert.equal(chooseDisplayVersion([versionOf("W2", "preprint", 2024), versionOf("W1", "article", 2020), versionOf("W3", "article", 2020, { excluded: true })], null)?.version.id, "W1");
+	const picked = chooseDisplayVersion([versionOf("W2", "article", 2020), versionOf("W1", "article", 2020)], null);
+	assert.equal(picked?.version.id, "W1");
+	assert.equal(picked?.version.title, "title-W1");
+	assert.equal(picked?.version.authors, "authors-W1");
+	assert.equal(picked?.version.year, 2020);
+	assert.equal(chooseDisplayVersion([versionOf("W1", "article", 2019), versionOf("W2", "article", 2021)], null)?.version.id, "W2");
+	assert.equal(chooseDisplayVersion([versionOf("W9", "preprint", 2024), versionOf("W8", "article", 2010, { passesFilter: false })], null)?.version.id, "W9");
+	assert.equal(chooseDisplayVersion([versionOf("W1", "article", 2020, { excluded: true })], null), null);
+	const seedChoice = chooseDisplayVersion([versionOf("W1", "article", 2020), versionOf("W2", "preprint", 1990, { passesFilter: false })], "W2");
+	assert.equal(seedChoice?.version.id, "W2");
+	assert.equal(seedChoice?.seedException, true);
+	assert.equal(seedChoice?.version.year, 1990);
+	assert.equal(seedChoice && expandDisplayVersion(seedChoice, "W1")?.title, "title-W1");
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {
