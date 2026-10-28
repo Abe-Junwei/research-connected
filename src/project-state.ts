@@ -989,6 +989,103 @@ export function undoProject<T>(current: ProjectUndo<T>, persistOk: boolean): { c
 	};
 }
 
+export interface EmbedAssociation {
+	blockKey: string;
+	projectKey: string | null;
+}
+
+export interface EmbedProjectOption {
+	key: string;
+	seedId: string;
+}
+
+export interface EmbedActionResult {
+	status: "needs-choice" | "cancelled" | "stale" | "applied";
+	association: EmbedAssociation;
+	written: boolean;
+	projectKey: string | null;
+	created: boolean;
+	paperId: string | null;
+	staged: boolean | null;
+	excluded: boolean | null;
+}
+
+/** Reopen restores only an explicit persistent link. */
+export function reopenEmbed(association: EmbedAssociation): string | null {
+	return association.projectKey;
+}
+
+/** A stage or exclude writes only to an explicit project. The same seed is never enough to pick one. */
+export function applyEmbedAction(input: {
+	association: EmbedAssociation;
+	projects: readonly EmbedProjectOption[];
+	seedId: string;
+	chosenKey: string | null;
+	createKey: string | null;
+	persistLink: boolean;
+	cancel: boolean;
+	generation: number;
+	openGeneration: number;
+	paperId: string | null;
+	staged: boolean | null;
+	excluded: boolean | null;
+}): EmbedActionResult {
+	const idle: Omit<EmbedActionResult, "status"> = {
+		association: input.association, written: false, projectKey: null, created: false, paperId: null, staged: null, excluded: null,
+	};
+	if (input.cancel) return { status: "cancelled", ...idle };
+	if (input.generation !== input.openGeneration) return { status: "stale", ...idle };
+	const explicit = input.createKey ?? input.chosenKey ?? input.association.projectKey;
+	if (!explicit) return { status: "needs-choice", ...idle };
+	const created = input.createKey !== null && !input.projects.some((project) => project.key === input.createKey);
+	const association = input.persistLink ? { ...input.association, projectKey: explicit } : input.association;
+	return {
+		status: "applied", association, written: true, projectKey: explicit, created,
+		paperId: input.paperId, staged: input.staged, excluded: input.excluded,
+	};
+}
+
+export interface EmbedBlock<T> {
+	blockKey: string;
+	seedId: string;
+	graph: T;
+	reading: ReadingStatus;
+	projectKey: string | null;
+	paused: boolean;
+	generation: number;
+}
+
+/** Project seed and dive changes stay on the project. Shared reading still copies, and an excluded block seed pauses. */
+export function followSharedReading<T>(block: EmbedBlock<T>, project: { seedId: string; graph: T; reading: ReadingStatus; excludedIds: readonly string[] }): EmbedBlock<T> {
+	const paused = block.projectKey !== null && project.excludedIds.includes(block.seedId);
+	return { ...block, reading: project.reading, paused };
+}
+
+export type EmbedResume = "restore" | "unlink" | "reseed";
+
+export function resumeEmbed<T>(block: EmbedBlock<T>, excludedIds: readonly string[], action: EmbedResume, nextSeedId: string | null): { block: EmbedBlock<T>; excludedIds: readonly string[] } {
+	switch (action) {
+		case "restore":
+			return { block: { ...block, paused: false }, excludedIds: excludedIds.filter((id) => id !== block.seedId) };
+		case "unlink":
+			return { block: { ...block, projectKey: null, paused: false }, excludedIds: [...excludedIds] };
+		case "reseed": {
+			const seedId = nextSeedId ?? block.seedId;
+			return { block: { ...block, seedId, paused: block.projectKey !== null && excludedIds.includes(seedId) }, excludedIds: [...excludedIds] };
+		}
+		default: {
+			const neverAction: never = action;
+			return neverAction;
+		}
+	}
+}
+
+/** A paused embed, or an older generation, keeps the block graph. */
+export function acceptEmbedGraph<T>(block: EmbedBlock<T>, generation: number, graph: T): EmbedBlock<T> {
+	if (block.paused || generation !== block.generation) return block;
+	return { ...block, graph };
+}
+
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
 export function migrateProjectRecords(
 	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],
