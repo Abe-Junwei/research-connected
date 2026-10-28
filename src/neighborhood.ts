@@ -2,10 +2,11 @@ import { tr } from "./i18n";
 import {
 	OpenAlexClient,
 	OpenAlexError,
+	toPaper,
 	type RawWork,
 	type SampledWorks,
 } from "./openalex";
-import { classifyQuery, normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
+import { classifyQuery, normalizeDoi, reconstructAbstract, referenceIds, shortId, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
@@ -41,14 +42,6 @@ export const SAMPLE_TIERS: Record<
 	extended: { references: 200, citations: 200, related: 50, pages: 2 },
 	deep: { references: 200, citations: 200, related: 100, pages: 5 },
 };
-
-const expandingSeeds = new Set<string>();
-export function beginDeepDive(seedId: string): boolean {
-	if (expandingSeeds.has(seedId)) return false;
-	expandingSeeds.add(seedId);
-	return true;
-}
-export function endDeepDive(seedId: string): void { expandingSeeds.delete(seedId); }
 
 /** Co-citation context (reference lists of citing papers) is capped so deep sampling stays within budget. */
 const MAX_CONTEXT_CITERS = 400;
@@ -611,6 +604,44 @@ export async function expandAround(
 		overlaps,
 		warnings,
 		noMore,
+	};
+}
+
+/** Embed depth 2: references of the two hubs closest to the seed, grafted under the node cap. */
+export async function expandSecondLayer(
+	client: OpenAlexClient, graph: SimilarityGraph, cap: number, excludeRetracted = false,
+): Promise<{ graph: SimilarityGraph; note: string }> {
+	const hubs = graph.nodes.filter((node) => !node.isSeed)
+		.sort((a, b) => (graph.seedScore.get(b.id) ?? 0) - (graph.seedScore.get(a.id) ?? 0)).slice(0, 2);
+	const room = cap - graph.nodes.length;
+	if (room <= 0) return { graph, note: tr("已到节点上限", "Node limit reached") };
+	const extra: PaperNode[] = [];
+	const seen = new Set(graph.nodes.flatMap((paper) => paperRecords(paper).map((record) => record.id)));
+	let failed = false;
+	let added = 0;
+	for (const hub of hubs) {
+		try {
+			for (const raw of await client.referencedBySeed(hub.id, 12)) {
+				const paper = toPaper(raw, "reference");
+				if (!paper || seen.has(paper.id) || nonResearchLabel(paper) || (excludeRetracted && paper.retracted)) continue;
+				const index = workIndex([...graph.nodes, ...extra, paper], graph.nodes.map((node) => node.id), graph.workIdentity?.separatedIds);
+				const nextAdded = index.papers.length - graph.nodes.length;
+				if (nextAdded > room) continue;
+				seen.add(paper.id); extra.push(paper); added = nextAdded;
+			}
+		} catch { failed = true; }
+	}
+	if (!extra.length) return { graph, note: failed ? tr("第二层没有读到", "The second layer could not be loaded") : "" };
+	const lists = new Map<string, readonly string[]>();
+	try {
+		for (const raw of await client.worksByIds(extra.flatMap((paper) => paperRecords(paper).map((record) => record.id)))) {
+			const id = shortId(raw.id ?? "");
+			if (id) lists.set(id, referenceIds(raw.referenced_works));
+		}
+	} catch { failed = true; }
+	return {
+		graph: graftNodes(graph, extra, lists),
+		note: tr(`含第二层 ${added} 篇${failed ? "；部分来源未读取" : ""}`, `Includes ${added} second-layer papers${failed ? "; some source data could not be loaded" : ""}`),
 	};
 }
 

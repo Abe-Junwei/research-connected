@@ -1,11 +1,13 @@
 import { tr } from "./i18n";
 import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, type CrossCheckLike } from "./citation-evidence";
 import type { RankedWork } from "./aggregates";
-import { relationFacts } from "./graph-filter";
+import { relationFacts, SIMILARITY_NOT_CITATION } from "./graph-filter";
 import { createChromeIcon, paintEvidenceBadges, paintPaperStateBadges } from "./graph-chrome";
-import type { SelectionRank } from "./neighborhood";
+import type { SelectionRank, SimilarityGraph } from "./neighborhood";
+import { paintPaperActions } from "./paper-actions";
 import type { ProjectPaperState, ReadingStatus } from "./project-state";
 import { nonResearchLabel } from "./paper";
+import { findEdge } from "./relation";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { formatCount } from "./visual";
 
@@ -238,10 +240,11 @@ export function paintMeter(parent: HTMLElement, label: string, value: number | n
 	el(meter, "p", "cpo-meter-hint", hint);
 }
 
-function paintStat(parent: HTMLElement, label: string, value: string): void {
+function paintStat(parent: HTMLElement, label: string, value: string): HTMLElement {
 	const cell = el(parent, "div", "cpo-stat");
 	el(cell, "span", "cpo-stat-label", label);
 	el(cell, "span", "cpo-stat-value", value);
+	return cell;
 }
 
 /** 关系证据卡：导语 + 相似度条 + 统计格 + 证据徽章/上下文 + 注意事项。节点与边视图共用。 */
@@ -259,10 +262,12 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 	const grid = el(card, "div", "cpo-stat-grid");
 	paintStat(grid, tr("共享参考文献", "Shared references"), tr(`${edge.sharedRefs} 篇`, `${edge.sharedRefs} papers`));
 	paintStat(grid, tr("共被引", "Co-citations"), tr(`${edge.coCitedBy} 次`, `${edge.coCitedBy} times`));
-	paintStat(grid, tr("来源", "Source"), options.sources);
+	const source = paintStat(grid, tr("来源", "Source"), options.sources);
+	const sourceLabel = source.querySelector<HTMLElement>(".cpo-stat-label")!;
+	sourceLabel.classList.add("cpo-source-label");
 	for (const pair of edgeCitationPairs(edge)) {
 		const evidence = options.getEvidence(pair.citingId, pair.citedId);
-		paintEvidenceBadges(card, evidence);
+		paintEvidenceBadges(sourceLabel, evidence);
 		if (evidence) {
 			el(card, "p", "cpo-evidence", tr(`证据：${evidenceLabel(evidence)}`, `Evidence: ${evidenceLabel(evidence)}`));
 			for (const context of evidence.contexts.slice(0, 5)) el(card, "blockquote", "cpo-side-tip", context);
@@ -281,21 +286,52 @@ export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstrac
 	if (!paper.abstract) return;
 	para.classList.add("cpo-abstract-clamp");
 	const fade = el(wrap, "div", "cpo-abstract-fade");
-	const copy = el(head, "button", "cpo-text-btn", tr("复制", "Copy"));
+	fade.hidden = true;
+	const copy = el(head, "button", "cpo-ghost cpo-abstract-copy");
 	copy.type = "button";
+	copy.append(createChromeIcon("copy"));
+	copy.setAttribute("aria-label", tr("复制", "Copy"));
+	copy.title = tr("复制", "Copy");
 	copy.addEventListener("click", () => {
 		void navigator.clipboard.writeText(paper.abstract).then(() => {
-			copy.textContent = tr("已复制", "Copied");
-			window.setTimeout(() => { copy.textContent = tr("复制", "Copy"); }, 1600);
+			copy.setAttribute("aria-label", tr("已复制", "Copied"));
+			copy.title = tr("已复制", "Copied");
+			window.setTimeout(() => {
+				copy.setAttribute("aria-label", tr("复制", "Copy"));
+				copy.title = tr("复制", "Copy");
+			}, 1600);
 		}, () => undefined);
 	});
-	const toggle = el(card, "button", "cpo-text-btn cpo-abstract-toggle", tr("展开全文", "Show full abstract"));
+	const toggle = el(card, "button", "cpo-ghost cpo-abstract-toggle");
 	toggle.type = "button";
+	toggle.setAttribute("aria-expanded", "false");
+	toggle.setAttribute("aria-label", tr("展开全文", "Show full abstract"));
+	toggle.title = tr("展开全文", "Show full abstract");
+	toggle.append(createChromeIcon("chevronDown"));
+	toggle.hidden = true;
+	const syncClamp = (): void => {
+		if (!para.isConnected) {
+			observer.disconnect();
+			return;
+		}
+		if (!para.classList.contains("cpo-abstract-clamp")) return;
+		const overflow = para.clientHeight > 0 && para.scrollHeight > para.clientHeight + 1;
+		fade.hidden = !overflow;
+		toggle.hidden = !overflow;
+	};
+	const observer = new ResizeObserver(syncClamp);
+	observer.observe(para);
 	toggle.addEventListener("click", () => {
 		const collapsed = para.classList.toggle("cpo-abstract-clamp");
+		toggle.setAttribute("aria-expanded", String(!collapsed));
 		fade.hidden = !collapsed;
-		toggle.textContent = collapsed ? tr("展开全文", "Show full abstract") : tr("收起摘要", "Collapse abstract");
+		toggle.hidden = false;
+		const label = collapsed ? tr("展开全文", "Show full abstract") : tr("收起摘要", "Collapse abstract");
+		toggle.replaceChildren(createChromeIcon(collapsed ? "chevronDown" : "chevronUp"));
+		toggle.setAttribute("aria-label", label);
+		toggle.title = label;
 	});
+	syncClamp();
 }
 
 /** 对方论文跳转条：compact 信息 + 「查看」。 */
@@ -307,7 +343,8 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 	el(head, "span", "cpo-chip cpo-chip-muted", tr(`${paper.year ?? tr("年份不详", "Year unknown")} · 被引 ${formatCount(paper.citedByCount)}`, `${paper.year ?? tr("年份不详", "Year unknown")} · cited ${formatCount(paper.citedByCount)} times`));
 	el(info, "p", "cpo-jump-title", paper.title || paper.id);
 	el(info, "p", "cpo-jump-meta", paper.authors);
-	const go = el(strip, "button", "cpo-text-btn", tr("查看 →", "View →"));
+	const go = el(strip, "button", "cpo-text-btn", tr("查看", "View"));
+	go.append(createChromeIcon("chevronRight"));
 	go.type = "button";
 	go.addEventListener("click", () => onJump(paper));
 }
@@ -324,6 +361,7 @@ export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, 
 	details.className = "cpo-card cpo-why";
 	const summary = createEl("summary");
 	summary.textContent = tr("入选原因", "Why selected");
+	summary.prepend(createChromeIcon("chevronRight"));
 	details.append(summary);
 	paintMeter(details, tr("权威分", "Authority score"), rank.authority, tr("log 被引 × 新近度，候选池内归一", "Log citations × recency, normalized within the candidate pool"), true);
 	paintMeter(details, tr("选择时语义分", "Semantic score at selection"), rank.semantic, tr("标题 / 主题，本地计算（选择时摘要尚未补取）", "Title and topics, computed locally (abstract not yet fetched at selection)"), true);
@@ -333,6 +371,95 @@ export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, 
 	}
 	el(details, "p", "cpo-fact-note", tr("入选还受来源配额与多样性（MMR）影响。", "Selection also depends on source quotas and diversity (MMR)."));
 	parent.append(details);
+}
+
+export function abstractCaption(
+	paper: PaperNode,
+	sources: { s2: ReadonlySet<string>; crossref: ReadonlySet<string>; missing: ReadonlySet<string> },
+): string {
+	if (paper.abstract) {
+		const source = sources.s2.has(paper.id) ? "Semantic Scholar" : sources.crossref.has(paper.id) ? "Crossref" : "";
+		return paper.abstract + (source ? tr(`（摘要来源：${source}）`, ` (abstract source: ${source})`) : "");
+	}
+	if (sources.missing.has(paper.id)) return tr("OpenAlex、Semantic Scholar 和 Crossref 都没有这篇的摘要。", "No abstract is available from OpenAlex, Semantic Scholar, or Crossref.");
+	return tr("OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…", "No OpenAlex abstract; checking Semantic Scholar and Crossref…");
+}
+
+export interface PaperDetailOptions {
+	abstractText: (paper: PaperNode) => string;
+	openExternal: (url: string) => void;
+	separate: () => void;
+	conflict: boolean;
+	acknowledge?: () => void;
+	workflow: ProjectPaperState;
+	onReading: (reading: ReadingStatus, previous: ReadingStatus) => Promise<void> | void;
+	onExclude?: () => Promise<void> | void;
+	literature?: { path: string; alternatives?: string[]; open: (path: string) => void };
+	diveNote?: string;
+	actions: {
+		getPaperState: (seedId: string, paperId: string) => ProjectPaperState | undefined;
+		setStaged: (paper: PaperNode, seedId: string, staged: boolean, source: string) => void;
+		persist?: (source: string) => Promise<void> | void;
+		openExternal: (url: string) => void;
+	};
+	onJump: (paper: PaperNode) => void;
+	/** Selected edge that is not the seed link. The pane passes null. */
+	extraEdge?: GraphEdge | null;
+}
+
+/** Shared paper-detail order for the pane and the note embed. */
+export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, paper: PaperNode, options: PaperDetailOptions): void {
+	const seed = graph.nodes.find((node) => node.isSeed) ?? null;
+	const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
+	paintMetadataCard(parent, paper, graph.crossCheck?.get(paper.id));
+	paintIdentitySources(parent, paper, options.openExternal, options.separate, options.conflict, options.acknowledge);
+	paintPaperWorkflowState(parent, paper, options.workflow, options.onReading, options.onExclude);
+	if (options.literature) paintLiteratureLink(parent, options.literature.path, options.literature.open, options.literature.alternatives);
+	if (options.diveNote) {
+		const identityCard = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
+		const actionRow = identityCard.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
+		const diveNote = el(identityCard, "p", "cpo-fact-note", options.diveNote);
+		if (actionRow) identityCard.insertBefore(diveNote, actionRow);
+	}
+	const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
+	const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
+	paintPaperActions(parent, paper, seed?.id ?? null, stageEdge, stageEvidence, options.actions);
+	paintAbstractCard(parent, paper, options.abstractText);
+	if (seed && !paper.isSeed) {
+		const score = graph.seedScore.get(paper.id);
+		const from = stageEdge ? graph.nodes.find((node) => node.id === stageEdge.source) : undefined;
+		const to = stageEdge ? graph.nodes.find((node) => node.id === stageEdge.target) : undefined;
+		if (stageEdge && from && to) {
+			paintRelationSection(parent, stageEdge, from, to, {
+				sources: edgeSourcesText(stageEdge, getEvidence),
+				getEvidence,
+				seedScore: score,
+				semanticScore: graph.semanticScores?.get(paper.id),
+				semanticHint: semanticHintFor(graph.semanticMode),
+			});
+		} else {
+			const recorded = getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id);
+			if (score !== undefined || !recorded) {
+				const card = el(parent, "section", "cpo-card");
+				if (score !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), score, tr("结构 + 语义信号", "Structure and semantic signals"));
+				const semantic = graph.semanticScores?.get(paper.id);
+				if (semantic !== undefined) paintMeter(card, tr("文本相似度", "Text similarity"), semantic, semanticHintFor(graph.semanticMode), true);
+				if (!recorded) el(card, "p", "cpo-fact-note", tr(`与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`, `No direct citation to the seed recorded · ${SIMILARITY_NOT_CITATION}`));
+			}
+		}
+		const rankInfo = graph.selectionRank?.get(paper.id);
+		if (rankInfo) paintSelectionReasons(parent, rankInfo, score);
+	}
+	const extra = options.extraEdge;
+	if (extra && seed && !samePair(extra, paper.id, seed.id)) {
+		const from = graph.nodes.find((node) => node.id === extra.source);
+		const to = graph.nodes.find((node) => node.id === extra.target);
+		if (from && to) paintRelationSection(parent, extra, from, to, { sources: edgeSourcesText(extra, getEvidence), getEvidence });
+	}
+}
+
+function samePair(edge: GraphEdge, a: string, b: string): boolean {
+	return (edge.source === a && edge.target === b) || (edge.source === b && edge.target === a);
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(

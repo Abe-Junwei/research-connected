@@ -1,14 +1,22 @@
 // Host timers for offline adapters; browser tests supply the full window.
 if (typeof window === "undefined") Object.assign(globalThis, { window: { setTimeout, clearTimeout } });
 
+import "../src/host-language";
 import assert from "node:assert/strict";
 import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
+import { surfaceBand } from "../src/responsive";
+import { sidebarWidthLimit } from "../src/sidebar-resize";
+import { mountWorkspaceFrame } from "../src/workspace-frame";
+import { yearHistogram } from "../src/year-histogram";
+import { abstractCaption } from "../src/detail-cards";
+import { createGraphSession } from "../src/graph-session";
 import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../src/community-regions";
-import { parseEmbed } from "../src/embed-syntax";
+import { embedViewStateKey, parseEmbed } from "../src/embed-syntax";
+import { embedDataCacheKey } from "../src/embed-mount";
 import {
 	edgeVisible,
 	emptyFilter,
@@ -25,8 +33,8 @@ import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
 import { runForceLayout } from "../src/layout";
 import { diagnoseCandidate, loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
-import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
-import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../src/paper";
+import { explainStatus, OpenAlexClient, OpenAlexError, toPaper, type GetJson } from "../src/openalex";
+import { classifyQuery, normalizeDoi, reconstructAbstract } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
@@ -95,6 +103,8 @@ function unit(): void {
 		value: "10.1038/nature14539",
 	});
 	assert.equal(normalizeDoi(" DOI:HTTPS://doi.org/10.1234/ABC). "), "10.1234/abc");
+	assert.equal(normalizeDoi("10.1234/example(test)"), "10.1234/example(test)");
+	assert.equal(normalizeDoi("10.1234/example(test))."), "10.1234/example(test)");
 	assert.deepEqual(classifyQuery("https://doi.org/10.1038/nature14539"), {
 		kind: "doi",
 		value: "10.1038/nature14539",
@@ -556,6 +566,14 @@ function unit(): void {
 		assert.equal(parsed.spec.align, "left");
 		assert.equal(parsed.spec.labels, "author-year");
 	}
+	const temporalEmbed = parseEmbed("W1\nlayout: temporal\nyearFrom: 2020\n");
+	const radialEmbed = parseEmbed("W1\nlayout: radial\nyearFrom: 1990\n");
+	assert.equal(temporalEmbed.ok && radialEmbed.ok, true);
+	if (temporalEmbed.ok && radialEmbed.ok) assert.notEqual(embedViewStateKey(temporalEmbed.spec, 50), embedViewStateKey(radialEmbed.spec, 50));
+	assert.notEqual(
+		embedDataCacheKey({ kind: "openalex", value: "W1" }, 50, 1, DEFAULT_SETTINGS),
+		embedDataCacheKey({ kind: "openalex", value: "W1" }, 50, 1, { ...DEFAULT_SETTINGS, excludeRetracted: true }),
+	);
 	const placed = parseEmbed(
 		"doi: 10.1038/nature14539\nposition: float-right\nwidth: 60%\nalign: center\nlabels: both\n",
 	);
@@ -828,6 +846,94 @@ function diversityChecks(): void {
 	assert.ok(quota.filter((p) => p.origin === "related").length <= 6, "related 配额上限不变");
 }
 
+function verifyWorkspaceFrame(): void {
+	assert.equal(surfaceBand(1440, false), "wide");
+	assert.equal(surfaceBand(1024, false), "medium");
+	assert.equal(surfaceBand(779, false), "narrow");
+	assert.equal(surfaceBand(900, true), "wide");
+	assert.equal(surfaceBand(700, true), "medium");
+	assert.equal(surfaceBand(500, true), "narrow");
+	const classes = new Set<string>();
+	const attributes = new Map<string, string>();
+	const content = { inert: false };
+	let focused = false;
+	let commits = 0;
+	const toggle = {
+		textContent: "",
+		setAttribute: (name: string, value: string) => attributes.set(name, value),
+		addEventListener: () => {},
+		focus: () => { focused = true; },
+	};
+	const root = { clientWidth: 700 };
+	const frame = mountWorkspaceFrame(root as HTMLElement, {
+		classList: { toggle: (name: string, on: boolean) => on ? classes.add(name) : classes.delete(name) },
+	} as unknown as HTMLElement, {
+		embed: true,
+		sidebar: { children: [toggle, content] } as unknown as HTMLElement,
+		rightToggle: toggle as unknown as HTMLButtonElement,
+		onLayout: () => {},
+		onCommit: () => { commits += 1; },
+	});
+	assert.deepEqual(frame.collapsed(), { rightCollapsed: true });
+	assert.equal(content.inert, true);
+	assert.ok(classes.has("is-sidebar-collapsed"));
+	frame.revealRight();
+	frame.revealRight();
+	assert.equal(commits, 1, "revealing an open sidebar is a no-op");
+	assert.equal(content.inert, false);
+	assert.equal(attributes.get("aria-expanded"), "true");
+	assert.equal(frame.dismissTemporary(), true, "Escape closes the medium-width sidebar");
+	assert.equal(focused, true);
+	frame.setCollapsed(false);
+	root.clientWidth = 900;
+	frame.apply();
+	assert.equal(frame.dismissTemporary(), false, "wide sidebar stays open on Escape");
+	assert.deepEqual(frame.collapsed(), { rightCollapsed: false });
+	frame.setCollapsed(undefined);
+	assert.equal(content.inert, false);
+	frame.toggleRight();
+	assert.equal(content.inert, true);
+	const session = createGraphSession();
+	session.apply({ type: "sample", years: [2000, null, 2002] });
+	const bins = session.state().histogram?.bins;
+	assert.deepEqual(bins?.map((bin) => bin.count), [1, 0, 1]);
+	session.apply({ type: "select-paper", id: "p", source: "user" });
+	assert.equal(session.state().revealRight, true);
+	session.apply({ type: "select-paper", id: "p", source: "refresh" });
+	assert.equal(session.state().revealRight, false);
+	assert.equal(session.state().selection.paperId, "p");
+	session.apply({ type: "scrub", year: 2001 });
+	assert.equal(session.state().scrubYear, 2001);
+	assert.equal(session.state().revealRight, false);
+	assert.equal(session.state().histogram?.bins, bins);
+	session.destroy();
+	session.apply({ type: "select-paper", id: "z", source: "user" });
+	assert.equal(session.state().selection.paperId, "p");
+	const dive = createGraphSession();
+	assert.equal(dive.beginDive("s"), true);
+	assert.equal(dive.beginDive("s"), false);
+	dive.endDive("s");
+	assert.equal(dive.beginDive("s"), true);
+	dive.destroy();
+	assert.equal(dive.beginDive("s"), false);
+	const caption = abstractCaption({ id: "a", abstract: "Hello" } as unknown as PaperNode, { s2: new Set(["a"]), crossref: new Set(), missing: new Set() });
+	assert.match(caption, /Semantic Scholar/);
+	assert.match(abstractCaption({ id: "b", abstract: null } as unknown as PaperNode, { s2: new Set(), crossref: new Set(), missing: new Set(["b"]) }), /没有这篇的摘要|No abstract is available/);
+	const empty = yearHistogram([]);
+	assert.equal(empty.dated, 0);
+	assert.equal(empty.bins.length, 0);
+	const single = yearHistogram([2010, null]);
+	assert.equal(single.bins.length, 1);
+	assert.equal(single.unknown, 1);
+	assert.equal(single.dated, 1);
+	const gapped = yearHistogram([2000, 2002, 2000]);
+	assert.deepEqual(gapped.bins.map((bin) => bin.count), [2, 0, 1]);
+	assert.equal(gapped.bins.reduce((sum, bin) => sum + bin.count, 0), gapped.dated);
+	assert.equal(sidebarWidthLimit(1600, 44), 480);
+	assert.equal(sidebarWidthLimit(1200, 316), 404);
+	assert.equal(sidebarWidthLimit(700, 44), 260);
+}
+
 async function main(): Promise<void> {
 	unit();
 	await verifyWorkIdentityPipeline();
@@ -835,6 +941,7 @@ async function main(): Promise<void> {
 	diversityChecks();
 	await verifyEvidence();
 	verifyUi();
+	verifyWorkspaceFrame();
 	await cursorPaging();
 	await reconcileOffline();
 	console.log("unit checks passed");

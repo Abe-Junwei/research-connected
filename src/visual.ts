@@ -47,12 +47,16 @@ export function formatCount(value: number): string {
 	return new Intl.NumberFormat("zh-CN").format(value);
 }
 
+/** Shared by wheel zoom, pinch, fit, and restoring a saved view. */
+export const GRAPH_ZOOM_MIN = 0.02;
+export const GRAPH_ZOOM_MAX = 8;
+
 /** Scale that maps content bounds into the view with a short margin. */
 export function fitViewScale(viewW: number, viewH: number, contentW: number, contentH: number): number {
 	const pad = Math.max(16, Math.min(viewW, viewH) * 0.08);
 	const innerW = Math.max(1, viewW - pad * 2);
 	const innerH = Math.max(1, viewH - pad * 2);
-	return clamp(Math.min(innerW / Math.max(1, contentW), innerH / Math.max(1, contentH)), 0.02, 8);
+	return clamp(Math.min(innerW / Math.max(1, contentW), innerH / Math.max(1, contentH)), GRAPH_ZOOM_MIN, GRAPH_ZOOM_MAX);
 }
 
 export function snippet(text: string, max = 480): string {

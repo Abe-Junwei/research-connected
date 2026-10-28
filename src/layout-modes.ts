@@ -15,7 +15,7 @@ export function defaultColorMode(layout: LayoutMode): ColorMode {
 }
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
-	temporal: tr("时间", "Timeline"),
+	temporal: tr("年份", "Year"),
 	radial: tr("放射", "Radial"),
 	force2d: tr("平面", "Planar"),
 };

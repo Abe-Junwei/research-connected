@@ -1,3 +1,4 @@
+import "../src/host-language";
 import { buildPairSimilarity } from "../src/diversity";
 import { selectNeighbors, type MmrOptions } from "../src/neighborhood";
 import { syntheticNeighborhood } from "./perf-fixture";

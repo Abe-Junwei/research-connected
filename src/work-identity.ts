@@ -1,4 +1,4 @@
-import { normalizeDoi, shortId } from "./paper";
+import { normalizeDoi } from "./paper";
 import type { CitationEvidence } from "./citation-evidence";
 import type { GraphEdge, PaperNode, PaperRecord } from "./types";
 
@@ -44,11 +44,13 @@ export function paperDois(paper: Pick<PaperNode, "doiUrl" | "records">): string[
 	return [...new Set([paper.doiUrl, ...(paper.records ?? []).map((record) => record.doiUrl)].map(normalizeDoi).filter((doi): doi is string => Boolean(doi)))];
 }
 
+const OPENALEX_ID = /^(?:https?:\/\/(?:www\.)?openalex\.org\/(?:works\/)?)?(W\d+)$/i;
+
 export function resolveWorkQuery(papers: readonly PaperNode[], query: string): string | null {
-	const id = shortId(query);
-	if (id) return papers.find((paper) => paperHasId(paper, id))?.id ?? null;
 	const doi = normalizeDoi(query);
-	return doi ? papers.find((paper) => paperDois(paper).includes(doi))?.id ?? null : null;
+	if (doi) return papers.find((paper) => paperDois(paper).includes(doi))?.id ?? null;
+	const id = query.trim().match(OPENALEX_ID)?.[1]?.toUpperCase();
+	return id ? papers.find((paper) => paperHasId(paper, id))?.id ?? null : null;
 }
 
 export function workIndex(papers: readonly PaperNode[], preferred: readonly string[] = [], separated: readonly string[] = []): { papers: PaperNode[]; ids: Map<string, string>; records: PaperRecord[] } {

@@ -69,7 +69,6 @@ function markRow(className: string, label: string): { row: HTMLSpanElement; n: H
 	return { row, n };
 }
 
-/** Edge-type chips, seed/classic marks, grouping color — in the left rail. */
 export function mountGraphKey(
 	host: HTMLElement,
 	read: () => GraphFilter,
@@ -80,10 +79,28 @@ export function mountGraphKey(
 	setKinds: (selected: GraphFilter["kinds"]) => void;
 } {
 	const key = createDiv();
-	key.className = "cpo-graph-key";
+	key.className = "cpo-graph-key cpo-graph-legend";
+	key.tabIndex = 0;
+	key.setAttribute("role", "group");
+	key.setAttribute("aria-label", tr("图例", "Legend"));
+	key.title = tr("悬停或聚焦查看图例", "Hover or focus to view the legend");
+	key.addEventListener("pointerleave", () => {
+		const active = document.activeElement;
+		if (active instanceof HTMLElement && key.contains(active) && !active.matches(":focus-visible")) active.blur();
+	});
+	const label = createSpan();
+	label.className = "cpo-legend-label";
+	label.textContent = tr("图例", "Legend");
+	const content = createDiv();
+	content.className = "cpo-legend-content";
+	const links = createDiv();
+	links.className = "cpo-key-section";
 	const kinds = createDiv();
 	kinds.className = "cpo-graph-key-kinds";
 	const kindCounts = buildLegend(kinds, read, write);
+	links.append(kinds);
+	const marksSection = createDiv();
+	marksSection.className = "cpo-key-section";
 	const marks = createDiv();
 	marks.className = "cpo-graph-key-marks";
 	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
@@ -99,13 +116,18 @@ export function mountGraphKey(
 		dot.style.background = communityColor(i);
 		dots.append(dot);
 	}
-	const label = createSpan();
-	label.textContent = tr("引用团", "Citation clusters");
+	const colorLabel = createSpan();
+	colorLabel.textContent = tr("引用团", "Citation clusters");
 	const groupN = createSpan();
 	groupN.className = "cpo-graph-key-n";
 	groupN.textContent = "0";
-	color.append(dots, label, groupN);
-	key.append(kinds, marks, color);
+	color.append(dots, colorLabel, groupN);
+	const statsLine = createDiv();
+	statsLine.className = "cpo-key-stats";
+	statsLine.textContent = tr("0 篇", "0 papers");
+	marksSection.append(marks, color, statsLine);
+	content.append(links, marksSection);
+	key.append(label, content);
 	host.append(key);
 	const paintColor = (mode: LayoutMode): void => {
 		color.hidden = mode !== "force2d";
@@ -115,6 +137,7 @@ export function mountGraphKey(
 		edges: readonly GraphEdge[],
 	): void => {
 		const stats = graphKeyStats(nodes, edges);
+		statsLine.textContent = tr(`${nodes.length} 篇`, `${nodes.length} papers`);
 		for (const kind of KIND_ORDER) {
 			const el = kindCounts.get(kind);
 			if (el) el.textContent = String(stats.kinds[kind]);

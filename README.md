@@ -38,7 +38,7 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 
 ## Explore research over time
 
-![Timeline layout showing papers by publication year, with layout controls and a year slider](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+![Timeline layout showing papers by publication year, with the year band under the graph](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
 
 Switch to **Timeline**. The year slider narrows the visible map, and a saved view returns you to a useful selection.
 

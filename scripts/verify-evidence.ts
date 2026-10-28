@@ -14,6 +14,7 @@ import { summarizeWithLlmPost } from "../src/llm";
 import type { SimilarityGraph } from "../src/neighborhood";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { normalizeDoi } from "../src/paper";
+import { emptyFilter } from "../src/graph-filter";
 import {
 	groupStagedBySeed,
 	normalizeStagedList,
@@ -40,6 +41,16 @@ export async function verifyEvidence(): Promise<void> {
 	};
 	mergeOpenCitation(graph, "W1", "W2");
 	assert.deepEqual(graph.citationEvidence!.get("W1", "W2")!.sources, ["openalex", "opencitations"]);
+	const backfill = new CitationEvidenceStore();
+	backfill.set(evidenceFromSemanticCitation("W1", "W2", {}));
+	const backfillGraph: SimilarityGraph = {
+		...graph, edges: [], citationEvidence: backfill, referenceLists: new Map([["W1", ["W2"]]]),
+	};
+	mergeOpenCitation(backfillGraph, "W1", "W2");
+	const backfillSources = backfillGraph.citationEvidence!.get("W1", "W2")!.sources;
+	assert.equal(backfillSources.includes("openalex"), false);
+	assert.equal(backfillSources.includes("semantic-scholar"), true);
+	assert.equal(backfillSources.includes("opencitations"), true);
 	mergeOpenCitation(graph, "W2", "W1");
 	assert.equal(graph.edges.length, 1);
 	assert.equal(graph.edges[0]!.direct, "mutual");
@@ -77,6 +88,15 @@ export async function verifyEvidence(): Promise<void> {
 	assert.ok(evidence.derivativeWorks.some(p => p.id === "W3"), "direct citer with only one reference must be included");
 	assert.ok(!JSON.stringify(evidence).includes("private abstract"));
 	assert.ok(JSON.stringify(buildNarrativeEvidence(graph, true)).includes("private abstract"));
+	const excludedNarrative = buildNarrativeEvidence({
+		...graph,
+		nodes: [seed, later],
+		catalog: [{ ...prior, abstract: "excluded abstract" }, seed, later],
+		excludedIds: ["W2"],
+	}, true);
+	assert.equal(excludedNarrative.priorWorks.some((item) => item.id === "W2"), false);
+	assert.equal(JSON.stringify(excludedNarrative).includes("excluded abstract"), false);
+	assert.equal(excludedNarrative.derivativeWorks.some((item) => item.id === "W3"), true);
 	assert.throws(() => validateNarrative({ basedOn: {} }, new Set(["W1"])));
 	const response = { synthesis: "引用网络总结", basedOn: [], influenced: [], importantWorks: [], caveats: [] };
 	assert.throws(() => validateNarrative({ ...response, basedOn: [{ paperId: "W99" }] }, new Set(["W1"])));
@@ -98,6 +118,14 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(result.partial, false); assert.equal(result.data.length, 1);
 	assert.equal(new URL(urls[1]!).searchParams.get("offset"), "1000");
 	await client.referenceEvidence("10.1/fixture"); assert.equal(urls.length, 2, "cache reuses pages");
+	let malformed = 0;
+	const retryClient = new SemanticScholarClient(async () => {
+		malformed += 1;
+		return malformed === 1 ? { message: "temporary malformed response" } : { data: [] };
+	}, "retry-key");
+	const retried = await retryClient.referenceEvidence("10.9/retry-format");
+	assert.equal(malformed, 2, "a malformed 200 must not be reused by the retry");
+	assert.equal(retried.data.length, 0);
 
 	// Lazy-load S2 context: directed edges only; reuse by citing DOI; stale selection ignored.
 	const store = new CitationEvidenceStore();
@@ -198,6 +226,30 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(internals.scrubYear, 2015, "enrichment must not reset the scrub year");
 	assert.deepEqual({ k: internals.k, tx: internals.tx, ty: internals.ty }, view, "enrichment must not refit the view");
 	assert.equal(map.hasAdjusted(), true, "enrichment must not clear the user's pan/zoom flag");
+	map.setViewState({ zoom: 8, centerX: 0, centerY: 0, selectedId: null });
+	assert.equal(map.getViewState().zoom, 8);
+	const hitMap = map as unknown as {
+		nodes: Array<{ id: string; x: number; y: number; radius: number; shown: boolean }>;
+		k: number; tx: number; ty: number;
+		hit: (x: number, y: number) => { id: string } | null;
+	};
+	const hitNode = hitMap.nodes.find((node) => node.id === "W2");
+	assert.ok(hitNode);
+	hitNode.x = 0;
+	hitNode.y = 0;
+	hitNode.radius = 10;
+	hitNode.shown = true;
+	hitMap.k = 0.25;
+	hitMap.tx = 100;
+	hitMap.ty = 100;
+	assert.equal(hitMap.hit(108, 100)?.id, "W2");
+	hitMap.k = 4;
+	assert.equal(hitMap.hit(140, 100), null);
+	map.setContentFilter({ ...emptyFilter(), yearFrom: 2021, language: "fr" }, mapGraph.nodes);
+	const shown = (map as unknown as { nodes: Array<{ id: string; shown: boolean }> }).nodes;
+	assert.equal(shown.find((node) => node.id === "W2")?.shown, false);
+	assert.equal(shown.find((node) => node.id === "W1")?.shown, true);
+	map.setLabelMode("off");
 	assert.equal(internals.edges, mapGraph.edges, "enriched edges are swapped in");
 	assert.equal(internals.communities.get("W1"), internals.communities.get("W3"), "communities refresh with new edges");
 }

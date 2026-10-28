@@ -102,6 +102,27 @@ const KEYS = new Set([
 	"color",
 ]);
 
+/** View state is per display config, separate from the fetched-graph cache. */
+export function embedViewStateKey(spec: EmbedSpec, maxNodes: number): string {
+	return [
+		"view",
+		spec.target.kind,
+		spec.target.value,
+		spec.maxNodes ?? maxNodes,
+		spec.depth,
+		spec.layout,
+		spec.labels,
+		spec.color,
+		spec.yearFrom ?? "",
+		spec.yearTo ?? "",
+		spec.language ?? "",
+		spec.workType ?? "",
+		spec.concept ?? "",
+		spec.minShared,
+		spec.minCoCite,
+	].join("|");
+}
+
 export function parseEmbed(source: string): { ok: true; spec: EmbedSpec } | { ok: false; error: string } {
 	let target: { kind: "doi" | "openalex"; value: string } | null = null;
 	let maxNodes: number | undefined;

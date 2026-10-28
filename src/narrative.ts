@@ -52,7 +52,8 @@ export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: bo
 	});
 	const cites = (a: string, b: string): boolean =>
 		(graph.referenceLists.get(a)?.includes(b) ?? false) || Boolean(graph.citationEvidence?.get(a, b));
-	const candidates = [...allKnown.values()].filter(p => p.id !== seed.id);
+	const excluded = new Set(graph.excludedIds ?? []);
+	const candidates = [...allKnown.values()].filter((paper) => paper.id !== seed.id && !excluded.has(paper.id));
 	const priorCounts = new Map(priorWorks(graph, visible).map(p => [p.paper.id, p.count]));
 	const derivativeCounts = new Map(derivativeWorks(graph, visible).map(p => [p.paper.id, p.count]));
 	const prior = candidates.filter(p => cites(seed.id, p.id))

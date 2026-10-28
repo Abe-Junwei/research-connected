@@ -1,3 +1,4 @@
+import "../src/host-language";
 import { performance } from "node:perf_hooks";
 import { derivativeWorks, priorWorks } from "../src/aggregates";
 import { placeLayout, type LayoutMode } from "../src/layout-modes";

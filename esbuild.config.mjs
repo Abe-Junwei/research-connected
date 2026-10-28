@@ -81,7 +81,7 @@ if (mode === "review-browser") {
 		outfile: ".superdesign/tmp/review-check.js",
 	});
 	const html = readFileSync("preview/index.html", "utf8")
-		.replace("../styles.css?preview-refresh=17", "../../styles.css")
+		.replace(/\.\.\/styles\.css(?:\?[^"]*)?/, "../../styles.css")
 		.replace(/<script type="module">[\s\S]*?<\/script>/, '<script type="module" src="review-check.js"></script>');
 	writeFileSync(".superdesign/tmp/review-check.html", html);
 	process.exit(0);

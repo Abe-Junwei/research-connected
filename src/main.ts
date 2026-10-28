@@ -1,3 +1,4 @@
+import "./host-language";
 import { addIcon, Plugin } from "obsidian";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";

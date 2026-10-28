@@ -194,13 +194,19 @@ export function mergeOpenCitation(graph: SimilarityGraph, citingId: string, cite
 	if (graph.workIdentity) {
 		const store = new CitationEvidenceStore();
 		for (const row of graph.workIdentity.evidence) store.set(row);
-		const inOriginal = graph.workIdentity.referenceLists.find(([id]) => id === citingId)?.[1].includes(citedId) ?? false;
+		const prior = store.get(originalA.id, originalB.id);
+		const inOriginal = prior
+			? prior.sources.includes("openalex")
+			: graph.workIdentity.referenceLists.find(([id]) => id === citingId)?.[1].includes(citedId) ?? false;
 		store.set(directEvidence(originalA, originalB, inOriginal, true));
 		graph.workIdentity.evidence = store.entries();
 	}
 	citingId = a.id; citedId = b.id;
 	graph.citationEvidence ??= new CitationEvidenceStore();
-	const inOpenAlex = graph.referenceLists.get(citingId)?.includes(citedId) ?? false;
+	const priorDisplay = graph.citationEvidence.get(citingId, citedId);
+	const inOpenAlex = priorDisplay
+		? priorDisplay.sources.includes("openalex")
+		: graph.referenceLists.get(citingId)?.includes(citedId) ?? false;
 	graph.citationEvidence.set(directEvidence(a, b, inOpenAlex, true));
 	const edge = graph.edges.find(e => (e.source === citingId && e.target === citedId) || (e.target === citingId && e.source === citedId));
 	if (!edge) {

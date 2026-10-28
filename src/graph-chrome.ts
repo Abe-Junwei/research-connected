@@ -1,43 +1,29 @@
+import { getIcon } from "obsidian";
 import { tr } from "./i18n";
+import { type YearHistogram } from "./year-histogram";
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded";
 
-export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "pause" | "edit" | "save" | "project" | "views" | "refresh" | "fit" | "diagnose" | "external" | "bookmark" | "bookmarkCheck" | "read" | "exclude" | "copy" | "table" | "note" | "export" | "chevronDown"): SVGSVGElement {
-	const paths: Record<typeof name, string[]> = {
-		grid: ["M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z"],
-		clock: ["M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z", "M10 5v5l3.2 2"],
-		radial: ["M10 10 4 4M10 10l7-1M10 10l-3 7", "M10 10m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0", "M2.5 2.5h3v3h-3zM15 7h3v3h-3zM5.5 15h3v3h-3z"],
-		play: ["m7 4 9 6-9 6z"],
-		pause: ["M6.5 4.5v11M13.5 4.5v11"],
-		edit: ["m4 13.5-.8 3.3 3.3-.8L16 6.5 13.5 4z", "m11.8 5.7 2.5 2.5"],
-		save: ["M4 3.5h10l2 2V16.5H4z", "M7 3.5v4h6v-4M7 16.5v-5h6v5"],
-		project: ["M2.5 5.5h6l1.5 1.7h7.5v8.3h-15z", "M2.5 5.5V4h6l1.5 1.5"],
-		views: ["m10 3 7 3.5-7 3.5-7-3.5z", "m3 10 7 3.5 7-3.5M3 13.5 10 17l7-3.5"],
-		refresh: ["M16 7V3.5l-2 2A6.5 6.5 0 1 0 16.5 12", "M16 3.5v4h-4"],
-		fit: ["M7 3H3v4M13 3h4v4M3 13v4h4M17 13v4h-4"],
-		diagnose: ["M8.5 3.5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z", "m12.2 12.2 4.3 4.3"],
-		external: ["M11 4h5v5", "m16 4-7 7", "M14 11v5H4V6h5"],
-		bookmark: ["M5 3.5h10v13l-5-3-5 3z"],
-		bookmarkCheck: ["M5 3.5h10v13l-5-3-5 3z", "m7.5 8.5 1.5 1.5 3-3"],
-		read: ["M5 2.5h7l3 3v12H5z", "M12 2.5v3h3", "m7 11 2 2 4-4"],
-		exclude: ["M10 2.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Z", "M6 10h8"],
-		copy: ["M7 7h9v10H7z", "M4 13H3V3h9v1"],
-		table: ["M3 4h14v12H3z", "M3 8h14M3 12h14M8 4v12"],
-		note: ["M5 3h8l3 3v11H5z", "M12 3v4h4", "M8 11h5M8 14h5"],
-		export: ["M10 3v9", "m6.5 8.5 3.5 3.5 3.5-3.5", "M4 13v4h12v-4"],
-		chevronDown: ["m5 7.5 5 5 5-5"],
-	};
-	const svg = createSvg("svg");
-	svg.setAttribute("viewBox", "0 0 20 20");
+let tabPanelSequence = 0;
+
+const CHROME_ICONS = {
+	grid: "layout-grid", clock: "clock", radial: "network",
+	play: "play", pause: "pause", edit: "pencil", trash: "trash-2",
+	save: "save", project: "folder", views: "layers", refresh: "rotate-cw",
+	fit: "maximize", diagnose: "search", external: "external-link",
+	bookmark: "bookmark", bookmarkCheck: "bookmark-check", read: "book-open",
+	exclude: "circle-minus", copy: "copy", table: "table", note: "file-text",
+	export: "download", chevronDown: "chevron-down", chevronUp: "chevron-up", chevronRight: "chevron-right",
+	plus: "plus", minus: "minus", back: "chevron-left", filter: "list-filter",
+} as const;
+
+export function createChromeIcon(name: keyof typeof CHROME_ICONS): SVGSVGElement {
+	const svg = getIcon(CHROME_ICONS[name]);
+	if (!svg) throw new Error(`Missing Lucide icon: ${CHROME_ICONS[name]}`);
 	svg.setAttribute("aria-hidden", "true");
 	svg.classList.add("cpo-icon-glyph");
-	for (const d of paths[name]) {
-		const path = createSvg("path");
-		path.setAttribute("d", d);
-		svg.append(path);
-	}
 	return svg;
 }
 
@@ -73,8 +59,12 @@ export interface GraphChromeOptions {
 	onLayout: (mode: LayoutMode) => void;
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
+	tabsHost: HTMLElement;
+	tabPanel: HTMLElement;
 	researchButton?: boolean;
-	/** Tabs and export actions. When set, they leave the control host. */
+	/** Pane library. Becomes the bottom sidebar tab instead of a top-bar button. */
+	libraryTab?: boolean;
+	/** Export actions. When set, they leave the control host. */
 	actionsHost?: HTMLElement;
 	/** Layout buttons. When set, they leave the control host for the narrow rail. */
 	layoutHost?: HTMLElement;
@@ -88,8 +78,12 @@ export interface GraphChrome {
 	setYears(min: number, max: number): void;
 	/** 新图没有任何年份时收起滑块行，避免旧范围把节点全部过滤掉。 */
 	clearYears(): void;
+	setHistogram(histogram: YearHistogram, cutoff: number | null): void;
+	/** Replace the sample bars. A scrub highlight uses setHistogram so the slider is not reset. */
+	showSample(histogram: YearHistogram, cutoff: number | null): void;
 	/** 同步页签按钮高亮（不触发 onTab，由调用方自己渲染）。 */
 	setTab(tab: GraphTab): void;
+	setExportsEnabled(enabled: boolean): void;
 	setExportText(text: string, showPreview?: boolean): void;
 	copyText(text: string, label: string): Promise<void>;
 	clearExportText(): void;
@@ -124,16 +118,68 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	scrubRow.className = "cpo-tool-row cpo-scrub-row";
 	const tabRow = createDiv();
 	tabRow.className = "cpo-tool-row cpo-tab-row";
+	tabRow.setAttribute("role", "tablist");
+	tabRow.setAttribute("aria-label", tr("图谱内容", "Graph content"));
+	const panelId = `cpo-tab-panel-${++tabPanelSequence}`;
+	options.tabPanel.id = panelId;
+	options.tabPanel.setAttribute("role", "tabpanel");
+	options.tabPanel.tabIndex = 0;
 	let layout = options.layout;
 	let hasYears = false;
-	const syncScrub = (): void => {
-		const show = layout === "temporal" && hasYears;
+	let histogram: YearHistogram = { bins: [], unknown: 0, dated: 0 };
+	const bars = createDiv();
+	bars.className = "cpo-year-bars";
+	bars.setAttribute("aria-hidden", "true");
+	const summary = createEl("p");
+	summary.className = "cpo-year-summary";
+	const paintBars = (): void => {
+		const cutoff = Number(range.value);
+		const throughAll = !hasYears || !Number.isFinite(cutoff) || cutoff >= maxYear;
+		bars.replaceChildren();
+		const peak = Math.max(1, ...histogram.bins.map((bin) => bin.count));
+		for (const bin of histogram.bins) {
+			const bar = createSpan();
+			bar.style.setProperty("--year", String(bin.year));
+			bar.className = throughAll || bin.year <= cutoff ? "cpo-year-bar is-on" : "cpo-year-bar";
+			bar.style.height = `${Math.max(bin.count === 0 ? 2 : 3, Math.round((bin.count / peak) * 18))}px`;
+			bars.append(bar);
+		}
+		if (histogram.bins.length === 0) {
+			summary.textContent = tr("当前样本没有年份", "This sample has no years");
+			return;
+		}
+		const first = histogram.bins[0]!.year;
+		const last = histogram.bins[histogram.bins.length - 1]!.year;
+		const span = first === last ? String(first) : `${first}–${last}`;
+		const unknownNote = histogram.unknown ? tr(` · 年份未知 ${histogram.unknown}`, ` · ${histogram.unknown} undated`) : "";
+		const seedNote = !throughAll ? tr(" · 种子始终显示", " · Seed stays visible") : "";
+		summary.textContent = tr(`${span} · ${histogram.dated} 篇有年份`, `${span} · ${histogram.dated} dated`) + unknownNote + seedNote;
+	};
+	const showYearBand = (): void => {
+		const show = layout === "temporal";
 		scrubRow.hidden = !show;
-		if (show) return;
-		stop();
-		range.value = String(maxYear);
-		readout.textContent = tr("全部年份", "All years");
-		options.onScrub(null);
+		if (scrubHost) scrubHost.hidden = !show;
+		if (!show) return;
+		const noYears = !hasYears || histogram.bins.length === 0;
+		range.hidden = noYears;
+		play.hidden = noYears;
+		bars.hidden = noYears;
+		play.disabled = histogram.bins.length < 2;
+		range.disabled = histogram.bins.length < 2;
+		if (noYears) {
+			summary.textContent = tr("当前样本没有年份", "This sample has no years");
+			return;
+		}
+		paintBars();
+	};
+	const syncScrub = (): void => {
+		if (layout !== "temporal") {
+			stop();
+			range.value = String(maxYear);
+			readout.textContent = tr("全部年份", "All years");
+			options.onScrub(null);
+		}
+		showYearBand();
 	};
 	const readout = createSpan();
 	readout.className = "cpo-scrub-readout";
@@ -210,10 +256,12 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		if (!Number.isFinite(year) || year >= maxYear) {
 			readout.textContent = tr("全部年份", "All years");
 			options.onScrub(null);
+			paintBars();
 			return;
 		}
 		readout.textContent = tr(`截至 ${year}`, `Through ${year}`);
 		options.onScrub(year);
+		paintBars();
 	};
 	range.addEventListener("input", () => {
 		stop();
@@ -221,6 +269,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	});
 
 	const play = pressButton(tr("播放", "Play"), false, () => {
+		if (play.disabled || minYear >= maxYear) return;
 		if (timer) {
 			stop();
 			return;
@@ -249,25 +298,54 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	const scrubMeta = createDiv();
 	scrubMeta.className = "cpo-scrub-meta";
 	scrubMeta.append(readout, play);
-	scrubRow.append(range, scrubMeta);
+	scrubRow.append(bars, summary, range, scrubMeta);
 
 	const tabs: Array<[GraphTab, string]> = [
-		["graph", tr("图谱", "Graph")],
+		["graph", tr("论文详情", "Paper details")],
 		["prior", tr("先验工作", "Prior work")],
 		["derivative", tr("衍生工作", "Later work")],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", tr("研究脉络", "Research narrative")]);
+	if (options.libraryTab) tabs.push(["staged", tr("暂存与排除", "Saved and excluded")]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
+	const selectTab = (next: GraphTab): void => {
+		const shown: GraphTab = next === "excluded" && tabButtons.has("staged") ? "staged" : next;
+		for (const [key, item] of tabButtons) {
+			const selected = key === shown;
+			item.classList.toggle("is-on", selected);
+			item.setAttribute("aria-selected", String(selected));
+			item.tabIndex = selected || (!tabButtons.has(shown) && key === "graph") ? 0 : -1;
+		}
+		const selected = tabButtons.get(shown);
+		if (selected) options.tabPanel.setAttribute("aria-labelledby", selected.id);
+		else options.tabPanel.removeAttribute("aria-labelledby");
+	};
 	for (const [tab, label] of tabs) {
 		const button = pressButton(label, tab === "graph", () => {
-			for (const [key, item] of tabButtons) setPressed(item, key === tab);
+			selectTab(tab);
 			options.onTab(tab);
 		});
+		button.id = `${panelId}-${tab}`;
+		button.setAttribute("role", "tab");
+		button.setAttribute("aria-controls", panelId);
+		button.removeAttribute("aria-pressed");
 		button.title = label;
 		tabButtons.set(tab, button);
 		if (tab === "research") button.hidden = !options.researchButton;
 		tabRow.append(button);
 	}
+	selectTab("graph");
+	tabRow.addEventListener("keydown", (event) => {
+		if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+		const visible = Array.from(tabButtons.values()).filter((button) => !button.hidden);
+		const current = visible.indexOf(document.activeElement as HTMLButtonElement);
+		if (current < 0) return;
+		const index = event.key === "Home" ? 0 : event.key === "End" ? visible.length - 1
+			: (current + (event.key === "ArrowRight" ? 1 : -1) + visible.length) % visible.length;
+		event.preventDefault();
+		visible[index]?.focus();
+		visible[index]?.click();
+	});
 
 	const exportMenu = createEl("details");
 	exportMenu.className = "cpo-export-menu";
@@ -277,12 +355,28 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	exportMenu.append(exportSummary);
 	const exportItems = createDiv();
 	exportItems.className = "cpo-export-items";
+	const exportHint = createDiv();
+	exportHint.className = "cpo-tool-hint";
+	exportHint.hidden = true;
+	exportHint.textContent = tr("请先构建图谱", "Build a graph first");
+	exportItems.append(exportHint);
+	const exportButtons: HTMLButtonElement[] = [];
 	for (const [label, kind] of [["BibTeX", "bibtex"], ["YAML", "yaml"], [tr("表格", "Table"), "table"], [options.noteButton ? tr("写入笔记", "Write to note") : tr("笔记骨架", "Note template"), "note"]] as const) {
-		exportItems.append(actionButton(label, () => options.onExport(kind)));
+		const button = actionButton(label, () => options.onExport(kind));
+		exportButtons.push(button);
+		exportItems.append(button);
 	}
 	exportMenu.append(exportItems);
+	const setExportsEnabled = (enabled: boolean): void => {
+		exportHint.hidden = enabled;
+		for (const button of exportButtons) {
+			button.disabled = !enabled;
+			if (enabled) button.removeAttribute("title");
+			else button.title = exportHint.textContent ?? "";
+		}
+	};
+	setExportsEnabled(false);
 	const releaseExportMenu = registerPopover(exportMenu);
-	tabRow.append(exportMenu);
 
 	const onExportKey = (event: KeyboardEvent): void => {
 		if (event.key === "Escape" && !output.hidden) clearOutputText();
@@ -293,7 +387,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	else host.append(layoutRow);
 	(scrubHost ?? host).append(scrubRow);
 	syncScrub();
-	actions.append(tabRow, output);
+	options.tabsHost.append(tabRow);
+	actions.append(exportMenu, output);
 
 	return {
 		setLayout(mode: LayoutMode): void {
@@ -302,9 +397,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		setResearchVisible(visible: boolean): void {
 			const button = tabButtons.get("research");
 			if (button) button.hidden = !visible;
-			if (!visible && button?.getAttribute("aria-pressed") === "true") {
-				for (const [key, item] of tabButtons) setPressed(item, key === "graph");
-			}
+			if (!visible && button?.getAttribute("aria-selected") === "true") selectTab("graph");
 		},
 		setYears(min: number, max: number): void {
 			stop();
@@ -320,12 +413,30 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		clearYears(): void {
 			stop();
 			hasYears = false;
+			histogram = { bins: [], unknown: 0, dated: 0 };
 			readout.textContent = tr("全部年份", "All years");
 			syncScrub();
 		},
-		setTab(next: GraphTab): void {
-			for (const [key, item] of tabButtons) setPressed(item, key === next);
+		setHistogram(next: YearHistogram, cutoff: number | null): void {
+			histogram = next;
+			hasYears = next.bins.length > 0;
+			if (cutoff !== null && next.bins.length > 1) {
+				range.value = String(Math.min(maxYear, Math.max(minYear, cutoff)));
+			}
+			showYearBand();
 		},
+		showSample(next: YearHistogram, cutoff: number | null): void {
+			if (next.dated && next.bins.length > 0) {
+				const first = next.bins[0]!.year;
+				const last = next.bins[next.bins.length - 1]!.year;
+				this.setYears(first, last);
+			} else this.clearYears();
+			this.setHistogram(next, cutoff);
+		},
+		setTab(next: GraphTab): void {
+			selectTab(next);
+		},
+		setExportsEnabled,
 		setExportText(text: string, showPreview = false): void {
 			if (outputTimer) window.clearTimeout(outputTimer);
 			outputTimer = 0;

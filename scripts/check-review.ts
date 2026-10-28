@@ -3,6 +3,7 @@
  * Expects the reconcile pass to flag citation-count mismatches and to keep
  * non-research records out of the map. Not part of npm test.
  */
+import "../src/host-language";
 import { loadNeighborhood } from "../src/neighborhood";
 import { OpenAlexClient, explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
 import { SemanticScholarClient } from "../src/citation-sources";

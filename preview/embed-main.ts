@@ -1,3 +1,4 @@
+import "../src/host-language";
 import { mountEmbed } from "../src/embed-mount";
 import { explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
 import { allowedExternalUrl } from "../src/safe-url";

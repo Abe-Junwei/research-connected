@@ -22,19 +22,31 @@ export function mountSidebarResize(
 	handle.classList.add("cpo-sidebar-resizer");
 	handle.setAttribute("role", "separator");
 	handle.setAttribute("aria-orientation", "vertical");
-	handle.setAttribute("aria-label", tr("调整论文详情与关联依据面板宽度", "Resize paper details and evidence panel"));
+	handle.setAttribute("aria-label", tr("调整论文详情面板宽度", "Resize paper details panel"));
 	handle.tabIndex = 0;
 	let width = initial;
 	let dragging = false;
 	let startX = 0;
 	let startWidth = width;
 
+	const widthCap = (): number => {
+		const body = sidebar.parentElement;
+		if (!body || body.clientWidth < 8) return max;
+		const icon = body.querySelector(".cpo-icon-nav");
+		const rail = body.querySelector(".cpo-rail");
+		let chrome = 0;
+		if (icon instanceof HTMLElement) chrome += icon.getBoundingClientRect().width;
+		const railTakesSpace = !body.classList.contains("is-rail-collapsed") && !body.classList.contains("is-rail-overlay");
+		if (railTakesSpace && rail instanceof HTMLElement) chrome += rail.getBoundingClientRect().width;
+		return sidebarWidthLimit(body.clientWidth, chrome, min, max);
+	};
 	const apply = (next: number): void => {
-		width = clampSidebarWidth(next, min, max);
+		const cap = widthCap();
+		width = clampSidebarWidth(next, min, cap);
 		sidebar.style.width = `${width}px`;
 		sidebar.style.setProperty("--cpo-sidebar-width", `${width}px`);
 		handle.setAttribute("aria-valuemin", String(min));
-		handle.setAttribute("aria-valuemax", String(max));
+		handle.setAttribute("aria-valuemax", String(cap));
 		handle.setAttribute("aria-valuenow", String(width));
 		options.onResize?.();
 	};
@@ -79,12 +91,17 @@ export function mountSidebarResize(
 		event.preventDefault();
 		event.stopPropagation();
 	};
+	const onTransitionEnd = (event: TransitionEvent): void => {
+		if (event.target !== sidebar || (event.propertyName !== "width" && event.propertyName !== "flex-basis")) return;
+		options.onResize?.();
+	};
 	handle.addEventListener("pointerdown", onPointerDown);
 	handle.addEventListener("pointermove", onPointerMove);
 	handle.addEventListener("pointerup", onPointerUp);
 	handle.addEventListener("pointercancel", onPointerUp);
 	handle.addEventListener("keydown", onKeyDown);
 	handle.addEventListener("dblclick", reset);
+	sidebar.addEventListener("transitionend", onTransitionEnd);
 	return () => {
 		handle.removeEventListener("pointerdown", onPointerDown);
 		handle.removeEventListener("pointermove", onPointerMove);
@@ -92,6 +109,7 @@ export function mountSidebarResize(
 		handle.removeEventListener("pointercancel", onPointerUp);
 		handle.removeEventListener("keydown", onKeyDown);
 		handle.removeEventListener("dblclick", reset);
+		sidebar.removeEventListener("transitionend", onTransitionEnd);
 		handle.classList.remove("is-dragging");
 		sidebar.style.removeProperty("width");
 		sidebar.style.removeProperty("--cpo-sidebar-width");
@@ -100,4 +118,11 @@ export function mountSidebarResize(
 
 export function clampSidebarWidth(value: number, min = MIN_WIDTH, max = MAX_WIDTH): number {
 	return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** Largest sidebar that still leaves about 480px for the canvas. */
+export function sidebarWidthLimit(bodyWidth: number, chromeWidth: number, min = MIN_WIDTH, max = MAX_WIDTH, canvasReserve = 480): number {
+	const cap = Math.floor(bodyWidth - chromeWidth - canvasReserve);
+	if (cap < min) return min;
+	return Math.min(max, cap);
 }

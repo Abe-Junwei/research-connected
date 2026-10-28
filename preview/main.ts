@@ -1,3 +1,4 @@
+import "../src/host-language";
 import { mountGraphApp } from "../src/app";
 import { EXAMPLE_DOI } from "../src/constants";
 import { explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
@@ -37,6 +38,10 @@ mountGraphApp(root, {
 		previewSettings.researchProjects[project.seedId] = project;
 		window.localStorage.setItem(storageKey, JSON.stringify(previewSettings.researchProjects));
 	},
+	persistSettings: () => {
+		window.localStorage.setItem(storageKey, JSON.stringify(previewSettings.researchProjects));
+	},
+	loadSavedProject: () => Object.values(previewSettings.researchProjects).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
 	getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : getJson,
 	postJson: offline ? fixturePost : undefined,
 	openExternal: (url) => {

@@ -28,11 +28,21 @@ export function rememberLiteratureNote(paper: PaperNode, path: string, reading: 
 export function lookupLiteratureNote(app: App, paper: PaperNode, doiProperty: string): IndexedNote | null {
 	const index = literatureIndex(app, doiProperty);
 	const matches = new Map<string, IndexedNote>();
-	for (const key of [paper.id, ...paperRecords(paper).map((record) => record.id)]) {
-		const note = remembered.get(key) ?? index.byId.get(key);
-		if (note) for (const path of note.alternatives ?? [note.path]) if (app.vault.getAbstractFileByPath(path)) matches.set(path, note);
-	}
-	for (const doi of paperDois(paper)) { const note = remembered.get(`doi:${doi}`) ?? index.byDoi.get(doi); if (note) for (const path of note.alternatives ?? [note.path]) if (app.vault.getAbstractFileByPath(path)) matches.set(path, note); }
+	const add = (note: IndexedNote | undefined, prefer: boolean): void => {
+		if (!note) return;
+		for (const path of note.alternatives ?? [note.path]) {
+			if (!app.vault.getAbstractFileByPath(path)) continue;
+			if (prefer || !matches.has(path)) matches.set(path, note);
+		}
+	};
+	const consider = (key: string, indexedNote: IndexedNote | undefined): void => {
+		const pending = remembered.get(key);
+		if (indexedNote) remembered.delete(key);
+		add(indexedNote, true);
+		add(pending, false);
+	};
+	for (const key of [paper.id, ...paperRecords(paper).map((record) => record.id)]) consider(key, index.byId.get(key));
+	for (const doi of paperDois(paper)) consider(`doi:${doi}`, index.byDoi.get(doi));
 	if (matches.size > 1) return { path: [...matches.keys()][0]!, reading: null, alternatives: [...matches.keys()] };
 	return [...matches.values()][0] ?? null;
 }

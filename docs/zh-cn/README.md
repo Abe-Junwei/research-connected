@@ -40,7 +40,7 @@
 
 ![按发表年份排列的时间布局，带有布局控件和年份滑块](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
 
-切换到**时间**。年份滑块缩小可见范围，已保存的视图可以回到某次有用的选择。
+切换到**时间**。图谱下方的年份带缩小可见范围，并标出当前样本每年有多少篇。已保存的视图可以回到某次有用的选择。
 
 ## 把图谱放在笔记旁边
 

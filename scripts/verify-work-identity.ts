@@ -1,15 +1,16 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, normalizeProjects, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, commitPaperReading, normalizeProjects, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../src/graph-edit";
 import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
-import { matchLiteratureNote, toBibTeX } from "../src/export-graph";
+import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
 import { normalizeDoi, shortId } from "../src/paper";
 import { OpenAlexClient, type RawWork } from "../src/openalex";
-import { expandAround, loadNeighborhood, restoreGraftedMembers } from "../src/neighborhood";
+import { expandAround, expandSecondLayer, loadNeighborhood, restoreGraftedMembers, type SimilarityGraph } from "../src/neighborhood";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import type { PaperNode } from "../src/types";
+import { invalidateLiteratureIndex, lookupLiteratureNote, rememberLiteratureNote } from "../src/vault-note";
 
 
 export function verifyWorkIdentity(): void {
@@ -37,6 +38,46 @@ export function verifyWorkIdentity(): void {
 	const notes = [{ path: "primary.md", frontmatter: { doi: seed.doiUrl } }, { path: "alternate.md", frontmatter: { doi: alias.doiUrl } }];
 	assert.deepEqual(matchLiteratureNote(notes, graph.nodes[0]!, "doi")?.alternatives, ["primary.md", "alternate.md"]);
 	assert.equal((toBibTeX(graph.nodes).match(/@article/g) ?? []).length, 1);
+	const cited = (id: string, doi: string | null = null): PaperNode => ({
+		id, title: id, authors: "Ada Lovelace", authorList: ["Ada Lovelace"], year: 2020, citedByCount: 1,
+		doiUrl: doi, openAlexUrl: `https://openalex.org/${id}`, isSeed: false, origin: "reference", abstract: "",
+		concepts: [], language: "en", workType: "article", venue: null, retracted: false,
+	});
+	const doiPaper = cited("W123", "https://doi.org/10.1234/w567");
+	const otherId = cited("W567", "https://doi.org/10.9999/other");
+	assert.equal(resolveWorkQuery([doiPaper, otherId], "10.1234/w567"), "W123");
+	assert.equal(resolveWorkQuery([otherId], "10.1234/w567"), null);
+	assert.equal(resolveWorkQuery([otherId], "https://openalex.org/works/W567"), "W567");
+	assert.equal(resolvePathEndpoint("10.1234/w567", [doiPaper, otherId], normalizeDoi, shortId), "W123");
+	assert.equal(resolvePathEndpoint("10.1234/w567", [otherId], normalizeDoi, shortId), null);
+	assert.equal(doiOf(cited("W9", "https://doi.org/10.1234/example(test)")), "10.1234/example(test)");
+	const bibKeys = [...toBibTeX([cited("W11234"), cited("W21234"), cited("W31234")]).matchAll(/@\w+\{([^,]+),/g)].map((match) => match[1]);
+	assert.equal(new Set(bibKeys).size, bibKeys.length, bibKeys.join(" "));
+	invalidateLiteratureIndex();
+	const noted = cited("W1", "https://doi.org/10.1234/cache");
+	const vault = (files: { path: string; frontmatter?: Record<string, unknown> }[]) => ({
+		vault: {
+			getMarkdownFiles: () => files.map((file) => ({ path: file.path })),
+			getAbstractFileByPath: (path: string) => files.some((file) => file.path === path) ? { path } : null,
+		},
+		metadataCache: {
+			getFileCache: (file: { path: string }) => ({ frontmatter: files.find((item) => item.path === file.path)?.frontmatter }),
+		},
+	}) as never;
+	rememberLiteratureNote(noted, "old.md", "unread");
+	assert.equal(lookupLiteratureNote(vault([{ path: "old.md", frontmatter: { doi: "10.1234/cache", openalex: "https://openalex.org/W1", "rc-status": "read" } }]), noted, "doi")?.reading, "read");
+	invalidateLiteratureIndex();
+	rememberLiteratureNote(noted, "old.md", "unread");
+	assert.equal(lookupLiteratureNote(vault([{ path: "new.md", frontmatter: { doi: "10.1234/cache", openalex: "W1", "rc-status": "to-read" } }]), noted, "doi")?.path, "new.md");
+	invalidateLiteratureIndex();
+	rememberLiteratureNote(noted, "a.md", "read");
+	assert.deepEqual(lookupLiteratureNote(vault([
+		{ path: "a.md", frontmatter: { doi: "10.1234/cache", openalex: "W1", "rc-status": "read" } },
+		{ path: "b.md", frontmatter: { doi: "10.1234/cache", "rc-status": "unread" } },
+	]), noted, "doi")?.alternatives, ["a.md", "b.md"]);
+	invalidateLiteratureIndex();
+	rememberLiteratureNote(noted, "fresh.md", "to-read");
+	assert.equal(lookupLiteratureNote(vault([{ path: "fresh.md" }]), noted, "doi")?.reading, "to-read");
 	assert.deepEqual(normalizeWorkGraph(graph).workIdentity?.referenceLists, graph.workIdentity?.referenceLists);
 	const roundTrip = restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(graph))))!;
 	assert.equal(roundTrip.nodes.length, 1);
@@ -135,4 +176,40 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	const split = separateWorkRecords(graph, graph.nodes[0]!);
 	const reloadedSplit = await loadNeighborhood(client, { kind: "openalex", value: seed.id }, { ...settings, researchProjects: { [seed.id]: { ...savedProject, snapshot: saveGraphSnapshot(split) } } });
 	assert.equal(reloadedSplit.nodes.length, 2, "a saved keep-separate override must survive a remote rebuild");
+	let memory: ReadingStatus = "unread";
+	let disk: ReadingStatus = "unread";
+	let note: ReadingStatus = "unread";
+	await assert.rejects(commitPaperReading(
+		"read",
+		"unread",
+		(value) => { memory = value; },
+		async () => { disk = memory; },
+		async (value) => { if (value === "read") throw new Error("sync"); note = value; },
+	));
+	assert.equal(memory, "unread");
+	assert.equal(disk, "unread");
+	assert.equal(note, "unread");
+	const layerPaper = (id: string, seed = false): PaperNode => ({
+		id, title: id, authors: "A", authorList: ["A"], year: 2020, citedByCount: 1, doiUrl: null,
+		openAlexUrl: `https://openalex.org/${id}`, isSeed: seed, origin: seed ? "seed" : "reference", abstract: "",
+		concepts: [], language: "en", workType: "article", venue: null, retracted: false,
+	});
+	const layer: SimilarityGraph = {
+		nodes: [layerPaper("W1", true), layerPaper("W2")], edges: [], seedScore: new Map([["W2", 1]]), warnings: [],
+		strategies: { references: true, citations: false, related: false }, referenceLists: new Map(),
+		catalog: [layerPaper("W1", true), layerPaper("W2")], skippedNonResearch: 0,
+	};
+	const raw = (id: string, type: string, retracted = false): RawWork => ({
+		id: `https://openalex.org/${id}`, display_name: id, publication_year: 2020, type, is_retracted: retracted,
+		authorships: [{ author: { display_name: "A" } }],
+	});
+	const layerClient = {
+		referencedBySeed: async () => [raw("W9", "book-review"), raw("W10", "article", true), raw("W11", "article")],
+		worksByIds: async () => [],
+	} as unknown as OpenAlexClient;
+	const filtered = await expandSecondLayer(layerClient, layer, 10, true);
+	assert.deepEqual(filtered.graph.nodes.map((node) => node.id).sort(), ["W1", "W11", "W2"]);
+	const open = await expandSecondLayer(layerClient, layer, 10, false);
+	assert.equal(open.graph.nodes.some((node) => node.id === "W10"), true);
+	assert.equal(open.graph.nodes.some((node) => node.id === "W9"), false);
 }

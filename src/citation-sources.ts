@@ -266,6 +266,7 @@ export class SemanticScholarClient {
 			if (result && typeof result === "object" && Array.isArray((result as { data?: unknown }).data)) {
 				return result as { data: T[]; next?: number };
 			}
+			dropCachedGet(url, this.headers());
 			lastError = s2FormatError(context, result);
 		}
 		throw lastError;
@@ -273,7 +274,10 @@ export class SemanticScholarClient {
 
 	private async get(url: string): Promise<unknown> {
 		const json = await cachedGet(this.getJson, url, { headers: this.headers() });
-		if (!json || typeof json !== "object") throw s2FormatError(tr("接口", "API"), json);
+		if (!json || typeof json !== "object") {
+			dropCachedGet(url, this.headers());
+			throw s2FormatError(tr("接口", "API"), json);
+		}
 		return json;
 	}
 
@@ -312,6 +316,17 @@ export async function semanticAbstract(
 	}
 }
 
+export async function fallbackAbstract(
+	getJson: GetJson,
+	paper: { doiUrl: string | null },
+	options: { semanticScholarApiKey: string; contactEmail: string },
+): Promise<{ text: string; source: "s2" | "crossref" } | null> {
+	const s2Text = await semanticAbstract(getJson, options.semanticScholarApiKey, paper);
+	if (s2Text) return { text: s2Text, source: "s2" };
+	const crossrefText = await crossrefAbstract(getJson, options.contactEmail, paper);
+	return crossrefText ? { text: crossrefText, source: "crossref" } : null;
+}
+
 export async function crossrefAbstract(
 	getJson: GetJson,
 	contactEmail: string,
@@ -330,9 +345,18 @@ function pids(value: string | undefined): string[] {
 
 const queues = new Map<string, Promise<unknown>>();
 const responses = new Map<string, { at: number; result: Promise<unknown> }>();
+
+function responseKey(url: string, headers: Record<string, string>): string {
+	return url + JSON.stringify(headers);
+}
+
+function dropCachedGet(url: string, headers: Record<string, string>): void {
+	responses.delete(responseKey(url, headers));
+}
+
 async function cachedGet(get: GetJson, url: string, init: { headers: Record<string, string> }): Promise<unknown> {
 	const origin = new URL(url).origin;
-	const key = url + JSON.stringify(init.headers);
+	const key = responseKey(url, init.headers);
 	const cached = responses.get(key);
 	if (cached && Date.now() - cached.at < 300_000) return cached.result;
 	const previous = queues.get(origin) ?? Promise.resolve();

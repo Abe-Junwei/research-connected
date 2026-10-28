@@ -1,5 +1,7 @@
 import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
+import { normalizeDoi, reconstructAbstract, shortId } from "./paper";
+import type { Origin, PaperNode, SearchHit } from "./types";
 
 export interface RawWork {
 	id?: string;
@@ -292,6 +294,116 @@ function sampledIdentity(work: RawWork): string {
 
 function encodeDoi(doi: string): string {
 	return encodeURIComponent(doi).replace(/%2F/gi, "/");
+}
+
+export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
+	if (!raw.id) return null;
+	const id = shortId(raw.id);
+	if (!/^W\d+$/.test(id)) return null;
+	const title = (raw.display_name ?? "").trim();
+	if (!title) return null;
+	const names = authorNames(raw.authorships);
+	return {
+		id,
+		title,
+		year: typeof raw.publication_year === "number" ? raw.publication_year : null,
+		citedByCount: typeof raw.cited_by_count === "number" ? raw.cited_by_count : 0,
+		authors: formatAuthorNames(names),
+		authorList: names,
+		abstract: reconstructAbstract(raw.abstract_inverted_index),
+		doiUrl: toDoiUrl(raw.doi),
+		openAlexUrl: `https://openalex.org/${id}`,
+		isSeed: origin === "seed",
+		origin,
+		language: cleanToken(raw.language),
+		workType: cleanToken(raw.type),
+		venue: cleanName(raw.primary_location?.source?.display_name),
+		bibliography: raw.biblio ? {
+			volume: cleanToken(raw.biblio.volume),
+			issue: cleanToken(raw.biblio.issue),
+			firstPage: cleanToken(raw.biblio.first_page),
+			lastPage: cleanToken(raw.biblio.last_page),
+		} : undefined,
+		retracted: raw.is_retracted === true,
+		concepts: conceptNames(raw.topics, raw.concepts),
+		topicTags: topicTags(raw.topics, raw.concepts),
+	};
+}
+
+export function toSearchHit(raw: RawWork): SearchHit | null {
+	const paper = toPaper(raw, "related");
+	if (!paper) return null;
+	return {
+		id: paper.id,
+		title: paper.title,
+		year: paper.year,
+		citedByCount: paper.citedByCount,
+		authors: paper.authors,
+	};
+}
+
+function cleanToken(value: string | null | undefined): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim().toLowerCase();
+	return trimmed || null;
+}
+
+function cleanName(value: string | null | undefined): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim().replace(/\s+/g, " ");
+	return trimmed || null;
+}
+
+function conceptNames(topics: RawWork["topics"], concepts: RawWork["concepts"]): string[] {
+	const ranked = [...(topics?.length ? topics : concepts ?? [])].sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0));
+	const names: string[] = [];
+	const seen = new Set<string>();
+	for (const item of ranked) {
+		const name = item?.display_name?.trim();
+		if (!name) continue;
+		const key = name.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		names.push(name);
+		if (names.length >= 8) break;
+	}
+	return names;
+}
+
+function topicTags(topics: RawWork["topics"], concepts: RawWork["concepts"]): Array<{ id: string; name: string; score: number }> {
+	if (topics?.length) {
+		return topics.flatMap((topic) => {
+			const id = topic?.id?.trim();
+			const name = topic?.display_name?.trim();
+			if (!id || !name) return [];
+			return [{ id, name, score: Math.max(0, Math.min(1, topic?.score ?? 1)) }];
+		});
+	}
+	return (concepts ?? []).flatMap((concept) => {
+		const name = concept?.display_name?.trim();
+		if (!name) return [];
+		return [{ id: `name:${name.toLocaleLowerCase()}`, name, score: Math.max(0, Math.min(1, concept?.score ?? 1)) }];
+	});
+}
+
+function authorNames(authorships: RawWork["authorships"]): string[] {
+	const names: string[] = [];
+	for (const authorship of authorships ?? []) {
+		const name = authorship?.author?.display_name?.trim();
+		if (name) names.push(name);
+	}
+	return names;
+}
+
+function formatAuthorNames(names: string[]): string {
+	if (names.length === 0) return tr("作者不详", "Author unknown");
+	if (names.length <= 3) return names.join(", ");
+	return tr(`${names.slice(0, 3).join(", ")} 等`, `${names.slice(0, 3).join(", ")} et al.`);
+}
+
+function toDoiUrl(doi: string | null | undefined): string | null {
+	const normalized = normalizeDoi(doi);
+	return normalized ? `https://doi.org/${normalized}` : null;
 }
 
 function validEmail(email: string): string | null {

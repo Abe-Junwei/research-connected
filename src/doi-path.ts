@@ -118,15 +118,15 @@ export function resolvePathEndpoint(
 ): string | null {
 	const trimmed = query.trim();
 	if (!trimmed) return null;
-	const asId = shortId(trimmed);
-	if (/^W\d+$/i.test(asId)) {
-		const upper = asId.toUpperCase();
-		for (const paper of papers) if (paperHasId(paper, upper)) return paper.id;
-	}
 	const doi = normalizeDoi(trimmed);
-	if (!doi) return null;
-	for (const paper of papers) {
-		if (paperDois(paper).includes(doi)) return paper.id;
+	if (doi) {
+		for (const paper of papers) if (paperDois(paper).includes(doi)) return paper.id;
+		return null;
+	}
+	const asId = trimmed.match(/^(?:https?:\/\/(?:www\.)?openalex\.org\/(?:works\/)?)?(W\d+)$/i)?.[1];
+	if (asId && /^W\d+$/i.test(shortId(asId))) {
+		const upper = shortId(asId).toUpperCase();
+		for (const paper of papers) if (paperHasId(paper, upper)) return paper.id;
 	}
 	return null;
 }

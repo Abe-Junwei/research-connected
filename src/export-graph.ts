@@ -68,8 +68,14 @@ function bibType(workType: string | null): string {
 function citeKey(paper: PaperNode, used: Set<string>): string {
 	const author = shortAuthor(paper.authors).replace(/[^A-Za-z0-9]+/g, "") || "anon";
 	const year = paper.year ?? "nd";
-	let key = `${author}${year}`;
-	if (used.has(key)) key = `${key}${paper.id.replace(/\D/g, "").slice(-4)}`;
+	const base = `${author}${year}`;
+	let key = base;
+	if (used.has(key)) key = `${base}${paper.id.replace(/\D/g, "").slice(-4)}`;
+	let suffix = 2;
+	while (used.has(key)) {
+		key = `${base}${suffix}`;
+		suffix += 1;
+	}
 	used.add(key);
 	return key;
 }
@@ -87,9 +93,7 @@ function cell(value: string): string {
 }
 
 export function doiOf(paper: Pick<PaperNode, "doiUrl">): string | null {
-	if (!paper.doiUrl) return null;
-	const match = paper.doiUrl.match(/10\.\d{4,9}\/\S+/);
-	return match?.[0]?.replace(/[)\].,;>]+$/g, "") ?? null;
+	return normalizeDoi(paper.doiUrl);
 }
 
 export interface LiteratureFields {

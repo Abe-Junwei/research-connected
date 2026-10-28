@@ -198,6 +198,26 @@ export function updateProjectPaperState(
 	return state;
 }
 
+/** Write the literature note before the project. A failed note sync must not leave the new status on disk. */
+export async function commitPaperReading(
+	reading: ReadingStatus,
+	previous: ReadingStatus,
+	write: (reading: ReadingStatus) => void,
+	persist: () => Promise<void> | void,
+	sync?: (reading: ReadingStatus) => Promise<void> | void,
+): Promise<void> {
+	write(reading);
+	try {
+		await sync?.(reading);
+		await persist();
+	} catch (error) {
+		write(previous);
+		await Promise.resolve(sync?.(previous)).catch(() => undefined);
+		await Promise.resolve(persist()).catch(() => undefined);
+		throw error;
+	}
+}
+
 export function projectStagedPapers(projects: Record<string, ResearchProject>): Array<{ seedId: string; paper: PaperNode; source: string; addedAt: string; read: boolean; reading: ReadingStatus }> {
 	return Object.values(projects).flatMap((project) => Object.values(project.paperStates ?? {})
 		.filter((state) => state.staged)
