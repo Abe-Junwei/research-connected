@@ -8,32 +8,32 @@
       "activeDraftId": "877c1fa9-066b-42b6-93a8-2da339c72078",
       "designSystemPath": ".superdesign/design-system.md",
       "referenceIds": [
-        "92451368-e13c-4606-be49-d37809301d52",
-        "c281eeef-bd98-4a0c-8df3-4a718a674f99"
+        "51448135-fa74-4839-b6df-b109d44f8dcd",
+        "f24afc8f-3e02-479d-b31d-6e971fc7ff21",
+        "docs-images-logo.svg",
+        "b1181e8c-dfbb-442e-8880-899e16056b32"
       ],
       "contextFiles": [
         ".superdesign/design-system.md",
-        ".superdesign/init/components.md",
-        ".superdesign/init/layouts.md",
-        "src/app.ts:68:180",
-        "src/embed-mount.ts:52:180",
+        "docs/constellation-workspace-plan.md",
+        "src/app.ts:108:245",
+        "src/embed-mount.ts:70:180",
         "src/graph-chrome.ts",
         "src/filter-controls.ts",
         "src/layout-modes.ts",
         "src/sidebar-resize.ts",
-        "styles.css:1:680"
+        "styles.css:2970:3020"
       ],
       "fingerprints": {
-        ".superdesign/design-system.md": "b2a989ab92528a1a800ce66ec505dcce6eda5b88b5bedac685c42d01d0f144b0",
-        ".superdesign/init/components.md": "c26ddd228c0a323f4046fe17daf063f68cbffb778aca8cca9d35a6a78cc9d506",
-        ".superdesign/init/layouts.md": "d03ad3a0b2c6198d7cb8289af06c615f32515b0f27372218624b80826350f9c8",
-        "src/app.ts": "7139298260ecee246969fef0fe2c57f920e3d9613385362464ac5ddc90da8fa1",
-        "src/embed-mount.ts": "310c01036e9d6c30a47cab3b49162c4a3f08fc9538b0c37ca97d003e27acf75b",
-        "src/graph-chrome.ts": "e2766c44fa121e8b250da964b5c6907b947feb657afdb91881216941d0debcd1",
-        "src/filter-controls.ts": "e3c47198047acef2e516037b0c1146ee5fd976f74fa0faceeecebbc54eabe6e2",
-        "src/layout-modes.ts": "a696514131e3787b2c582dad230a23b5372f97f5b78c5f661c5fd6b767f015dc",
-        "src/sidebar-resize.ts": "9c077215078692c4edb6e1397bab47fd89423e1519687e8d73e091c5736f1a19",
-        "styles.css": "22f767b063a15bce2491c2d9eaf6c44e26edae2784262eba9d922dcee4b090c2"
+        ".superdesign/design-system.md": "50b471caa9c675af6ba2a949917871e369a03b45375af4d7d64a07be1d51366f",
+        "docs/constellation-workspace-plan.md": "0c78aedec36ced4412242b11b68d34219937a0ad6088d2ed927dbf3436cfe8fa",
+        "src/app.ts": "b86de3c75338e77897a21aba6bf7aa0c39ca7b4e3318fdccf56f48bd6ab370f0",
+        "src/embed-mount.ts": "904d9d7b7cab65af484efd5245b210e1c77a221b6ff32edf13f92a3e0ec88582",
+        "src/graph-chrome.ts": "502676dda7f7399b1f75ff24a61510f4fe73ad9534078404bf45f7ef6f11c697",
+        "src/filter-controls.ts": "97428a7b796f17284082fdf1b2bc8835dc94bce3fcd8dda327081d582049acb4",
+        "src/layout-modes.ts": "d4fb2b14627fb97409b5f20ca3e6f102d9b6eb4caf435cde52fa4de47b5f21c6",
+        "src/sidebar-resize.ts": "50f9c7cb97650078fcb82805aeb78bf11334e93326b1e98fe8e6ec7932e757ec",
+        "styles.css": "296c7a188b7ef333bf2f5611aca66e5509ddc5d2889c826172a7c4b93b7c7948"
       },
       "drafts": {
         "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef": {
@@ -42,13 +42,20 @@
           "currentVersion": 3
         },
         "877c1fa9-066b-42b6-93a8-2da339c72078": {
-          "title": "Research Connected Aligned Production UI",
-          "visualDirection": "shared editorial instrument shell",
+          "title": "Refined Workspace with Evidence Sidebar",
+          "visualDirection": "Cosmograph reference component alignment: 42px centered-title header, 44px icon rail, ~24% filter panel, 6px gutters, rectangular inset filter cards with 12px padding/gaps, flat square map controls, upper-left fit action, 57px timeline with ticks above bars, aligned labels and 300px inspector; retains dark procedural twinkling stars and drifting nebula, light theme hides both.",
           "parentDraftId": "918d58ea-54f7-4ea5-aafc-39fdb3cea2ef",
-          "currentVersion": 1
+          "currentVersion": 23
         }
       },
-      "updatedAt": "2026-10-07T04:35:00Z"
+      "updatedAt": "2026-10-27T05:10:28.259574+00:00",
+      "brandAssets": {
+        "logo": {
+          "assetKey": "docs-images-logo.svg",
+          "url": "https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/03973bb8-06c2-4b1f-977e-b974178b7938/brand-assets/docs-images-logo.svg/logo.svg",
+          "sourcePath": "docs/images/logo.svg"
+        }
+      }
     },
     "statusbar-redesign": {
       "targetKind": "existing-ui",
