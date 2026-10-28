@@ -811,7 +811,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			onJump: (target) => showDetail(target, true),
 		});
 		paintIdentityDecisionActions(detail, paper, [...graph.catalog, ...Object.values(deps.getSettings().researchProjects).flatMap(project => project.snapshot?.catalog ?? project.snapshot?.nodes ?? [])], async (ids, kind) => {
-			if (!deps.persistSettings) throw new Error("Project persistence is unavailable");
+			if (!deps.persistSettings) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, deps.persistSettings);
 		});
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
@@ -1188,7 +1188,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const projects = deps.getSettings().researchProjects;
 		const key = activeProjectId ?? projectWriteKey(projects, seedId);
 		const original = projects[key];
-		if (!original || graph !== host) throw new Error("Project changed; retry the action");
+		if (!original || graph !== host) throw new Error(tr("项目已变更，请重试", "Project changed; retry the action"));
 		const stored = structuredClone(original);
 		changeVersionExclusion(stored, chosen.paper, excluded, chosen.whole, paper);
 		const base = !excluded && !host.nodes.some(node => paperHasId(node, chosen.paper.id)) ? graftNodes(host, [chosen.paper], host.referenceLists) : host;

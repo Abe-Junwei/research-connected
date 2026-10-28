@@ -10,6 +10,16 @@
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub リリース"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 以降のデスクトップ"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="ライセンス"></p>
 
+## 開発ブランチの機能（未リリース）
+
+以下は [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) に実装され、[PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) で追跡しています。公開済みリリースの機能一覧ではありません。実際の Obsidian 環境での総合受け入れ確認は未完了です。下の画像は現在の星図の外観と異なる場合があります。UI の対応言語は簡体字中国語と英語です。
+
+- 同じ論文と確認済みの版グループはプロジェクト間で読書状況を共有し、保存・除外はプロジェクトごとに管理します。競合やノートの外部編集は明示的に解決でき、同期の再試行・停止も可能です。
+- 出典で確認された関係と手動の統合・分離に基づいて版をまとめます。タイトルからは推測しません。版の選択、除外範囲の確認、出典を含むエクスポートに対応します。
+- 引用経路、候補選定の診断、構造的類似度を確認し、証拠不足と観測値ゼロを区別します。MMR で関連性と多様性を調整し、意味的情報も活用します。
+- ノード半径は累積被引用数の対数で調整し、欠損値は不明と表示します。古く影響力のある論文には理由付きの古典マーカーと瞬きが付きますが、権威的な評価ではありません。動きは OS の設定に従います。
+- 名前付きビューの保存と埋め込みのプロジェクトへの明示的な関連付けに対応します。通常画面と埋め込みで同じ読書処理を使い、ドラッグ・ズーム時の重複処理を削減しました。
+
 ## 地図
 
 ![「Deep learning」を中心にしたグラフ。左が関連論文、右が選択した論文の関係の根拠](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)

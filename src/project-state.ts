@@ -104,7 +104,7 @@ export interface ResearchProject {
 
 /** Global manual decisions update every saved projection in the same persisted settings snapshot. */
 export async function commitWorkIdentityDecision(settings: ConnectedPapersSettings, decision: Omit<WorkIdentityDecision, "kind"> & { kind: "merge" | "separate" | "clear" }, persist: () => Promise<void> | void): Promise<void> {
-	if (decision.ids.length < 2 || decision.ids.some(id => !/^W\d+$/i.test(id))) throw new Error("Choose at least two valid version records");
+	if (decision.ids.length < 2 || decision.ids.some(id => !/^W\d+$/i.test(id))) throw new Error(tr("请至少选择两条有效的版本记录", "Choose at least two valid version records"));
 	const before = settings.workIdentityDecisions;
 	const beforeReading = settings.readingWorkflow;
 	const projects = settings.researchProjects;
@@ -135,7 +135,7 @@ export async function commitWorkIdentityDecision(settings: ConnectedPapersSettin
 
 /** Publish source facts and all affected saved projections as one save; manual choices remain dominant. */
 export async function commitSourceVersionRelations(settings: ConnectedPapersSettings, reports: readonly SourceVersionRelation[], persist: () => Promise<void> | void, papers: readonly PaperNode[] = []): Promise<void> {
-	if (!validSourceVersionRelations(reports)) throw new Error("Invalid source version report; original data retained");
+	if (!validSourceVersionRelations(reports)) throw new Error(tr("来源版本报告无效，已保留原数据", "Invalid source version report; original data retained"));
 	const before = settings.sourceVersionRelations, projects = settings.researchProjects, beforeReading = settings.readingWorkflow;
 	const rows = new Map((before ?? []).map(row => [row.ids.slice().sort().join("|"), row]));
 	const changed: SourceVersionRelation[] = [];
@@ -354,7 +354,7 @@ export function projectVersionState(project: ResearchProject | undefined, paper:
 export async function resolveProjectPending(settings: ConnectedPapersSettings, key: string, pendingId: string, choice: "merge" | "separate" | "version" | "whole" | "visible", persist: () => Promise<void> | void): Promise<void> {
 	const original = settings.researchProjects[key];
 	const pending = original?.pending?.find(item => item.id === pendingId);
-	if (!original || !pending?.paper) throw new Error("Pending item has no source record; original data retained");
+	if (!original || !pending?.paper) throw new Error(tr("待处理项缺少来源记录，已保留原数据", "Pending item has no source record; original data retained"));
 	if (choice === "merge" || choice === "separate") {
 		await commitWorkIdentityDecision(settings, { ids: paperRecords(pending.paper).map(record => record.id), kind: choice, source: "manual", updatedAt: Date.now() }, persist);
 		return;
@@ -371,7 +371,7 @@ export async function resolveProjectPending(settings: ConnectedPapersSettings, k
 
 export function changeVersionExclusion(project: ResearchProject, paper: PaperNode, excluded: boolean, whole: boolean, research: PaperNode = paper): void {
 	const ids = paperRecords(research).map(version => version.id);
-	if (excluded && (paper.id === project.seedId || whole && ids.includes(project.seedId))) throw new Error("The project seed cannot be excluded");
+	if (excluded && (paper.id === project.seedId || whole && ids.includes(project.seedId))) throw new Error(tr("不能排除项目的起点论文", "The project seed cannot be excluded"));
 	const scopes = [...(project.exclusionScopes ?? [])];
 	const at = scopes.findIndex(entry => entry.ids.some(id => ids.includes(id)));
 	let scope = at < 0 ? emptyVersionScope() : scopes[at]!.scope;
@@ -561,7 +561,7 @@ export function updateProjectPaperState(
 	projectKey?: string,
 ): ProjectPaperState {
 	const key = projectKey ?? projectWriteKey(projects, seedId);
-	if (projectKey && projects[key]?.seedId !== seedId) throw new Error("Project seed changed; retry the action");
+	if (projectKey && projects[key]?.seedId !== seedId) throw new Error(tr("项目起点已变更，请重试", "Project seed changed; retry the action"));
 	const project = projects[key] ?? (projects[key] = { version: 1, seedId: key, name: key, updatedAt: Date.now(), views: [] });
 	if (patch.staged !== undefined || patch.excluded !== undefined) project.versionStates ??= { ...(project.identityOriginalStates ?? project.paperStates) };
 	const previous = project.versionStates?.[paper.id] ?? project.paperStates?.[paper.id];
@@ -1467,20 +1467,20 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 		if (!/^W\d+$/i.test(seedId) || !value || typeof value !== "object") continue;
 		const project = value as Partial<ResearchProject>;
 		if (project.versionStates) for (const [id, state] of Object.entries(project.versionStates)) {
-			if (!state || state.paper?.id !== id || !["unread", "to-read", "read"].includes(state.reading)) throw new Error(`Invalid version state ${seedId}:${id}; original data retained`);
+			if (!state || state.paper?.id !== id || !["unread", "to-read", "read"].includes(state.reading)) throw new Error(tr(`版本状态无效 ${seedId}:${id}，已保留原数据`, `Invalid version state ${seedId}:${id}; original data retained`));
 		}
-		if (project.exclusionScopes && (!Array.isArray(project.exclusionScopes) || project.exclusionScopes.some(entry => !entry || !Array.isArray(entry.ids) || entry.ids.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)) || !entry.scope || typeof entry.scope.wholeExcluded !== "boolean" || !entry.scope.versions || Object.values(entry.scope.versions).some(flags => typeof flags.excluded !== "boolean" || typeof flags.staged !== "boolean" || typeof flags.restored !== "boolean")))) throw new Error(`Invalid exclusion scope ${seedId}; original data retained`);
+		if (project.exclusionScopes && (!Array.isArray(project.exclusionScopes) || project.exclusionScopes.some(entry => !entry || !Array.isArray(entry.ids) || entry.ids.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)) || !entry.scope || typeof entry.scope.wholeExcluded !== "boolean" || !entry.scope.versions || Object.values(entry.scope.versions).some(flags => typeof flags.excluded !== "boolean" || typeof flags.staged !== "boolean" || typeof flags.restored !== "boolean")))) throw new Error(tr(`排除范围无效 ${seedId}，已保留原数据`, `Invalid exclusion scope ${seedId}; original data retained`));
 		for (const { scope } of project.exclusionScopes ?? []) {
-			if (scope.ambiguousNewVersions !== undefined && typeof scope.ambiguousNewVersions !== "boolean" || scope.wholeRules !== undefined && (!Array.isArray(scope.wholeRules) || scope.wholeRules.some(ids => !Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== "string" || !/^W\d+$/.test(id))))) throw new Error(`Invalid exclusion provenance ${seedId}; original data retained`);
+			if (scope.ambiguousNewVersions !== undefined && typeof scope.ambiguousNewVersions !== "boolean" || scope.wholeRules !== undefined && (!Array.isArray(scope.wholeRules) || scope.wholeRules.some(ids => !Array.isArray(ids) || !ids.length || ids.some(id => typeof id !== "string" || !/^W\d+$/.test(id))))) throw new Error(tr(`排除来源记录无效 ${seedId}，已保留原数据`, `Invalid exclusion provenance ${seedId}; original data retained`));
 		}
 		const snapshot = project.snapshot ? restoreGraphSnapshot(project.snapshot) : null;
-		if (project.snapshot && !snapshot) throw new Error(`Invalid project snapshot ${seedId}; original data retained`);
-		if (project.manualPapers !== undefined && (!Array.isArray(project.manualPapers) || project.manualPapers.some(paper => !paper || !/^W\d+$/i.test(paper.id) || !Array.isArray(paper.concepts)))) throw new Error(`Invalid retained papers ${seedId}; original data retained`);
-		if (project.sampleIds !== undefined && (!Array.isArray(project.sampleIds) || project.sampleIds.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)))) throw new Error(`Invalid sample ids ${seedId}; original data retained`);
-		if (project.pending !== undefined && (!Array.isArray(project.pending) || project.pending.some(item => !item || typeof item.id !== "string" || !["identity", "exclusion-scope", "reading"].includes(item.kind) || typeof item.blocks !== "string"))) throw new Error(`Invalid pending items ${seedId}; original data retained`);
+		if (project.snapshot && !snapshot) throw new Error(tr(`项目快照无效 ${seedId}，已保留原数据`, `Invalid project snapshot ${seedId}; original data retained`));
+		if (project.manualPapers !== undefined && (!Array.isArray(project.manualPapers) || project.manualPapers.some(paper => !paper || !/^W\d+$/i.test(paper.id) || !Array.isArray(paper.concepts)))) throw new Error(tr(`保留论文记录无效 ${seedId}，已保留原数据`, `Invalid retained papers ${seedId}; original data retained`));
+		if (project.sampleIds !== undefined && (!Array.isArray(project.sampleIds) || project.sampleIds.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)))) throw new Error(tr(`采样编号无效 ${seedId}，已保留原数据`, `Invalid sample ids ${seedId}; original data retained`));
+		if (project.pending !== undefined && (!Array.isArray(project.pending) || project.pending.some(item => !item || typeof item.id !== "string" || !["identity", "exclusion-scope", "reading"].includes(item.kind) || typeof item.blocks !== "string"))) throw new Error(tr(`待处理项无效 ${seedId}，已保留原数据`, `Invalid pending items ${seedId}; original data retained`));
 		const paperStates: Record<string, ProjectPaperState> = {};
 		for (const [id, rawState] of Object.entries(project.paperStates ?? {})) {
-			if (!rawState || rawState.paper?.id !== id || !["unread", "to-read", "read"].includes(rawState.reading)) throw new Error(`Invalid project state ${seedId}:${id}; original data retained`);
+			if (!rawState || rawState.paper?.id !== id || !["unread", "to-read", "read"].includes(rawState.reading)) throw new Error(tr(`项目状态无效 ${seedId}:${id}，已保留原数据`, `Invalid project state ${seedId}:${id}; original data retained`));
 			paperStates[id] = {
 				paper: rawState.paper,
 				reading: rawState.reading,

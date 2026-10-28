@@ -6,6 +6,16 @@ This release supports **Obsidian desktop 1.14.4 or newer**. Mobile support will 
 
 It is not a sidebar of citation cards. Reference Map / Literature Flow–style index lists are an explicit non-goal. This project is not affiliated with Connected Papers.
 
+## Current development branch (unreleased)
+
+The following capabilities are implemented on [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) and tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10). They are not a claim about the latest published release. Full acceptance in the real Obsidian host is still pending. The screenshots below illustrate the workflow and may differ from the current star-map appearance.
+
+- **Shared reading, separate projects.** Reading progress follows a paper across projects and confirmed version groups; saved and excluded papers remain project-specific. Conflicting progress and note edits appear as pending issues, with explicit resolution, retry, and note-sync opt-out.
+- **Version-aware records.** Source-confirmed relationships and manual merge/separate decisions group versions without guessing from titles. Review ambiguous identity and exclusion scopes, select eligible versions, and preserve version provenance in exports.
+- **Evidence you can inspect.** Inspect citation paths, candidate-selection diagnostics, structural similarity, and missing evidence separately from observed zero. Candidate selection balances relevance and diversity with MMR; semantic signals complement structural evidence.
+- **A readable star map.** Node radius uses log-scaled cumulative citations; missing counts remain unknown. Mature, influential papers receive a heuristic classic marker with a subtle twinkle. The details explain why; this is not an authoritative assessment of academic importance. Motion respects the operating system's reduced-motion preference.
+- **Return to your work.** Save named views and explicitly associate note embeds with a project. Main graphs and embeds use the same reading and evidence workflow. Rendering and interaction updates reduce repeated graph projection and coalesce drag/zoom frames.
+
 ## Rename
 
 The display name is **Research Connected**. The plugin id is `research-connected`.
@@ -76,7 +86,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
 4. The seed sits in the middle with a double ring and a halo. Other papers are placed by similarity:
    - in **Planar**, node colors identify detected citation-structure groups; in **Timeline** and **Radial**, color shows topic similarity to the seed
    - node size follows log-scaled cumulative citation counts; classics in the sampled graph receive a subtle glow
-   - line weight follows the relation score
+   - line weight follows structural similarity; missing evidence is shown separately
 5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / Fit to view** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
 6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **OpenAlex**, and **DOI** when a DOI exists.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
@@ -135,7 +145,7 @@ Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation 
 
 After the graph loads, language, work type, and concept filters appear only when at least one paper has that OpenAlex field. Node size uses log-scaled cumulative citations of the displayed version; missing counts use the minimum size. Author–year labels stay.
 
-The layout modes are **Planar**, **Timeline**, and **Radial**. **Timeline** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **Radial** places papers closer to the seed when their sampled structural similarity score is higher. **Planar** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside Planar, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses cumulative citations, independent of publication year; the seed has a minimum size and does not set the scale. Filters retain the scale. On **Timeline**, a year band under the graph filters papers after the chosen year and draws one bar per year in the current sample. **Play** advances one year at a time. The seed stays visible. Planar and radial layouts hide that band.
+The layout modes are **Planar**, **Timeline**, and **Radial**. **Timeline** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **Radial** places papers closer to the seed when their combined seed relevance score is higher. **Planar** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside Planar, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses cumulative citations, independent of publication year; the seed has a minimum size and does not set the scale. Filters retain the scale. On **Timeline**, a year band under the graph filters papers after the chosen year and draws one bar per year in the current sample. **Play** advances one year at a time. The seed stays visible. Planar and radial layouts hide that band.
 
 **Prior work** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **Later work** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out.
 
@@ -168,7 +178,7 @@ The note goes to **Literature note folder** (created if missing; empty means the
 
 **Literature note filename** and **Literature note body** accept `{{title}}`, `{{authors}}`, `{{year}}`, `{{doi}}`, `{{openalex}}`, `{{relation}}` (how the paper relates to the seed), `{{project}}`, and `{{status}}`. The filename defaults to `{{year}} {{title}}`, drops `\ / : * ? " < > |`, and is cut to 80 characters. An empty body writes a `# title` heading.
 
-The plugin recognizes notes already in the vault by frontmatter: a DOI match (in `doi` or the property set in **DOI property name**) wins over an `openalex` match. When a paper has a note, its details show **In your notes · Open note**. Opening that paper copies a valid `rc-status` from the note into the project; changing the reading status in the panel, the staged list, or the Prior / Later work cards writes `rc-status` back to the note. Notes written by other plugins without `rc-status` are linked but left untouched until you change the status.
+The plugin recognizes notes already in the vault by frontmatter: a DOI match (in `doi` or the property set in **DOI property name**) wins over an `openalex` match. When a paper has a note, its details show **In your notes · Open note**. Reading progress is shared across projects and confirmed version groups; saving and excluding a paper remain project-specific. Opening a paper inspects available reading sources. Conflicting values require explicit resolution rather than silently overwriting one another. Changing reading status synchronizes participating notes; external edits pause synchronization for review. Pending issues offer resolution, retry, and note-sync opt-out. Notes without `rc-status` are linked but left untouched until you change the status.
 
 ## Settings
 
@@ -227,10 +237,10 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
    - records whose OpenAlex `type` is non-research (**book-review**, editorial, correction/erratum, letter, retraction, peer-review, paratext) are dropped first — a book review's title embeds the book ("…By Author. Publisher, year. Pp. …") and citations meant for the book land on the review, which would bend the map toward the wrong record; the status line reports how many were filtered. The seed itself is kept regardless of type, with a note in its detail sheet
    - related works first, capped near 22% of the slots (at least 6 when that many exist), so topic-neighbors cannot crowd out the citation structure
    - remaining slots split between references and citing works
-   - unused quota is filled by citation count
-   - the same work is kept once; a reference outranks a citing work, which outranks a related work
+   - remaining slots use relevance ranking and MMR diversity selection (λ = 0.7), using local text/topic similarity for the redundancy penalty
+   - duplicate OpenAlex IDs are sampled once; source-confirmed version relationships and manual identity decisions determine subsequent work grouping
 4. Batch-fetch `referenced_works` and `abstract_inverted_index` for the kept nodes and for the citing sample (the citing sample is the co-citation context even when a citer is not drawn).
-5. Score every pair:
+5. Compute a structural graph score for each pair:
 
    ```text
    score = 0.55 * bibliographic coupling
@@ -241,15 +251,23 @@ Connected Papers builds a similarity map from co-citation and bibliographic coup
    - **Bibliographic coupling** is the cosine of the two reference-id sets: `|A ∩ B| / sqrt(|A| |B|)`.
    - **Co-citation** counts how often both ids show up together in the reference lists of the sampled citing papers, normalized by `both / sqrt(countA * countB)`.
    - **Direct citation** is 1 when either work lists the other.
+   The seed relevance score blends this graph score with semantic similarity when available: `0.55 × graph score + 0.45 × semantic score`. Semantic scoring uses available SPECTER2 vectors or local text/topic signals. Without a semantic score the graph score is retained. Edge thickness uses normalized coupling/co-citation structural similarity, separately from direct citation and semantic relevance. Missing structural evidence is not treated as an observed zero.
+
 6. Edges, so the picture is a map rather than a star:
    - the seed links to its **7** nearest neighbors
    - every other node links to its **2** nearest neighbors with score ≥ **0.07**
    - a node with no edge still gets its single best link
-7. Layout: seed fixed at the origin, other nodes start on a golden-angle spiral (radius from similarity to the seed), then a short force simulation. Springs are shorter for higher scores; nodes repel and cannot overlap. Dragging after that moves only the node you grab.
+7. Layout: seed fixed at the origin, other nodes start on a golden-angle spiral (radius from similarity to the seed), then a short force simulation. Springs are shorter for higher scores; nodes repel and cannot overlap. Dragging can restart nearby force motion; the seed and pinned nodes remain constrained.
 
-`related_works` in OpenAlex means “recent papers that share topics”, not a Connected Papers score. Related works are only **candidates**. Edge weight is always the score above.
+`related_works` in OpenAlex means “recent papers that share topics”, not a Connected Papers score. Related works are only **candidates**. Candidate relevance, structural edge appearance, and direct citation evidence are separate quantities.
 
 Highly cited papers are sampled, not exhaustively expanded. With standard sampling a seed with tens of thousands of citations contributes its 40 most-cited citers, not the full citing set; deep sampling raises that to 1000. Co-citation is counted over the reference lists of at most 400 sampled citers, so deep sampling improves edge quality but never covers the whole citing population.
+
+### Node size and classic markers
+
+Node radius maps cumulative citations through `log1p` to 4–14 graph units; the seed has a minimum radius of 11 and does not set the neighbors' scale. The displayed version supplies its citation count; counts from versions are not added. Unknown counts remain unknown rather than becoming zero. Radius encodes citations, not classic status or semantic relevance.
+
+A classic marker requires a known publication year, age of at least eight years, and a non-seed, non-retracted paper. It also requires at least one of: two distinct citing papers in the current graph's available reference evidence; at least 1,000 cumulative citations; or the 90th percentile among at least ten mature works, with a floor of 100 citations. The details show the evidence. This heuristic depends on the available graph and is not an academic certification. A static marker remains when reduced motion is enabled.
 
 ## Data quality: known OpenAlex issues
 
@@ -264,7 +282,7 @@ OpenAlex is the best free citation index, but published audits have found recurr
 | **Misattributed citation counts** — the book-review trap and merged/split records make one record inherit another work's citations | Each node's OpenAlex citation count is bulk-compared against Semantic Scholar's (one POST per map). Counts an order of magnitude apart get a ⚠ warning in the detail sheet. Turn this off with the Semantic Scholar cross-check setting |
 | **Language field is auto-detected** from title and abstract, with published error rates around one in seven records | The language facet and filter are shown as OpenAlex reports them; treat them as best-effort |
 | **Author and institution disambiguation errors** — names are merged or split incorrectly, especially for non-English names | Authors are displayed exactly as OpenAlex sends them. Verify authorship through the DOI link before citing |
-| **Duplicate and versioned records** (preprint vs published version, merging mistakes) | De-duplication is by OpenAlex work id only; a preprint and its published version are separate OpenAlex records and can both appear on one map |
+| **Duplicate and versioned records** (preprint vs published version, merging mistakes) | OpenAlex IDs are deduplicated; source-confirmed version relationships and manual merge/separate decisions group records. Similar titles alone do not establish identity. Ambiguous cases remain reviewable, and exports retain version provenance |
 | **No predatory-journal screening** — OpenAlex indexes by availability, not quality | Not filtered. If that matters for your field, cross-check venues against DOAJ |
 
 Sources for the audits: Alperin et al. 2024 (coverage and metadata completeness), Gusenbauer 2024 (reference-capture error), Haupka 2024 (document-type misclassification), Céspedes et al. 2025 (language detection accuracy), and the 2025 systematic review of OpenAlex criticism (arXiv 2512.16434). The general advice from that literature applies here too: for anything beyond exploration, cross-validate against a second source (Semantic Scholar, Crossref, or the publisher page).

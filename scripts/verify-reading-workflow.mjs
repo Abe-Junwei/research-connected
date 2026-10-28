@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 
-const bundle = await build({ entryPoints: ["src/reading-workflow.ts"], bundle: true, platform: "node", format: "cjs", write: false, logLevel: "silent" });
+const bundle = await build({ stdin: { contents: 'export * from "./src/reading-workflow"; export { bindLanguage } from "./src/i18n";', resolveDir: process.cwd(), loader: "ts" }, bundle: true, platform: "node", format: "cjs", write: false, logLevel: "silent" });
 const loaded = { exports: {} };
 new Function("module", "exports", bundle.outputFiles[0].text)(loaded, loaded.exports);
-const { createReadingWorkflow, normalizeReadingWorkflow } = loaded.exports;
+const { createReadingWorkflow, normalizeReadingWorkflow, bindLanguage } = loaded.exports;
 const paper = { id: "W10", title: "Paper", authors: "A", authorList: ["A"], year: 2020, citedByCount: 1, abstract: "", doiUrl: "https://doi.org/10.1234/test", openAlexUrl: "https://openalex.org/W10", isSeed: false, origin: "related", language: null, workType: null, venue: null, retracted: false, concepts: [] };
 const state = reading => ({ paper, reading, staged: false, excluded: true, source: "OpenAlex", updatedAt: 1 });
 const settings = { researchProjects: { W1: { version: 1, seedId: "W1", name: "One", updatedAt: 1, views: [], paperStates: { W10: state("read") } }, W2: { version: 1, seedId: "W2", name: "Two", updatedAt: 1, views: [], paperStates: { W10: state("unread") } } } };
@@ -138,3 +138,9 @@ await lifecycle.readingOpened(paper);
 assert.equal(lifecycle.getReadingIssues().length, 0);
 assert.deepEqual(lifecycleWrites, ["after.md"], "a second reopen and refresh do not repeat the confirmed write");
 console.log("shared reading atomic save, conflicts, note edits, opt-out and partial sync checks passed");
+
+for (const [language, message] of [["en", "Invalid saved reading workflow; original data retained"], ["zh-CN", "保存的阅读流程无效，已保留原数据"]]) {
+	bindLanguage(() => language);
+	assert.throws(() => normalizeReadingWorkflow({}), error => error.message === message);
+}
+console.log("reading workflow errors follow the host language");

@@ -105,18 +105,18 @@ export default class ConnectedPapersPlugin extends Plugin {
 		let backup = "";
 		if (migrateIdentity) {
 			this.migrationWriteStopped = true;
-			if (!this.manifest.dir) throw new Error("Migration requires a plugin directory for backup");
+			if (!this.manifest.dir) throw new Error(tr("迁移需要插件目录来保存备份", "Migration requires a plugin directory for backup"));
 			const base = `${this.manifest.dir}/data-before-work-identity-v2`;
 			backup = `${base}.json`;
 			for (let suffix = 1; await this.app.vault.adapter.exists(backup); suffix++) backup = `${base}-${suffix}.json`;
 			await this.app.vault.adapter.write(backup, JSON.stringify(stored));
-			if (!migrationRereadAccepted(stored, JSON.parse(await this.app.vault.adapter.read(backup)) as unknown)) throw new Error("Backup reread did not match; original data retained");
+			if (!migrationRereadAccepted(stored, JSON.parse(await this.app.vault.adapter.read(backup)) as unknown)) throw new Error(tr("备份重读结果不一致，已保留原数据", "Backup reread did not match; original data retained"));
 			const preview = previewMigration(stored?.researchProjects ?? {});
-			if (preview.stopped) throw new Error(`Migration stopped: ${preview.missing}; original data and backup retained`);
+			if (preview.stopped) throw new Error(tr(`迁移已停止：${preview.missing}；已保留原数据和备份`, `Migration stopped: ${preview.missing}; original data and backup retained`));
 		}
 		const next = Object.assign({}, DEFAULT_SETTINGS, stored);
-		if (next.sourceVersionRelations !== undefined && !validSourceVersionRelations(next.sourceVersionRelations)) throw new Error("Invalid saved source version relations; original data retained");
-		if (next.workIdentityDecisions && (!Array.isArray(next.workIdentityDecisions) || next.workIdentityDecisions.some(item => !item || !Array.isArray(item.ids) || item.ids.length < 2 || item.ids.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)) || !["merge", "separate"].includes(item.kind) || item.source !== "manual" || !Number.isFinite(item.updatedAt)))) throw new Error("Invalid saved identity decisions; original data retained");
+		if (next.sourceVersionRelations !== undefined && !validSourceVersionRelations(next.sourceVersionRelations)) throw new Error(tr("保存的来源版本关系无效，已保留原数据", "Invalid saved source version relations; original data retained"));
+		if (next.workIdentityDecisions && (!Array.isArray(next.workIdentityDecisions) || next.workIdentityDecisions.some(item => !item || !Array.isArray(item.ids) || item.ids.length < 2 || item.ids.some(id => typeof id !== "string" || !/^W\d+$/i.test(id)) || !["merge", "separate"].includes(item.kind) || item.source !== "manual" || !Number.isFinite(item.updatedAt)))) throw new Error(tr("保存的文献身份决策无效，已保留原数据", "Invalid saved identity decisions; original data retained"));
 		next.readingWorkflow = normalizeReadingWorkflow(stored?.readingWorkflow);
 		const maxNodes = Number(next.maxNodes);
 		next.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
@@ -129,7 +129,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		);
 		if (migrateIdentity) {
 			const preview = previewMigration(stored?.researchProjects ?? {});
-			if (preview.stopped) throw new Error(`Migration stopped: ${preview.missing}`);
+			if (preview.stopped) throw new Error(tr(`迁移已停止：${preview.missing}`, `Migration stopped: ${preview.missing}`));
 			for (const [key, project] of Object.entries(next.researchProjects)) {
 				const original = stored?.researchProjects?.[key];
 				project.pending = preview.pending.filter(item => item.id.includes(`:${key}:`)).map(item => ({ ...item, paper: original?.snapshot?.nodes.find(paper => item.id.endsWith(`:${paper.id}`)), sources: ["legacy-project-snapshot"], raw: original?.paperStates }));

@@ -10,6 +10,16 @@
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 發行版本"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 及以上桌面版"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="授權"></p>
 
+## 目前開發分支（尚未發布）
+
+以下功能已在 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 實作，由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 追蹤；不代表最新發布版已包含。真實 Obsidian 環境的完整驗收仍待完成。下方截圖與目前星圖外觀可能不同。介面目前支援簡體中文與英文。
+
+- 同一論文及已確認版本組跨專案共用閱讀進度；暫存與排除各自獨立。衝突與筆記外部編輯可明確處理、重試或停止同步。
+- 依來源確認與手動合併／拆分決策整合版本，不按標題猜測；處理身分及排除範圍歧義，匯出保留版本來源。
+- 檢查引用路徑、候選篩選診斷與結構相似度，區分缺少證據和實測為零；MMR 平衡相關性與多樣性，語義訊號補充結構證據。
+- 節點半徑按累計引用量對數縮放，缺失值標示未知。成熟且具影響力的論文有啟發式經典標記與閃爍，詳情說明理由，並非權威認定；動畫遵循系統減少動態效果偏好。
+- 儲存命名視圖並明確關聯嵌入圖譜與專案；主圖和嵌入圖共用閱讀流程。互動優化減少重複圖譜投影，合併拖曳與縮放畫格。
+
 ## 圖譜
 
 ![以 “Deep learning” 為中心的圖譜：左側是相關論文，右側是所選論文的關係證據](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)

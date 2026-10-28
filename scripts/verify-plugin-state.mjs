@@ -51,22 +51,22 @@ try {
 	malformed.researchProjects.W1.paperStates = { W1: { paper: seed, reading: "broken", staged: true, excluded: true } };
 	invalid.loadData = async () => malformed;
 	invalid.saveData = async () => { throw new Error("must not write invalid migration"); };
-	await assert.rejects(invalid.loadSettings(), /Migration stopped/);
+	await assert.rejects(invalid.loadSettings(), /Migration stopped|迁移已停止/);
 	await assert.rejects(invalid.saveSettings(false), /writes are stopped/);
 	const invalidCurrent = new PluginClass();
 	invalidCurrent.loadData = async () => ({ ...malformed, workflowMigration: { version: 1, backup: "existing.json", completedAt: 1 } });
-	await assert.rejects(invalidCurrent.loadSettings(), /Invalid project state/);
+	await assert.rejects(invalidCurrent.loadSettings(), /Invalid project state|项目状态无效/);
 	await assert.rejects(invalidCurrent.saveSettings(false), /writes are stopped/, "a current-format validation failure must also block overwriting the original data");
 	const invalidSource = new PluginClass();
 	invalidSource.loadData = async () => ({ ...structuredClone(diskData), sourceVersionRelations: [{ ids: ["W1", "W2"], source: "crossref", status: "confirmed", linked: false, evidence: [], updatedAt: 1 }] });
-	await assert.rejects(invalidSource.loadSettings(), /Invalid saved source version relations/);
+	await assert.rejects(invalidSource.loadSettings(), /Invalid saved source version relations|保存的来源版本关系无效/);
 	await assert.rejects(invalidSource.saveSettings(false), /writes are stopped/, "invalid source evidence must not be normalized away and saved over the original");
 	const mismatched = new PluginClass();
 	mismatched.manifest = plugin.manifest; mismatched.app = plugin.app;
 	mismatched.loadData = async () => structuredClone(saved);
 	let mismatchWrites = 0;
 	mismatched.saveData = async () => { mismatchWrites++; };
-	await assert.rejects(mismatched.loadSettings(), /reread did not match/);
+	await assert.rejects(mismatched.loadSettings(), /reread did not match|重读结果不一致/);
 	await assert.rejects(mismatched.saveSettings(false), /writes are stopped/);
 	assert.equal(mismatchWrites, 1, "a mismatched reread blocks all subsequent saves");
 

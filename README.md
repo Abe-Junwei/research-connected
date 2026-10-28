@@ -10,6 +10,16 @@
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub release"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4+ desktop"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="License"></p>
 
+## Current development branch (unreleased)
+
+The following capabilities are implemented on [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) and tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10). They are not a claim about the latest published release. Full acceptance in the real Obsidian host is still pending. The screenshots below illustrate the workflow and may differ from the current star-map appearance.
+
+- **Shared reading, separate projects.** Reading progress follows a paper across projects and confirmed version groups; saved and excluded papers remain project-specific. Conflicting progress and note edits appear as pending issues, with explicit resolution, retry, and note-sync opt-out.
+- **Version-aware records.** Source-confirmed relationships and manual merge/separate decisions group versions without guessing from titles. Review ambiguous identity and exclusion scopes, select eligible versions, and preserve version provenance in exports.
+- **Evidence you can inspect.** Inspect citation paths, candidate-selection diagnostics, structural similarity, and missing evidence separately from observed zero. Candidate selection balances relevance and diversity with MMR; semantic signals complement structural evidence.
+- **A readable star map.** Node radius uses log-scaled cumulative citations; missing counts remain unknown. Mature, influential papers receive a heuristic classic marker with a subtle twinkle. The details explain why; this is not an authoritative assessment of academic importance. Motion respects the operating system's reduced-motion preference.
+- **Return to your work.** Save named views and explicitly associate note embeds with a project. Main graphs and embeds use the same reading and evidence workflow. Rendering and interaction updates reduce repeated graph projection and coalesce drag/zoom frames.
+
 ## The map
 
 ![Research Connected graph pane around “Deep learning”: related papers on the left and the selected paper’s relationship evidence on the right](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)

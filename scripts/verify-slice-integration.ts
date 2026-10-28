@@ -32,7 +32,7 @@ export async function verifySliceIntegration(): Promise<void> {
 	changeVersionExclusion(whole, alias, false, false, merged.nodes[0]!);
 	assert.equal(projectVersionState(whole, alias).excluded, false, "one-version restore overrides whole exclusion");
 	assert.equal(projectVersionState(whole, seed).excluded, true, "restore retains sibling exclusion");
-	assert.throws(() => changeVersionExclusion(project, seed, true, false), /seed/);
+	assert.throws(() => changeVersionExclusion(project, seed, true, false), /seed|起点/);
 	const sideProject = { ...structuredClone(project), seedId: "W9" };
 	changeVersionExclusion(sideProject, alias, true, true);
 	const scopeSettings = { ...DEFAULT_SETTINGS, researchProjects: { W1: sideProject } };
@@ -119,7 +119,7 @@ export async function verifySliceIntegration(): Promise<void> {
 	assert.equal(transitiveReading.getReadingState(newcomer).reading, "read", "source and manual links form the same transitive group for reading");
 	await transitiveReading.commitWorkflow(seed, null, { reading: "unread" });
 	assert.equal(transitiveReading.getReadingState(newcomer).reading, "unread", "a manual pair does not sever a third source-confirmed version's shared reading");
-	assert.throws(() => normalizeProjects({ W1: { ...project, exclusionScopes: [{ ids: [alias.id], scope: { wholeExcluded: false, versions: {}, wholeRules: [[3]] } }] } }), /provenance/);
+	assert.throws(() => normalizeProjects({ W1: { ...project, exclusionScopes: [{ ids: [alias.id], scope: { wholeExcluded: false, versions: {}, wholeRules: [[3]] } }] } }), /provenance|排除来源记录/);
 
 	const alternate = { ...alias, year: 2025, language: "fr", workType: "preprint", isSeed: false };
 	const versions = { ...seed, isSeed: false, records: [{ ...seed, isSeed: false }, alternate] };

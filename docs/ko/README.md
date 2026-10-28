@@ -10,6 +10,16 @@
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 릴리스"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 이상 데스크톱"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="라이선스"></p>
 
+## 개발 브랜치 기능 (미출시)
+
+다음 기능은 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10)에 구현되어 있으며 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10)에서 추적합니다. 최신 배포 버전에 모두 포함되었다는 뜻은 아닙니다. 실제 Obsidian 환경의 전체 인수 검증은 아직 끝나지 않았습니다. 아래 이미지는 현재 별 지도 화면과 다를 수 있습니다. UI 지원 언어는 중국어 간체와 영어입니다.
+
+- 동일 논문과 확인된 버전 그룹의 읽기 진행을 프로젝트 간에 공유하며, 저장과 제외는 프로젝트별로 관리합니다. 충돌과 외부 노트 편집을 명시적으로 해결하고 동기화를 재시도하거나 중단할 수 있습니다.
+- 출처로 확인된 관계와 수동 병합·분리 결정에 따라 버전을 묶고 제목으로 추측하지 않습니다. 버전 선택, 제외 범위 검토, 버전 출처를 포함한 내보내기를 지원합니다.
+- 인용 경로, 후보 선정 진단, 구조적 유사도를 확인하고 증거 누락과 관측값 0을 구분합니다. MMR로 관련성과 다양성을 조정하고 의미 정보를 보완합니다.
+- 노드 반지름은 누적 인용 수의 로그로 조정하며 누락값은 알 수 없음으로 표시합니다. 오래되고 영향력 있는 논문에 이유가 설명된 고전 표시와 반짝임을 적용하지만 권위 있는 평가는 아닙니다. 동작은 OS의 모션 감소 설정을 따릅니다.
+- 이름 있는 보기를 저장하고 임베드를 프로젝트에 명시적으로 연결합니다. 기본 화면과 임베드는 읽기 흐름을 공유하며 드래그와 확대·축소의 중복 처리를 줄였습니다.
+
 ## 지도
 
 ![“Deep learning”을 중심으로 한 그래프. 왼쪽은 관련 논문, 오른쪽은 선택한 논문의 관계 근거](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)

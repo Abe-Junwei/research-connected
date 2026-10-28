@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { projectWriteKey, readNoteReading, updateProjectPaperState, type ReadingStatus } from "./project-state";
 import { paperDois, paperRecords, sourceVersionGroups } from "./work-identity";
@@ -54,11 +55,11 @@ const matches = (left: PaperNode, right: PaperNode): boolean => {
 export function normalizeReadingWorkflow(value: unknown): ReadingWorkflowStore | undefined {
 	if (value === undefined) return undefined;
 	const candidate = value as ReadingWorkflowStore | null;
-	if (!candidate || candidate.version !== 1 || !candidate.records || typeof candidate.records !== "object" || Array.isArray(candidate.records)) throw new Error("Invalid saved reading workflow; original data retained");
+	if (!candidate || candidate.version !== 1 || !candidate.records || typeof candidate.records !== "object" || Array.isArray(candidate.records)) throw new Error(tr("保存的阅读流程无效，已保留原数据", "Invalid saved reading workflow; original data retained"));
 	for (const record of Object.values(candidate.records)) {
-		if (!record?.paper?.id || !Array.isArray(record.paper.concepts) || !(record.reading === null || valid(record.reading)) || !Array.isArray(record.sources) || !record.notes || typeof record.notes !== "object" || !Number.isFinite(record.updatedAt)) throw new Error("Invalid saved reading record; original data retained");
-		for (const source of record.sources) if (typeof source.source !== "string" || !(source.reading === null || valid(source.reading))) throw new Error("Invalid reading source");
-		for (const note of Object.values(record.notes)) if (typeof note.path !== "string" || typeof note.revision !== "string" || typeof note.participating !== "boolean" || !Number.isFinite(note.attempts) || (note.issue !== undefined && !["failed", "edited", "invalid"].includes(note.issue))) throw new Error("Invalid note sync record");
+		if (!record?.paper?.id || !Array.isArray(record.paper.concepts) || !(record.reading === null || valid(record.reading)) || !Array.isArray(record.sources) || !record.notes || typeof record.notes !== "object" || !Number.isFinite(record.updatedAt)) throw new Error(tr("保存的阅读记录无效，已保留原数据", "Invalid saved reading record; original data retained"));
+		for (const source of record.sources) if (typeof source.source !== "string" || !(source.reading === null || valid(source.reading))) throw new Error(tr("阅读进度来源无效", "Invalid reading source"));
+		for (const note of Object.values(record.notes)) if (typeof note.path !== "string" || typeof note.revision !== "string" || typeof note.participating !== "boolean" || !Number.isFinite(note.attempts) || (note.issue !== undefined && !["failed", "edited", "invalid"].includes(note.issue))) throw new Error(tr("笔记同步记录无效", "Invalid note sync record"));
 	}
 	return candidate;
 }
@@ -191,8 +192,8 @@ export function createReadingWorkflow(options: ReadingWorkflowOptions): ReadingW
 		if (JSON.stringify(record) !== JSON.stringify(input)) await save(record);
 	};
 	const commit = (paper: PaperNode, seedId: string | null, patch: { reading?: ReadingStatus; staged?: boolean }, projectKey?: string): Promise<void> => enqueue(async () => {
-		if (patch.reading !== undefined && !valid(patch.reading)) throw new Error("Invalid reading status");
-		if (patch.staged !== undefined && !seedId) throw new Error("A project is required to save a paper");
+		if (patch.reading !== undefined && !valid(patch.reading)) throw new Error(tr("阅读状态无效", "Invalid reading status"));
+		if (patch.staged !== undefined && !seedId) throw new Error(tr("请先选择项目再保存论文", "A project is required to save a paper"));
 		const record = structuredClone(collect(paper));
 		if (patch.reading !== undefined) {
 			observeNotes(record);
@@ -203,7 +204,7 @@ export function createReadingWorkflow(options: ReadingWorkflowOptions): ReadingW
 		await save(record, seedId, patch.staged, projectKey, paper);
 		if (patch.reading !== undefined) {
 			try { await synchronize(record); }
-			catch (error) { throw new Error(`阅读进度已保存；笔记同步记录保存失败，请重试：${error instanceof Error ? error.message : String(error)}`); }
+			catch (error) { throw new Error(tr(`阅读进度已保存；笔记同步记录保存失败，请重试：${error instanceof Error ? error.message : String(error)}`, `Reading progress was saved, but the note sync record could not be saved. Retry: ${error instanceof Error ? error.message : String(error)}`)); }
 		}
 	});
 	const papers = (): PaperNode[] => {

@@ -226,7 +226,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					let key = select.value;
 					if (key === "new") {
 						const seed = sourceGraph?.nodes.find(node => node.isSeed);
-						if (!seed || !deps.stagePaper) throw new Error("Project save is unavailable");
+						if (!seed || !deps.stagePaper) throw new Error(tr("当前环境无法保存项目", "Project save is unavailable"));
 						key = `W${Date.now()}`;
 						while (deps.getSettings().researchProjects[key]) key += "1";
 						created = key;
@@ -568,7 +568,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const unlink = createEl("button"); unlink.type = "button"; unlink.textContent = tr("解除关联并继续", "Unlink and continue");
 		unlink.onclick = async () => {
 			unlink.disabled = true;
-			try { if (spec.projectKey) { if (!deps.persistAssociation) throw new Error("Persistent association cannot be edited here"); await deps.persistAssociation(null); } projectKey = undefined; associationPaused = false; reload.disabled = false; if (sourceGraph) renderGraph(sourceGraph, lastDepthNote); }
+			try { if (spec.projectKey) { if (!deps.persistAssociation) throw new Error(tr("当前环境无法修改持久项目关联", "Persistent association cannot be edited here")); await deps.persistAssociation(null); } projectKey = undefined; associationPaused = false; reload.disabled = false; if (sourceGraph) renderGraph(sourceGraph, lastDepthNote); }
 			catch (error) { status.textContent = error instanceof Error ? error.message : String(error); unlink.disabled = false; }
 		};
 		messageText.append(restore, unlink);
@@ -663,7 +663,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			extraEdge: link,
 		});
 		paintIdentityDecisionActions(detail, paper, [...graph.catalog, ...Object.values(deps.getSettings().researchProjects).flatMap(project => project.snapshot?.catalog ?? project.snapshot?.nodes ?? [])], async (ids, kind) => {
-			if (!deps.stagePaper) throw new Error("Project persistence is unavailable");
+			if (!deps.stagePaper) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, () => deps.stagePaper!(paper, seedId, "identity"));
 		});
 		if (!paperState.excluded && (!graph.nodes.some(node => node.id === paper.id) || !nodeVisible(paper, viewFilter))) {

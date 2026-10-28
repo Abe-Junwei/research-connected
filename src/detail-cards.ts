@@ -96,7 +96,7 @@ export function paintIdentityDecisionActions(parent: HTMLElement, paper: PaperNo
 }
 
 export function choosePaperVersion(paper: PaperNode, allowWhole = false, signal?: AbortSignal): Promise<{ paper: PaperNode; whole: boolean }> {
-	if (signal?.aborted) return Promise.reject(new Error("Panel closed; nothing saved"));
+	if (signal?.aborted) return Promise.reject(new Error(tr("面板已关闭，未保存任何内容", "Panel closed; nothing saved")));
 	const versions = paperRecords(paper);
 	if (versions.length < 2) return Promise.resolve({ paper, whole: false });
 	return new Promise((resolve, reject) => {

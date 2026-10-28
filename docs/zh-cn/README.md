@@ -10,6 +10,16 @@
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 发布版本"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 及以上桌面版"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="许可"></p>
 
+## 当前开发分支（尚未发布）
+
+以下能力已在 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 实现，由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 跟踪；不代表最新发布版已包含这些功能。真实 Obsidian 宿主的完整验收尚未完成。下方截图用于展示工作流程，与目前星图外观可能不同。
+
+- **共享阅读进度，独立项目管理。** 同一论文及已确认的版本组跨项目共享阅读进度；暂存和排除仍属于各项目。进度冲突、笔记外部编辑会进入待处理，可明确解决、重试或停止笔记同步。
+- **版本感知。** 按来源确认的版本关系和手动合并／拆分决策归组，不按标题猜测。可处理身份及排除范围歧义、选择可用版本，并在导出中保留版本来源。
+- **可检查的证据。** 查看引用路径、候选筛选诊断与结构相似度；缺少证据与实测为零分别呈现。MMR 平衡候选相关性与多样性，语义信号补充结构证据。
+- **更易读的星图。** 节点半径按累计被引量对数缩放，缺失数值标为未知。成熟且有影响的论文获得启发式经典标记和自然闪烁，详情解释命中理由；这不是学术权威认定。动态效果遵循操作系统的减少动态效果偏好。
+- **恢复研究现场。** 保存命名视图，明确关联嵌入图谱与项目。主图和嵌入图复用阅读及证据流程；交互优化减少重复图谱投影，并合并拖拽、缩放帧。
+
 ## 图谱
 
 ![以 “Deep learning” 为中心的图谱：左侧是相关论文，右侧是所选论文的关系证据](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
