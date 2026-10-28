@@ -1,6 +1,6 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, operationBlocked, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
@@ -291,6 +291,21 @@ export async function verifyWorkIdentityPipeline(): Promise<void> {
 	assert.deepEqual(synced.failed, ["b.md"]);
 	assert.deepEqual(synced.held, ["c.md"]);
 	assert.deepEqual(calls, ["a"]);
+	let retry = openSyncRetry(2);
+	retry = stepSyncRetry(retry, "failed");
+	assert.equal(retry.stopped, false);
+	retry = stepSyncRetry(retry, "failed");
+	assert.deepEqual(retry, { attempts: 2, limit: 2, stopped: true, paused: false });
+	assert.equal(stepSyncRetry(retry, "failed").attempts, 2);
+	retry = stepSyncRetry(reopenSyncRetry(retry), "failed");
+	assert.equal(retry.attempts, 1);
+	assert.equal(retry.stopped, false);
+	const paused = stepSyncRetry(openSyncRetry(2), "edited");
+	assert.equal(reopenSyncRetry(paused), paused);
+	assert.equal(stepSyncRetry(paused, "wrote"), paused);
+	const left = stepSyncRetry(openSyncRetry(2), "left");
+	assert.equal(left.stopped && left.paused, true);
+	assert.equal(stepSyncRetry(left, "wrote"), left);
 	const snapshot = nicholsSnapshot(); const [seed, alias] = snapshot.nodes as [PaperNode, PaperNode];
 	const toRaw = (paper: PaperNode): RawWork => ({ id: `https://openalex.org/${paper.id}`, doi: paper.doiUrl, display_name: paper.title, publication_year: paper.year ?? undefined, type: paper.workType ?? undefined,
 		authorships: paper.authorList.map((name) => ({ author: { display_name: name } })), primary_location: { source: { display_name: paper.venue ?? undefined } },

@@ -501,6 +501,44 @@ export async function syncParticipatingNotes(
 	return { reading, wrote, failed, held };
 }
 
+export interface SyncRetry {
+	attempts: number;
+	limit: number;
+	stopped: boolean;
+	paused: boolean;
+}
+
+export function openSyncRetry(limit: number): SyncRetry {
+	return { attempts: 0, limit, stopped: false, paused: false };
+}
+
+/** Failed tries stop at the limit. A concurrent edit or a field that left sync is not overwritten. */
+export function stepSyncRetry(task: SyncRetry, outcome: "wrote" | "failed" | "edited" | "left"): SyncRetry {
+	if (task.paused && outcome !== "edited" && outcome !== "left") return task;
+	switch (outcome) {
+		case "wrote":
+			return { ...task, attempts: 0, stopped: false, paused: false };
+		case "failed": {
+			const attempts = Math.min(task.limit, task.attempts + 1);
+			return { ...task, attempts, stopped: attempts >= task.limit, paused: false };
+		}
+		case "edited":
+			return { ...task, paused: true };
+		case "left":
+			return { ...task, stopped: true, paused: true };
+		default: {
+			const _never: never = outcome;
+			return _never;
+		}
+	}
+}
+
+/** Reopen a stopped task for another bounded run. A paused edit or a left field stays paused. */
+export function reopenSyncRetry(task: SyncRetry): SyncRetry {
+	if (task.paused) return task;
+	return { ...task, attempts: 0, stopped: false };
+}
+
 export function projectStagedPapers(projects: Record<string, ResearchProject>): Array<{ seedId: string; paper: PaperNode; source: string; addedAt: string; read: boolean; reading: ReadingStatus }> {
 	return Object.values(projects).flatMap((project) => Object.values(project.paperStates ?? {})
 		.filter((state) => state.staged)

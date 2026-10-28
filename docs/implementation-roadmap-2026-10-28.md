@@ -30,6 +30,7 @@
 | S15 | 样本阅读规则，未接入合并按钮 | 已确认的初次合并取较高进度并留下两边原值；书目启发式相同而 DOI 不同时不合并进度；合并后的明确降级进入待处理且共享值不变；拆分两边都得到当前共享进度 |
 | S16 | 样本字段解释，未改 `vault-note` | 与上次插件写入不同的有效状态更新共享进度；字段删除退出同步且共享值不变；无效原文保留并暂停；与插件写入相同的回声不产生新提交 |
 | S17 | 样本同步结果，未写真实笔记 | 两份参与笔记一成一败时共享进度保持，成功路径留在 `wrote`，失败路径不回写旧值；有新人工修改的笔记进入 `held` 且不调用写入；多份匹配会逐份尝试 |
+| S18 | 样本重试预算，`commitPaperReading` 的失败回滚仍在 | 连续失败到上限后停止，再次失败不再增加次数；重开后重新计数；并发修改或字段退出同步会暂停，暂停期间的写入被忽略 |
 | S10 | 样本函数，未接入 `loadSettings` 或 `updateProjectPaperState` | `retargetProjectSeed` 只改起点字段；`projectsForSeedId` 在同一种子对应多个项目时全部返回，`savedProjectForSeed` 仍拒绝猜测 |
 | S11 | 样本函数，未接入叙事输出或设置写回 | `noteVersion` / `excludeVersion` / `excludeWholeWork` / `restoreVersion` / `stageVersion`：单版排除不波及同辈；整项排除覆盖新版本；恢复一版并暂存不恢复其余；再次排除清掉恢复标记；普通暂存不取消排除；起点 `excludeVersion(..., true)` 无操作 |
 
