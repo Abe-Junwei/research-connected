@@ -7,6 +7,7 @@ import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-id
 import { verifySliceIntegration } from "./verify-slice-integration";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
+import { verifyExport } from "./verify-export";
 import { surfaceBand } from "../src/responsive";
 import { sidebarWidthLimit } from "../src/sidebar-resize";
 import { mountWorkspaceFrame } from "../src/workspace-frame";
@@ -1002,6 +1003,7 @@ async function main(): Promise<void> {
 	diversityChecks();
 	await verifyEvidence();
 	verifyUi();
+	verifyExport();
 	verifyWorkspaceFrame();
 	await cursorPaging();
 	await reconcileOffline();

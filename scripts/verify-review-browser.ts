@@ -1,4 +1,5 @@
 import "../src/host-language";
+import { channelsFromCss } from "../src/theme-color";
 import { mountGraphApp } from "../src/app";
 import { mountEmbed } from "../src/embed-mount";
 import { paintWorkflowLibrary } from "../src/workflow-library";
@@ -13,6 +14,7 @@ import { fixtureGet } from "../preview/fixture";
 import { mountGraphSurface } from "../src/graph-surface";
 import { createReadingWorkflow } from "../src/reading-workflow";
 import { verifyProjectBrowser } from "./verify-project-browser";
+import { verifyExportBrowser } from "./verify-export-browser";
 import { syntheticGraph } from "./perf-fixture";
 
 function check(value: unknown, message: string): asserts value {
@@ -60,6 +62,7 @@ function readableContrast(element: HTMLElement): number {
 }
 
 async function verify(): Promise<void> {
+	check(channelsFromCss("oklch(pow(0.235, calc(1 / 1)) 0 285)", { r: 255, g: 255, b: 255 }).r < 140, "Obsidian OKLCH dark theme resolves to dark RGB channels");
 	const uncaught: unknown[] = [];
 	const radialGradient = CanvasRenderingContext2D.prototype.createRadialGradient;
 	CanvasRenderingContext2D.prototype.createRadialGradient = function (...args) {
@@ -1092,7 +1095,7 @@ async function verify(): Promise<void> {
 	labelHost.remove();
 	const motionHost = document.createElement("div");
 	motionHost.className = "cpo-surface";
-	motionHost.style.setProperty("--background-primary", "#1a1d24");
+	motionHost.style.setProperty("--background-primary", "oklch(pow(0.235, calc(1 / 1)) 0 285)");
 	document.body.append(motionHost);
 	const previousMatch = window.matchMedia.bind(window);
 	window.matchMedia = ((query: string) => query.includes("prefers-reduced-motion")
@@ -1145,6 +1148,7 @@ async function verify(): Promise<void> {
 	check(projectWrites === writesAtClose, "a project or settings notice does not save");
 	reopened.destroy();
 	await verifyProjectBrowser();
+	await verifyExportBrowser();
 	check(uncaught.length === 0, `no uncaught browser errors: ${uncaught.map(String).join(", ")}`);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, rename exit, abstract clamp, empty export, full graph, continuous star motion, node labels, rapid zoom, narrow return, reopen, cleanup";
 	document.body.dataset.result = "passed";

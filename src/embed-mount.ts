@@ -488,6 +488,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper, currentGraph, selectedLink, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
+			const shared = deps.getReadingState?.(paper);
+			if (shared && !shared.confirmed) {
+				chrome?.setExportText(tr("请先确认阅读进度，再创建笔记", "Confirm reading progress before creating a note"));
+				return;
+			}
 			const fields = {
 				project: associatedProject()?.name || seedId,
 				relation: ORIGIN_TEXT[paper.origin],

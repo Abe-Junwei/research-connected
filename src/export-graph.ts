@@ -18,6 +18,7 @@ export function toBibTeX(nodes: readonly PaperNode[]): string {
 }
 
 export function toYamlList(nodes: readonly PaperNode[]): string {
+	if (nodes.length === 0) return "papers: []";
 	const lines = ["papers:"];
 	for (const paper of nodes) {
 		lines.push(`  - title: ${yamlString(paper.title)}`);
@@ -58,6 +59,11 @@ function bibEntry(paper: PaperNode, used: Set<string>): string {
 		`  author = {${(paper.authorList?.length ? paper.authorList : [paper.authors]).map(bibText).join(" and ")}}`,
 		`  year = {${paper.year ?? ""}}`,
 	];
+	if (paper.venue && (type === "article" || type === "incollection")) fields.push(`  ${type === "article" ? "journal" : "booktitle"} = {${bibText(paper.venue)}}`);
+	const bibliography = paper.bibliography;
+	if (bibliography?.volume) fields.push(`  volume = {${bibText(bibliography.volume)}}`);
+	if (bibliography?.issue) fields.push(`  number = {${bibText(bibliography.issue)}}`);
+	if (bibliography?.firstPage) fields.push(`  pages = {${bibText(bibliography.firstPage)}${bibliography.lastPage && bibliography.lastPage !== bibliography.firstPage ? `--${bibText(bibliography.lastPage)}` : ""}}`);
 	const doi = doiOf(paper);
 	if (doi) fields.push(`  doi = {${bibText(doi)}}`);
 	fields.push(`  url = {${bibText(paper.openAlexUrl)}}`);
@@ -88,7 +94,8 @@ function citeKey(paper: PaperNode, used: Set<string>): string {
 }
 
 function bibText(value: string): string {
-	return value.replace(/[{}\\]/g, "");
+	const escapes: Record<string, string> = { "\\": "\\textbackslash{}", "~": "\\textasciitilde{}", "^": "\\textasciicircum{}" };
+	return value.replace(/[{}\\&%$#_~^]/g, character => escapes[character] ?? `\\${character}`);
 }
 
 function yamlString(value: string): string {
@@ -96,7 +103,7 @@ function yamlString(value: string): string {
 }
 
 function cell(value: string): string {
-	return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+	return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 
 export function doiOf(paper: Pick<PaperNode, "doiUrl">): string | null {
