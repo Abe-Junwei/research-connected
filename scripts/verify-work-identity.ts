@@ -1,7 +1,7 @@
 import { nicholsSnapshot } from "../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, appendPending, applyNoteReading, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, chooseDisplayVersion, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
-import { graftNodes, normalizeWorkGraph, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
+import { acknowledgeIdentityStates, appendPending, applyNoteReading, admitRetraction, assignMergedVersion, choosePending, commitPaperReading, commitSharedReading, confirmVersionReading, chooseDisplayVersion, editAfterVersionMerge, emptySharedReadings, emptyVersionScope, excludeVersion, excludeWholeWork, expandDisplayVersion, freshMigrationDrill, mergeExclusion, normalizeProjects, noteReadingConflict, noteVersion, openSyncRetry, operationBlocked, previewMigration, projectsForSeedId, readNoteReading, readShared, reconcileProjectIdentity, reopenSyncRetry, restoreGraphSnapshot, restoreVersion, retargetProjectSeed, savedProjectForSeed, saveGraphSnapshot, selectExportVersions, splitExclusion, splitSharedReading, stageVersion, stepMigrationDrill, stepSyncRetry, syncParticipatingNotes, updateProjectPaperState, versionVisible, writeSharedReading, type PendingItem, type ReadingStatus, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { graftNodes, normalizeWorkGraph, omitSeedExceptionLinks, projectResearchRelations, releaseSeparatedRecords, separateWorkRecords } from "../src/graph-edit";
 import { confirmedVersionRelation, holdSourceRelation, paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
 import { doiOf, matchLiteratureNote, toBibTeX } from "../src/export-graph";
 import { resolvePathEndpoint } from "../src/doi-path";
@@ -338,6 +338,47 @@ export function verifyWorkIdentity(): void {
 	assert.equal(seedChoice?.seedException, true);
 	assert.equal(seedChoice?.version.year, 1990);
 	assert.equal(seedChoice && expandDisplayVersion(seedChoice, "W1")?.title, "title-W1");
+	const researchOf = new Map([["P", "R"], ["P2", "R"], ["A2", "A"]]);
+	const projection = projectResearchRelations([
+		{ citingId: "B", citedId: "P", source: "openalex", year: 2020 },
+		{ citingId: "B", citedId: "P2", source: "crossref", year: 2020 },
+		{ citingId: "A", citedId: "B", source: "openalex", year: 2021 },
+		{ citingId: "B", citedId: "A", source: "openalex", year: 2022 },
+		{ citingId: "A", citedId: "A2", source: "openalex", year: 2019 },
+		{ citingId: "", citedId: "B", source: "", year: null },
+	], new Map([["A", ["P"]], ["A2", ["P2"]], ["B", ["P"]]]), [["P", "P2", "B"], ["P", "B"]], researchOf, "A2");
+	assert.equal(projection.edges.length, 2);
+	assert.equal(projection.edges.find((edge) => edge.source === "B" && edge.target === "R")?.links.length, 2);
+	assert.equal(projection.edges.find((edge) => edge.source === "A" && edge.target === "B")?.direct, "mutual");
+	assert.equal(projection.edges.some((edge) => edge.source === edge.target), false);
+	assert.equal(projection.selfCitations.length, 1);
+	assert.equal(projection.sharedResearchRefs.find((item) => item.a === "A" && item.b === "B")?.shared, 1);
+	assert.equal(projection.coCitedBy.find((item) => item.a === "B" && item.b === "R")?.contexts, 2);
+	assert.equal(projection.insufficient.length, 1);
+	assert.equal(projection.selectedId, "A2");
+	assert.equal(projectResearchRelations([], new Map(), [], researchOf, "missing").selectedId, null);
+	assert.equal(omitSeedExceptionLinks([{ citingId: "W2", citedId: "W1", source: "openalex", year: 2020 }], new Set(["W2"])).length, 0);
+	const retraction = [{ id: "S", retracted: true }, { id: "V", retracted: false }, { id: "X", retracted: true }];
+	const blocked = admitRetraction(retraction, "S", false);
+	assert.equal(blocked.blockedRebuild, true);
+	assert.deepEqual(blocked.visible.map((version) => version.id), ["S", "V", "X"]);
+	assert.equal(blocked.confirmedSafe, false);
+	const allowed = admitRetraction(retraction, "S", true);
+	assert.equal(allowed.blockedRebuild, false);
+	assert.deepEqual(allowed.visible.map((version) => version.id), ["S", "V"]);
+	assert.deepEqual(allowed.hidden.map((version) => version.id), ["X"]);
+	assert.equal(allowed.warning, true);
+	assert.equal(admitRetraction([{ id: "V", retracted: false }], null, false).confirmedSafe, false);
+	const exportRows = [
+		{ ...versionOf("W1", "article", 2020), researchId: "R", seed: false },
+		{ ...versionOf("W2", "preprint", 2024), researchId: "R", seed: true, passesFilter: false },
+		{ ...versionOf("W3", "article", 2010, { excluded: true }), researchId: "R", seed: false },
+	];
+	assert.deepEqual(selectExportVersions(exportRows, "one", false).map((version) => version.id), ["W1"]);
+	assert.deepEqual(selectExportVersions(exportRows, "one", true).map((version) => version.id).sort(), ["W1", "W2"]);
+	assert.deepEqual(selectExportVersions(exportRows, "all", false).map((version) => version.id), ["W1"]);
+	assert.deepEqual(selectExportVersions(exportRows, "all", true).map((version) => version.id).sort(), ["W1", "W2"]);
+	assert.equal(selectExportVersions(exportRows, "one", true).find((version) => version.id === "W1")?.title, "title-W1");
 }
 
 export async function verifyWorkIdentityPipeline(): Promise<void> {

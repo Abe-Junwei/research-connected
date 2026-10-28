@@ -3,7 +3,7 @@ import { buildSemanticScorer } from "./text-similarity";
 import { CitationEvidenceStore, edgeCitationPairs, type CitationEvidence } from "./citation-evidence";
 import { paperHasId, paperRecords, workIndex, type WorkIdentity } from "./work-identity";
 import type { SelectionRank } from "./neighborhood";
-import type { GraphEdge, PaperNode } from "./types";
+import type { DirectLink, GraphEdge, PaperNode } from "./types";
 
 export const EXPAND_CAP = 8;
 /** Max seeds remembered for grafted members. */
@@ -328,4 +328,117 @@ function nextWithout(list: string[] | undefined, id: string): string[] | null {
 	const filtered = list.filter((item) => item !== id);
 	if (filtered.length === list.length) return list;
 	return filtered.length ? filtered : null;
+}
+
+export interface VersionLink {
+	citingId: string;
+	citedId: string;
+	source: string;
+	year: number | null;
+}
+
+export interface ResearchProjection {
+	edges: Array<{ source: string; target: string; direct: DirectLink; links: VersionLink[] }>;
+	selfCitations: VersionLink[];
+	sharedResearchRefs: Array<{ a: string; b: string; shared: number }>;
+	coCitedBy: Array<{ a: string; b: string; contexts: number }>;
+	insufficient: string[];
+	selectedId: string | null;
+}
+
+function researchId(id: string, researchOf: ReadonlyMap<string, string>): string {
+	return researchOf.get(id) ?? id;
+}
+
+function pairKey(a: string, b: string): string {
+	return a < b ? `${a}\0${b}` : `${b}\0${a}`;
+}
+
+/** Collapse version and service duplicates onto confirmed researches. Does not fetch. */
+export function projectResearchRelations(
+	links: readonly VersionLink[],
+	referenceLists: ReadonlyMap<string, readonly string[]>,
+	contexts: readonly (readonly string[])[],
+	researchOf: ReadonlyMap<string, string>,
+	selectedId: string | null,
+): ResearchProjection {
+	const groups = new Map<string, { low: string; high: string; forward: VersionLink[]; back: VersionLink[] }>();
+	const selfCitations: VersionLink[] = [];
+	const insufficient: string[] = [];
+	for (const link of links) {
+		if (!link.citingId || !link.citedId || !link.source) {
+			insufficient.push(`${link.citingId || "?"}->${link.citedId || "?"}`);
+			continue;
+		}
+		const source = researchId(link.citingId, researchOf);
+		const target = researchId(link.citedId, researchOf);
+		if (source === target) {
+			selfCitations.push(link);
+			continue;
+		}
+		const low = source < target ? source : target;
+		const high = source < target ? target : source;
+		const key = pairKey(source, target);
+		const group = groups.get(key) ?? { low, high, forward: [], back: [] };
+		if (source === low) group.forward.push(link);
+		else group.back.push(link);
+		groups.set(key, group);
+	}
+	const edges = [...groups.values()].map((group) => {
+		const direct: DirectLink = group.forward.length && group.back.length ? "mutual" : group.forward.length ? "source-cites-target" : "target-cites-source";
+		return { source: group.low, target: group.high, direct, links: [...group.forward, ...group.back] };
+	});
+	const refsOf = new Map<string, Set<string>>();
+	for (const [versionId, refs] of referenceLists) {
+		const research = researchId(versionId, researchOf);
+		const set = refsOf.get(research) ?? new Set<string>();
+		for (const ref of refs) {
+			const target = researchId(ref, researchOf);
+			if (target !== research) set.add(target);
+		}
+		refsOf.set(research, set);
+	}
+	const researches = [...refsOf.keys()].sort();
+	const sharedResearchRefs: Array<{ a: string; b: string; shared: number }> = [];
+	for (let i = 0; i < researches.length; i += 1) {
+		for (let j = i + 1; j < researches.length; j += 1) {
+			const a = researches[i]!;
+			const b = researches[j]!;
+			let shared = 0;
+			for (const ref of refsOf.get(a) ?? []) if (refsOf.get(b)?.has(ref)) shared += 1;
+			if (shared > 0) sharedResearchRefs.push({ a, b, shared });
+		}
+	}
+	const coCounts = new Map<string, number>();
+	for (const context of contexts) {
+		const present = [...new Set(context.filter((id) => id).map((id) => researchId(id, researchOf)))].sort();
+		for (let i = 0; i < present.length; i += 1) {
+			for (let j = i + 1; j < present.length; j += 1) {
+				const key = pairKey(present[i]!, present[j]!);
+				coCounts.set(key, (coCounts.get(key) ?? 0) + 1);
+			}
+		}
+	}
+	const coCitedBy = [...coCounts].map(([key, contexts]) => {
+		const [a, b] = key.split("\0");
+		return { a: a!, b: b!, contexts };
+	});
+	const known = new Set<string>([...researchOf.keys(), ...researchOf.values()]);
+	for (const link of links) {
+		if (link.citingId) known.add(link.citingId);
+		if (link.citedId) known.add(link.citedId);
+	}
+	for (const versionId of referenceLists.keys()) known.add(versionId);
+	return {
+		edges,
+		selfCitations,
+		sharedResearchRefs,
+		coCitedBy,
+		insufficient,
+		selectedId: selectedId && known.has(selectedId) ? selectedId : null,
+	};
+}
+
+export function omitSeedExceptionLinks(links: readonly VersionLink[], exceptionIds: ReadonlySet<string>): VersionLink[] {
+	return links.filter((link) => !exceptionIds.has(link.citingId) && !exceptionIds.has(link.citedId));
 }

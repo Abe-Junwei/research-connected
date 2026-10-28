@@ -723,6 +723,58 @@ export function expandDisplayVersion(choice: DisplayChoice, id: string): Display
 	return [choice.version, ...choice.hidden].find((version) => version.id === id) ?? null;
 }
 
+export interface RetractionAdmission<T extends { id: string; retracted: boolean }> {
+	visible: T[];
+	hidden: T[];
+	warning: boolean;
+	blockedRebuild: boolean;
+	confirmedSafe: false;
+}
+
+/** A retracted seed blocks a rebuild and leaves the previous versions in place. Absence of a flag is not a safety claim. */
+export function admitRetraction<T extends { id: string; retracted: boolean }>(
+	versions: readonly T[],
+	seedId: string | null,
+	allowRetractedSeed: boolean,
+): RetractionAdmission<T> {
+	const seed = seedId ? versions.find((version) => version.id === seedId) : undefined;
+	if (seed?.retracted && !allowRetractedSeed) {
+		return { visible: [...versions], hidden: [], warning: true, blockedRebuild: true, confirmedSafe: false };
+	}
+	const hidden = versions.filter((version) => version.retracted && version.id !== seedId);
+	const visible = versions.filter((version) => !version.retracted || version.id === seedId);
+	return { visible, hidden, warning: hidden.length > 0 || Boolean(seed?.retracted), blockedRebuild: false, confirmedSafe: false };
+}
+
+export interface ExportVersion extends DisplayVersion {
+	researchId: string;
+	seed: boolean;
+}
+
+/** One chosen version, or every version that passes the filter. A seed that fails the filter is included only when requested. */
+export function selectExportVersions(versions: readonly ExportVersion[], mode: "one" | "all", includeSeedException: boolean): ExportVersion[] {
+	const groups = new Map<string, ExportVersion[]>();
+	for (const version of versions) {
+		const group = groups.get(version.researchId) ?? [];
+		group.push(version);
+		groups.set(version.researchId, group);
+	}
+	const chosen: ExportVersion[] = [];
+	for (const group of groups.values()) {
+		const seed = group.find((version) => version.seed && (version.excluded || !version.passesFilter));
+		if (mode === "all") {
+			chosen.push(...group.filter((version) => !version.excluded && version.passesFilter));
+			if (seed && includeSeedException) chosen.push(seed);
+			continue;
+		}
+		if (seed && includeSeedException) chosen.push(seed);
+		const display = chooseDisplayVersion(group.filter((version) => version !== seed), null);
+		const match = display && group.find((version) => version.id === display.version.id);
+		if (match) chosen.push(match);
+	}
+	return chosen;
+}
+
 /** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
 export function migrateProjectRecords(
 	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],
