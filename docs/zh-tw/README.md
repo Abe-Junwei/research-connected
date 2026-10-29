@@ -12,10 +12,8 @@
 
 ## 看清一篇論文的研究鄰域
 
-<p align="center">
-  <img src="../images/graph-pane.gif" width="49%" alt="開發版預覽（淺色）：圖譜從種子展開，選取論文並切換佈局">
-  <img src="../images/graph-pane-dark.gif" width="49%" alt="開發版預覽（暗色）：圖譜從種子展開，選取論文並切換佈局">
-</p>
+<p><img src="../images/graph-pane.gif" width="100%" alt="開發版預覽（淺色）：圖譜從種子展開，選取論文並切換佈局"></p>
+<p><img src="../images/graph-pane-dark.gif" width="100%" alt="開發版預覽（暗色）：圖譜從種子展開，選取論文並切換佈局"></p>
 
 *動態演示與靜態圖均為目前本機開發版預覽，錄於 2026-10-29。不是 Obsidian 宿主畫面，也不代表最新發行版功能。範例為 “Deep learning”（2015）；即時公共中繼資料可能變動。介面為英文；外掛目前支援簡體中文與英文。*
 
@@ -43,19 +41,15 @@
 
 ## 按時間查看研究
 
-<p align="center">
-  <img src="../images/timeline.gif" width="49%" alt="開發版預覽（淺色）：年份佈局下年份帶依發表年份播放">
-  <img src="../images/timeline-dark.gif" width="49%" alt="開發版預覽（暗色）：年份佈局下年份帶依發表年份播放">
-</p>
+<p><img src="../images/timeline.gif" width="100%" alt="開發版預覽（淺色）：年份佈局下年份帶依發表年份播放"></p>
+<p><img src="../images/timeline-dark.gif" width="100%" alt="開發版預覽（暗色）：年份佈局下年份帶依發表年份播放"></p>
 
 切換到**年份**佈局。圖譜下方的年份帶可依發表年份縮小可見範圍。
 
 ## 把圖譜放在筆記旁邊
 
-<p align="center">
-  <img src="../images/note-embed.png" width="49%" alt="開發版預覽（淺色）：在閱讀筆記頁面中嵌入可互動的時間圖譜">
-  <img src="../images/note-embed-dark.png" width="49%" alt="開發版預覽（暗色）：在閱讀筆記頁面中嵌入可互動的時間圖譜">
-</p>
+<p><img src="../images/note-embed.png" width="100%" alt="開發版預覽（淺色）：在閱讀筆記頁面中嵌入可互動的時間圖譜"></p>
+<p><img src="../images/note-embed-dark.png" width="100%" alt="開發版預覽（暗色）：在閱讀筆記頁面中嵌入可互動的時間圖譜"></p>
 
 把下面的程式碼區塊放進筆記。它會在閱讀視圖和即時預覽中顯示。
 
