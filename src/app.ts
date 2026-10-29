@@ -17,20 +17,23 @@ import {
 } from "./graph-edit";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
-import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
+import { appendStatusDetail, mountGraphSurface, paintGraphStatus, placeNodeMenu } from "./graph-surface";
 import { mountWorkspaceFrame } from "./workspace-frame";
 import { createGraphSession } from "./graph-session";
 import {
 	diagnoseCandidate,
 	expandAround,
+	enhancementText,
 	loadNeighborhood,
 	RetractedSeedError,
 	restoreGraftedMembers,
-	type LoadWarning,
+	samplingText,
+	graphStatusSummary,
+	WARNING_TEXT,
 	type SimilarityGraph,
 } from "./neighborhood";
 import { OpenAlexClient, toSearchHit, type GetJson } from "./openalex";
-import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, doisFromOpenCitation, fallbackAbstract } from "./citation-sources";
+import { CrossrefClient, OpenCitationsClient, SemanticScholarClient, doiFromPaper, doisFromOpenCitation, fallbackAbstract, type AbstractLookupResult } from "./citation-sources";
 import {
 	CitationEvidenceStore,
 	edgeCitationPairs,
@@ -86,18 +89,10 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 }
 
 const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", string> = {
-	resolving: tr("正在解析种子论文…", "Resolving the seed paper…"),
+	resolving: tr("正在解析种子文献…", "Resolving the seed paper…"),
 	fetching: tr("正在读取参考文献、施引文献和相关作品…", "Loading references, citing papers, and related works…"),
-	scoring: tr("正在计算参考文献重叠与共被引…", "Calculating shared references and co-citations…"),
+	scoring: tr("正在补充候选数据、筛选并计算相似度…", "Enriching candidates, selecting papers, and calculating similarity…"),
 	searching: tr("正在搜索 OpenAlex…", "Searching OpenAlex…"),
-};
-
-const WARNING_TEXT: Record<LoadWarning, string> = {
-	references: tr("参考文献没有读到", "References could not be loaded"),
-	citations: tr("施引文献没有读到", "Citing papers could not be loaded"),
-	related: tr("相关作品没有读到", "Related works could not be loaded"),
-	details: tr("部分参考文献列表没有读到，相似度只基于拿到的数据", "Some reference lists could not be loaded; similarity uses available data only"),
-	crosscheck: tr("Semantic Scholar 交叉比对没有完成（额度或网络），图谱仍基于 OpenAlex", "Semantic Scholar cross-check did not finish (rate limit or network); the graph still uses OpenAlex"),
 };
 
 /** Pane UI shared by the Obsidian view and the browser preview. */
@@ -118,7 +113,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.placeholder = tr("DOI、OpenAlex ID 或论文标题", "DOI, OpenAlex ID, or paper title");
 	input.autocomplete = "off";
 	input.spellcheck = false;
-	input.setAttribute("aria-label", tr("种子论文", "Seed paper"));
+	input.setAttribute("aria-label", tr("种子文献", "Seed paper"));
 	const submit = el(form, "button", "cpo-primary", tr("构建", "Build"));
 	submit.type = "submit";
 	const projectTools = el(bar, "div", "cpo-project-tools");
@@ -148,9 +143,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		return activeProjectId && projects[activeProjectId]?.seedId === seedId ? projects[activeProjectId] : projectForSeed(projects, seedId);
 	};
 
-	const status = createEl("p");
+	const status = createDiv();
 	status.className = "cpo-status";
-	status.textContent = tr("从一篇种子论文开始。", "Start with a seed paper.");
+	status.textContent = tr("从一篇种子文献开始。", "Start with a seed paper.");
 	status.setAttribute("role", "status");
 	const seedSummary = el(root, "div", "cpo-seed-summary cpo-canvas-seed");
 	seedSummary.hidden = true;
@@ -174,7 +169,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const layoutHost = el(iconNav, "div", "cpo-rail-layouts");
 	const surface = mountGraphSurface(body, {
 		canvasLabel: tr("论文相似度图谱", "Paper similarity graph"),
-		title: tr("从一篇种子论文开始", "Start with a seed paper"),
+		title: tr("从一篇种子文献开始", "Start with a seed paper"),
 		hint: tr("输入 DOI、OpenAlex 链接或作品 ID，也可以按标题搜索后点选。圆点按参考文献重叠和共被引聚在一起，不是引用列表。", "Enter a DOI, OpenAlex URL, or work ID, or search by title and select a result. Nodes cluster by shared references and co-citations; this is not a citation list."),
 	});
 	const { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoomIn, zoomOut, fit, reload, yearHost } = surface;
@@ -230,7 +225,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	function applyVersionFilter(): void {
 		if (!graph) return;
 		const seedId = graph.nodes.find(node => node.isSeed)?.id;
-		const shown = projectVersionGraph(graph, seedId ? currentProject(seedId) : undefined, { ...mapFilter, scrubYear });
+		// Scrub only hides later papers. Removing them relayouts each new year onto the right edge.
+		const shown = projectVersionGraph(graph, seedId ? currentProject(seedId) : undefined, { ...mapFilter, scrubYear: null });
 		map.adoptGraph(shown.nodes, shown.edges, shown.seedScore, undefined, false, shown.referenceLists);
 		map.setContentFilter(mapFilter, shown.nodes);
 		graphKey.setStats(shown.nodes, shown.edges, shown.referenceLists);
@@ -308,6 +304,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const abstractFromS2 = new Set<string>();
 	const abstractFromCrossref = new Set<string>();
 	const abstractMissing = new Set<string>();
+	const abstractErrors = new Map<string, string>();
+	const fetchedAbstracts = new Map<string, Extract<AbstractLookupResult, { status: "found" }>>();
 	const llmReady = (): boolean => {
 		const s = deps.getSettings();
 		return Boolean(s.llmEnabled && s.llmEndpoint.trim() && s.llmModel.trim() && deps.postJson);
@@ -360,8 +358,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const tabTitles: Record<GraphTab, string> = {
 		graph: tr("论文详情", "Paper details"),
-		prior: tr("先验工作", "Prior works"),
-		derivative: tr("衍生工作", "Derivative works"),
+		prior: tr("图内常引文献", "Frequently cited references"),
+		derivative: tr("引用本图的文献", "Works citing this graph"),
 		research: tr("研究脉络", "Research narrative"),
 		staged: tr("收藏列表", "Saved papers"),
 		excluded: tr("已排除论文", "Excluded papers"),
@@ -692,7 +690,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const shared = deps.getReadingState?.(paper);
 			if (shared && !shared.confirmed) {
-				chrome?.setExportText(tr("请先确认阅读进度，再创建笔记", "Confirm reading progress before creating a note"));
+				chrome?.setExportText(tr("请先确认阅读状态，再创建笔记", "Confirm reading status before creating a note"));
 				return;
 			}
 			const fields = {
@@ -722,14 +720,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
 
-	const abstractText = (paper: PaperNode): string => abstractCaption(paper, { s2: abstractFromS2, crossref: abstractFromCrossref, missing: abstractMissing });
+	const abstractText = (paper: PaperNode): string => {
+		const cached = fetchedAbstracts.get(doiFromPaper(paper) ?? paper.id);
+		if (!paper.abstract && cached) { paper.abstract = cached.text; paper.abstractSource = cached.source; }
+		return abstractCaption(paper, { s2: abstractFromS2, crossref: abstractFromCrossref, missing: abstractMissing, errors: abstractErrors });
+	};
 
 	const getEvidence = (citingId: string, citedId: string) => graph?.citationEvidence?.get(citingId, citedId) ?? null;
 	const edgeSources = (edge: GraphEdge): string => edgeSourcesText(edge, getEvidence);
 
 	const showDetail = (paper: PaperNode | null, reveal = false): void => {
 		if (reveal && paper) {
-			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读进度加载失败", "Could not load reading progress"); });
+			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读状态加载失败", "Could not load reading status"); });
 			tab = "graph";
 			chrome?.setTab("graph");
 			evidenceHeading.textContent = tabTitles.graph;
@@ -753,6 +755,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		const seedIdForDisplay = graph.nodes.find(node => node.isSeed)?.id;
 		paper = projectVersionNode(graph.nodes.find(node => node.id === paper?.id) ?? paper, seedIdForDisplay ? currentProject(seedIdForDisplay) : undefined, { ...mapFilter, scrubYear }) ?? paper;
+		selectedPaper = paper;
+		const abstractKey = doiFromPaper(paper) ?? paper.id;
 		if (!coverDismissed && root.classList.contains("is-narrow") && !root.classList.contains("is-detail-cover") && !detail.hidden) detailReturn = map.getViewState();
 		setDetailCover(root, !coverDismissed && !detail.hidden);
 		map.setSelected(graph.nodes.some((node) => node.id === paper.id) ? paper.id : null);
@@ -779,6 +783,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		paintPaperDetail(detail, graph, paper, {
 			isClassic: !!map.classicEvidence(paper.id),
 			abstractText,
+			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
+				abstractErrors.delete(abstractKey);
+				abstractRequested.delete(abstractKey);
+				showDetail(paper);
+			} : undefined,
 			openExternal: deps.openExternal,
 			separate: () => {
 				if (!graph) return;
@@ -814,22 +823,25 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (!deps.persistSettings) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, deps.persistSettings);
 		});
-		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
-			abstractRequested.add(paper.id);
-			const token = generation;
+		if (!paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
+			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
 				semanticScholarApiKey: deps.getSettings().semanticScholarApiKey,
 				contactEmail: deps.getSettings().contactEmail,
 			}).then((result) => {
-				if (disposed || token !== generation) return;
-				if (result) {
+				if (disposed) return;
+				if (result.status === "found") {
+					fetchedAbstracts.set(abstractKey, result);
 					paper.abstract = result.text;
-					if (result.source === "s2") abstractFromS2.add(paper.id);
-					else abstractFromCrossref.add(paper.id);
+					paper.abstractSource = result.source;
+					if (result.source === "s2") abstractFromS2.add(abstractKey);
+					else abstractFromCrossref.add(abstractKey);
+				} else if (result.status === "error") {
+					abstractErrors.set(abstractKey, result.error);
 				} else {
-					abstractMissing.add(paper.id);
+					abstractMissing.add(abstractKey);
 				}
-				if (selectedPaper === paper && tab === "graph") showDetail(paper);
+				if (selectedPaper && (doiFromPaper(selectedPaper) ?? selectedPaper.id) === abstractKey && tab === "graph") showDetail(selectedPaper);
 			});
 		}
 	};
@@ -975,7 +987,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const saved = await persistProject(graph);
 		if (!saved) return;
 		const name = activeProjectId ? deps.getSettings().researchProjects[activeProjectId]?.name : projectName.textContent;
-		status.textContent = tr(`已保存研究项目「${name}」`, `Saved research project “${name}”`);
+		appendStatusDetail(status, tr(`已保存研究项目「${name}」`, `Saved research project “${name}”`));
 	};
 
 	const refreshProjectSelect = (selectedId = activeProjectId ?? currentSeedId()): void => {
@@ -1061,7 +1073,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				project.updatedAt = Date.now();
 				try {
 					await deps.saveProject?.(project);
-					status.textContent = tr(`项目已重命名为「${project.name}」`, `Project renamed to “${project.name}”`);
+					appendStatusDetail(status, tr(`项目已重命名为「${project.name}」`, `Project renamed to “${project.name}”`));
 				} catch (error) {
 					project.name = previousName;
 					status.textContent = error instanceof Error ? error.message : tr("项目名称保存失败", "Could not save the project name");
@@ -1175,7 +1187,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			selectedEdge = null;
 			showDetail(seed);
 		} else showDetail(next.nodes.find((node) => node.id === selectedId) ?? null);
-		status.textContent = tr(`${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`, `${note} · ${next.nodes.length} papers · ${next.edges.length} links`);
+		appendStatusDetail(status, note, graphStatusSummary(next));
 	};
 	const currentSeedId = (): string | null => graph?.nodes.find((node) => node.isSeed)?.id ?? null;
 
@@ -1338,7 +1350,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			seedSummary.hidden = false;
 			seedTitle.textContent = seed.title || seed.id;
 			seedTitle.title = seedTitle.textContent;
-			seedMeta.textContent = [seed.authors, seed.year ?? tr("年份不详", "Year unknown"), tr("种子论文", "Seed paper")].filter(Boolean).join(" · ");
+			seedMeta.textContent = [seed.authors, seed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
 			seedMeta.title = seedMeta.textContent;
 		}
 		showDetail(seed);
@@ -1388,8 +1400,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}${next.skippedRetracted ? ` · 排除已撤稿作品 ${next.skippedRetracted} 条` : ""}${next.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`, `${next.nodes.length} papers · ${next.edges.length} links · ${strategyNames.join(", ")}${
 			next.skippedNonResearch ? ` · filtered ${next.skippedNonResearch} non-research records` : ""
 		}${next.skippedRetracted ? ` · excluded ${next.skippedRetracted} retracted works` : ""}${next.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}${sampleNote}${warning ? ` · ${warning}` : ""}`);
-		status.title = status.textContent;
+		const enhancementNote = enhancementText(next);
+		if (enhancementNote) status.textContent += ` · ${enhancementNote}`;
 		if (next.nodes.length > deps.getSettings().maxNodes) status.textContent += tr(` · 明确保留超出采样上限 ${next.nodes.length - deps.getSettings().maxNodes} 篇`, ` · ${next.nodes.length - deps.getSettings().maxNodes} explicitly retained beyond the sample cap`);
+		paintGraphStatus(status, graphStatusSummary(next), status.textContent ?? "");
 		} finally { applyingNotice = wasApplying; }
 		if (persist) {
 			const id = next.nodes.find((node) => node.isSeed)?.id;
@@ -1429,7 +1443,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (selectedEdge) showEdgeDetail(selectedEdge);
 		else showDetail(selectedPaper);
 		paintLists();
-		status.textContent += tr(` · OpenCitations 检查 ${completed}/${papers.length} 篇，失败 ${failed}；当前 ${next.edges.length} 条关系`, ` · OpenCitations checked ${completed}/${papers.length} papers; ${failed} failed; ${next.edges.length} links now`);
+		appendStatusDetail(status, tr(`OpenCitations 检查成功 ${completed}/${papers.length} 篇，失败 ${failed} 篇`, `OpenCitations checked ${completed}/${papers.length} papers successfully; ${failed} failed`), graphStatusSummary(next, failed > 0));
 		if (!await persistProject(next)) return;
 		if (!current() || !deps.persistSettings) return;
 		try {
@@ -1471,7 +1485,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				hideResults();
 				if ((activeProjectId !== key || currentSeedId() !== project.seedId) && !await switchProject(key)) return;
 				setBusy(false);
-				status.textContent = tr(`已打开研究项目「${project.name}」；需要更新数据请使用重新加载`, `Opened research project “${project.name}”; use Reload to update data`);
+				appendStatusDetail(status, tr(`已打开研究项目「${project.name}」；需要更新数据请使用重新加载`, `Opened research project “${project.name}”; use Reload to update data`));
 				return;
 			}
 		}
@@ -1588,7 +1602,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			return;
 		}
 		clearError();
-		el(results, "p", "cpo-results-label", tr("选择种子论文", "Select a seed paper"));
+		el(results, "p", "cpo-results-label", tr("选择种子文献", "Select a seed paper"));
 		for (const hit of hits) {
 			const button = el(results, "button", "cpo-hit");
 			button.type = "button";
@@ -1623,7 +1637,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					if (hit) hits.push(hit);
 				}
 				showHits(hits);
-				status.textContent = hits.length ? tr(`找到 ${hits.length} 篇，点选种子论文。`, `Found ${hits.length} papers. Select a seed.`) : tr("没有匹配的作品。", "No matching works.");
+				status.textContent = hits.length ? tr(`找到 ${hits.length} 篇，点选种子文献。`, `Found ${hits.length} papers. Select a seed.`) : tr("没有匹配的作品。", "No matching works.");
 			} catch (error) {
 				if (token !== generation) return;
 				showError(error instanceof Error ? error.message : tr("搜索失败。", "Search failed."));
@@ -1725,7 +1739,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				const sharedSeed = saved.nodes.find(node => node.isSeed);
 				if (sharedSeed) {
 					input.value = sharedSeed.id; seedTitle.textContent = sharedSeed.title; seedTitle.title = sharedSeed.title;
-					seedMeta.textContent = [sharedSeed.authors, sharedSeed.year ?? tr("年份不详", "Year unknown"), tr("种子论文", "Seed paper")].filter(Boolean).join(" · ");
+					seedMeta.textContent = [sharedSeed.authors, sharedSeed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
 					seedMeta.title = seedMeta.textContent;
 				}
 				hiddenIds = new Set(saved.excludedIds ?? []);
@@ -1767,7 +1781,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		deepDiveBatches = saved?.deepDives ?? [];
 		applyGraph(restored, saved?.currentView, false, false);
 		setBusy(false);
-		status.textContent = tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」 · ${restored.nodes.length} 篇 · 可随时更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}” · ${restored.nodes.length} papers · refresh data anytime`);
+		appendStatusDetail(status, tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」，可重新加载以更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}”; reload to refresh data`));
 	} else if (initial) {
 		input.value = initial.value;
 		refreshProjectSelect();
@@ -1902,10 +1916,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			root.classList.remove("cpo-root", "cpo-surface", "is-narrow");
 		},
 	};
-}
-
-function samplingText(stats: { accepted: number; requests: number; pages: number; filtered: number; duplicates: number; partial: boolean }, label: string): string {
-	return tr(`${label}${stats.accepted}/${stats.pages}页·${stats.requests}次${stats.filtered ? `·滤${stats.filtered}` : ""}${stats.duplicates ? `·重${stats.duplicates}` : ""}${stats.partial ? "·未满" : ""}`, `${label}: ${stats.accepted} accepted · ${stats.pages} ${stats.pages === 1 ? "page" : "pages"} · ${stats.requests} ${stats.requests === 1 ? "request" : "requests"}${stats.filtered ? ` · ${stats.filtered} filtered` : ""}${stats.duplicates ? ` · ${stats.duplicates} duplicates` : ""}${stats.partial ? " · below target" : ""}`);
 }
 
 function addLink(parent: HTMLElement, label: string, onClick: () => void): void {

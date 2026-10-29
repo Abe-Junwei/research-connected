@@ -71,7 +71,7 @@ export function paintWorkflowLibrary(host: HTMLElement, options: WorkflowLibrary
 			const card = append(host, "div", "cpo-card cpo-library-card");
 			append(card, "h3", "cpo-card-title", issue.paper.title || issue.paper.id);
 			append(card, "p", "cpo-library-meta", issue.projects.map(project => `${project.name || project.id} (${project.id})`).join(" · ") || tr("未关联项目", "No linked project"));
-			append(card, "p", "cpo-fact-note", issue.reading === null ? tr("阅读进度待确认", "Reading progress needs confirmation") : tr(`共享进度：${labels[issue.reading]}`, `Shared progress: ${labels[issue.reading]}`));
+			append(card, "p", "cpo-fact-note", issue.reading === null ? tr("阅读状态待确认", "Reading status needs confirmation") : tr(`共享阅读状态：${labels[issue.reading]}`, `Shared reading status: ${labels[issue.reading]}`));
 			for (const source of issue.sources) append(card, "p", "cpo-library-meta", `${source.source} · ${source.reading === null ? JSON.stringify(source.raw) ?? "—" : labels[source.reading]}`);
 			const actions = append(card, "div", "cpo-library-actions");
 			action(actions, tr("查看详情", "View details"), () => options.onView(issue.paper));
@@ -83,7 +83,7 @@ export function paintWorkflowLibrary(host: HTMLElement, options: WorkflowLibrary
 					action(actions, tr(`采用笔记值：${labels[reading]}`, `Use note value: ${labels[reading]}`), () => options.workflow.resolveReading(issue.paper, reading));
 					if (issue.reading !== null) {
 						const shared = issue.reading;
-						action(actions, tr("采用共享进度", "Use shared progress"), () => options.workflow.resolveReading(issue.paper, shared));
+						action(actions, tr("采用共享阅读状态", "Use shared reading status"), () => options.workflow.resolveReading(issue.paper, shared));
 					}
 				}
 			}

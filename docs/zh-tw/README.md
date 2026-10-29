@@ -4,39 +4,36 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected 標誌"></p>
 
-<p align="center">把相關論文畫成圖譜，查看每條關係的證據，並把閱讀整理成 Obsidian 裡相互連結的筆記。</p>
+<p align="center"><strong>從一篇論文，走向有脈絡的研究閱讀。</strong><br>發現相關文獻，核查連結證據，在 Obsidian 中累積相互連結的文獻筆記。</p>
 
 <p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/zh-tw/README.md#快速開始">快速開始</a> · <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md">使用指南</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml">回報問題</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml">功能建議</a></p>
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 發行版本"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 及以上桌面版"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="授權"></p>
 
-## 目前開發分支（尚未發布）
+## 看清一篇論文的研究鄰域
 
-以下功能已在 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 實作，由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 追蹤；不代表最新發布版已包含。真實 Obsidian 環境的完整驗收仍待完成。下方截圖與目前星圖外觀可能不同。介面目前支援簡體中文與英文。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="開發版預覽：以 Deep learning 為種子文獻的 50 篇文獻圖譜，右側顯示被多篇目前可見文獻引用的作品">
+</picture>
 
-- 同一論文及已確認版本組跨專案共用閱讀進度；暫存與排除各自獨立。衝突與筆記外部編輯可明確處理、重試或停止同步。
-- 依來源確認與手動合併／拆分決策整合版本，不按標題猜測；處理身分及排除範圍歧義，匯出保留版本來源。
-- 檢查引用路徑、候選篩選診斷與結構相似度，區分缺少證據和實測為零；MMR 平衡相關性與多樣性，語義訊號補充結構證據。
-- 節點半徑按累計引用量對數縮放，缺失值標示未知。成熟且具影響力的論文有啟發式經典標記與閃爍，詳情說明理由，並非權威認定；動畫遵循系統減少動態效果偏好。
-- 儲存命名視圖並明確關聯嵌入圖譜與專案；主圖和嵌入圖共用閱讀流程。互動優化減少重複圖譜投影，合併拖曳與縮放畫格。
+[淺色原圖](../images/graph-pane.png) · [暗色原圖](../images/graph-pane-dark.png)
 
-## 圖譜
+*本頁截圖均為目前本機開發版預覽，攝於 2026-10-29，解析度 3200 × 2000（2×）。不是 Obsidian 宿主截圖，也不代表最新發行版功能。範例為 “Deep learning”（2015）；即時公共中繼資料可能變動。截圖介面為英文；外掛目前支援簡體中文與英文。*
 
-![以 “Deep learning” 為中心的圖譜：左側是相關論文，右側是所選論文的關係證據](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
+選取節點或邊即可查看共同參考文獻、共被引和直接引用證據。右側底部的內容分頁中，**圖內常引文獻**指至少被兩篇目前可見文獻引用的作品；**引用本圖的文獻**指引用至少兩篇目前可見文獻的作品。這些名稱不表示發表先後或思想承襲。
 
-選取一個節點或一條邊，即可看到共同參考文獻、共被引和直接引用證據。
+## 發現、核查、累積：三個核心工作流程
 
-## 能做什麼
-
-- **發現相關研究。** 輸入題名、DOI 或 OpenAlex ID，產生一張取樣後的相似圖譜。可在平面、時間和放射佈局之間切換。
-- **檢查每條關係。** 查看一條關係背後的參考文獻和引用證據。Semantic Scholar、Crossref 和 OpenCitations 補上缺口，並標出不相符的紀錄。
-- **整理閱讀。** 暫存論文，標記待讀或已讀，排除干擾，並儲存命名視圖。可以寫文獻筆記、嵌入圖譜，或匯出 BibTeX、YAML 和 Markdown。
+- **發現相關研究。** 輸入題名、DOI 或 OpenAlex ID，指定種子文獻並產生取樣後的相似圖譜。可在平面、年份和放射佈局之間切換。
+- **檢查每條關係。** 查看參考文獻和引用證據。外掛可能透過 OpenAlex、Semantic Scholar 或 Crossref 取得摘要與參考文獻資料，也可能透過 OpenCitations 補充引用證據；請求失敗不代表來源沒有紀錄。
+- **整理閱讀。** **收藏文献**會將單篇論文加入專案的收藏清單，**保存项目**則保存專案。設定論文的**閱讀狀態**、排除干擾、撰寫文獻筆記、嵌入圖譜，或匯出 BibTeX、YAML 和 Markdown。
 
 ## 快速開始
 
 1. **安裝並啟用。** 在 Obsidian 中打開**設定 → 第三方外掛 → 瀏覽**，搜尋 **Research Connected**，然後安裝並啟用。
-2. **建立第一張圖譜。** 從命令面板執行**打开 Research Connected**。貼上下面的 DOI，或輸入論文題名，然後選擇**构建**。
-3. **檢查一條關係。** 選取一篇論文或一條邊，查看它為什麼出現在圖譜上。使用**保存视图**，以便以後回到這次排列。
+2. **建立第一張圖譜。** 從命令面板執行**打开 Research Connected**。貼上下面的 DOI，或輸入論文題名以選擇**種子文獻**，然後選擇**构建**。
+3. **檢查一條關係。** 選取一篇論文或一條邊，查看它為什麼出現在圖譜上。使用**保存项目**保存專案；使用**收藏文献**將單篇論文加入收藏清單。
 
 ```text
 10.1038/nature14539
@@ -48,13 +45,23 @@
 
 ## 按時間查看研究
 
-![按發表年份排列的時間佈局，帶有佈局控制項和年份滑桿](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="開發版預覽：按發表年份排列的時間圖譜，下方顯示年份帶">
+</picture>
 
-切換到**时间**。年份滑桿縮小可見範圍，已儲存的視圖可以回到某次有用的選擇。
+[淺色原圖](../images/timeline.png) · [暗色原圖](../images/timeline-dark.png)
+
+切換到**年份**佈局。圖譜下方的年份帶可依發表年份縮小可見範圍。
 
 ## 把圖譜放在筆記旁邊
 
-![閱讀筆記中，段落之間嵌入了 Research Connected 圖譜](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/note-embed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="開發版預覽：在閱讀筆記頁面中嵌入可互動的時間圖譜">
+</picture>
+
+[淺色原圖](../images/note-embed.png) · [暗色原圖](../images/note-embed-dark.png)
 
 把下面的程式碼區塊放進筆記。它會在閱讀視圖和即時預覽中顯示。
 
@@ -66,34 +73,48 @@ layout: temporal
 ```
 ````
 
-選取一篇論文，然後選擇**导出 → 写入笔记**，即可建立文獻筆記。外掛可以根據 DOI 或 OpenAlex ID 辨識既有筆記，並在閱讀狀態改變時同步 `rc-status`。目標資料夾、檔名、正文範本和 DOI 屬性在設定中調整。
+選取一篇論文，然後選擇**导出 → 写入笔记**，即可建立文獻筆記。外掛可以根據 DOI 或 OpenAlex ID 辨識既有筆記。閱讀狀態可與關聯筆記同步；狀態衝突需要核對。目標資料夾、檔名、正文範本和 DOI 屬性在設定中調整。
 
-嵌入選項、前言、取樣和演算法見[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。舊的 `connected-papers` 嵌入名稱仍然可用。
+嵌入選項、筆記屬性（YAML frontmatter）、取樣和演算法見[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。舊的 `connected-papers` 嵌入名稱仍然可用。
+
+## 開發狀態
+
+<details>
+<summary>尚未發布的功能與驗證邊界</summary>
+
+目前 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 的工作由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 追蹤。真實 Obsidian 宿主的完整驗收尚待完成；發行版功能以正式版本為準。
+
+- 同一論文及已確認版本組跨專案共用閱讀狀態，收藏文獻與排除仍按專案管理。狀態衝突與外部編輯需明確解決、重試或停止同步。
+- 依來源確認或手動決定的關係整合版本，不按標題猜測；匯出保留版本來源。
+- 候選診斷與引用路徑區分缺少證據與實測為零；MMR 平衡相關性與多樣性，語義訊號補充結構證據。
+- 節點大小按引用量對數縮放；高被引提示是啟發式指標，並非權威評定。動畫遵循減少動態效果偏好。
+
+</details>
 
 ## 使用前須知
 
 - **桌面版。** 需要 Obsidian 1.14.4 或更新版本。行動版尚待裝置測試。
-- **網路。** 建立圖譜會查詢外部學術服務。專案和閱讀狀態保存在儲存庫中。
+- **網路。** 建立圖譜會查詢外部學術服務。專案和閱讀狀態保存在儲存庫中；資料流詳見下方隱私說明。
 - **服務金鑰。** OpenAlex API 金鑰可省略，建議填寫。可在 [OpenAlex 設定](https://openalex.org/settings/api)建立，設定方式見[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。
-- **取樣。** 圖譜是引用鄰域的樣本，不是引用該種子的全部論文。
-- **筆記。** 外掛讀取文獻筆記的前言以辨識既有筆記。只有在寫入筆記或更改閱讀狀態時才會改動筆記檔案。
+- **取樣。** 圖譜是引用鄰域的樣本，不是引用種子文獻的全部論文。
+- **筆記。** 外掛讀取筆記屬性（YAML frontmatter）以辨識文獻筆記。只有在寫入筆記或更改閱讀狀態時才會改動筆記檔案。
 - **人工智慧。** 研究脈絡預設關閉。瀏覽圖譜不需要語言模型。
 - **介面語言。** 所有中文環境（含繁體中文）目前顯示簡體中文，其他環境顯示英文。上文的指令與按鈕名稱因此保留簡體。
 
 ## 網路使用與隱私
 
-- **OpenAlex** 會收到你輸入的 DOI、OpenAlex ID 或搜尋文字，以及你設定的 API 金鑰。
+- **OpenAlex** 會收到你輸入的 DOI、OpenAlex ID 或搜尋文字，以及設定的 API 金鑰和選填聯絡電子郵件。該電子郵件也會作為聯絡資訊傳送給 Crossref；不保證提高請求額度。
 - **Semantic Scholar**、**Crossref** 和 **OpenCitations** 會收到論文識別碼。金鑰或權杖只傳給對應的服務。
 - **語言模型端點** 只在啟用研究脈絡並按下**生成研究脉络**後，收到所選論文及其引用證據。只有打開對應選項時才會包含摘要。
 
-為辨識既有文獻筆記，外掛會列出 Markdown 路徑並讀取快取的前言。複製和匯出寫入系統剪貼簿；外掛不讀取剪貼簿。寫入文獻筆記或更改其閱讀狀態時，會更新對應的儲存庫檔案。
+為辨識既有文獻筆記，外掛會列出 Markdown 路徑並讀取筆記屬性（YAML frontmatter）。複製和匯出寫入系統剪貼簿；外掛不讀取剪貼簿。寫入文獻筆記或更改其閱讀狀態時，會更新對應的儲存庫檔案。
 
-專案、閱讀狀態、已儲存視圖和服務憑證保存在這個儲存庫外掛的 `data.json` 中。憑證**未加密**。外掛不傳送遙測資料，除文獻筆記的前言外不讀取筆記。
+專案、閱讀狀態、收藏文獻和服務憑證保存在這個儲存庫外掛的 `data.json` 中。憑證**未加密**；儲存庫同步或備份工具可能會複製此檔案。外掛不傳送遙測資料，也不讀取文獻筆記屬性以外的筆記內容。
 
 ## 限制
 
 - 圖譜是**樣本**，不是完整的引用索引。高被引論文貢獻的是被引最多的施引文獻，不是全部施引文獻。
-- 相似度和社群顏色用於探索。重要論點請對照原始論文核對。
+- 語義相似度可能使用相容向量以及本機文字和主題訊號；它用於探索，不代表研究品質。重要論點請對照原始論文核對。
 - OpenAlex 有已知缺口：缺少摘要、參考文獻清單不完整，以及作者消歧義錯誤。[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md#data-quality-known-openalex-issues)列出了每一項以及外掛的處理方式。
 
 ## 幫助與回饋

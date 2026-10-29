@@ -6,16 +6,17 @@ import { createChromeIcon, paintEvidenceBadges, paintPaperStateBadges } from "./
 import type { SelectionRank, SimilarityGraph } from "./neighborhood";
 import { paintPaperActions, paintPaperActionFeedback, type PaperActionOptions } from "./paper-actions";
 import type { ProjectPaperState, ReadingStatus } from "./project-state";
-import { nonResearchLabel } from "./paper";
+import { nonResearchLabel, normalizeDoi } from "./paper";
 import { comparableStructuralSimilarity, findEdge, observedRelationCount } from "./relation";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { citationCountText, formatCount } from "./visual";
 import { paperRecords } from "./work-identity";
+import { admissionText } from "./admission";
 
 /** Sidebar detail cards shared by the main pane and the note embed. */
 
 export const ORIGIN_TEXT: Record<Origin, string> = {
-	seed: tr("种子论文", "Seed paper"),
+	seed: tr("种子文献", "Seed paper"),
 	reference: tr("种子的参考文献", "Seed references"),
 	citation: tr("引用了种子", "Cites the seed"),
 	related: tr("OpenAlex 相关作品", "OpenAlex related works"),
@@ -143,7 +144,7 @@ export function paintPaperWorkflowState(
 	let currentReading = state.reading;
 	let conflict = state.readingConflict;
 	let busy = false;
-	const pending = el(row, "span", "cpo-fact-note cpo-reading-feedback", tr("阅读进度待确认", "Reading progress needs confirmation"));
+	const pending = el(row, "span", "cpo-fact-note cpo-reading-feedback", tr("阅读状态待确认", "Reading status needs confirmation"));
 	pending.setAttribute("role", "status");
 	pending.hidden = !conflict;
 	const labels: Record<ReadingStatus, string> = { unread: tr("未读", "Unread"), "to-read": tr("待读", "To read"), read: tr("已读", "Read") };
@@ -244,8 +245,10 @@ export function paintPaperWorkflowState(
 }
 
 /** 语义 meter 的 hint 文案：向量通道与本地通道分开标注。 */
-export function semanticHintFor(mode?: "embedding" | "local"): string {
-	return mode === "embedding" ? tr("SPECTER2 语义向量 + 主题", "SPECTER2 embeddings and topics") : tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally");
+export function semanticHintFor(mode?: "embedding" | "local", model?: string | null): string {
+	return mode === "embedding"
+		? tr(`同模型语义向量${model ? ` (${model})` : ""}，结合可用主题`, `Same-model embeddings${model ? ` (${model})` : ""} with available topics`)
+		: tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally");
 }
 
 /** Author line from the structured list; falls back to the joined string. */
@@ -277,7 +280,7 @@ export function paintVenueRow(parent: HTMLElement, paper: PaperNode): void {
 	venue.title = paper.venue;
 }
 
-/** 聚合列表（先验/衍生）单条：与元数据卡同一体系的迷你卡，整条可点击。 */
+/** 聚合列表单条：与元数据卡同一体系的迷你卡，整条可点击。 */
 export function paintAggregateCard(parent: HTMLElement, row: RankedWork, noun: string, onPick: (paper: PaperNode) => void, onActions?: (card: HTMLElement, paper: PaperNode) => void): void {
 	const item = el(parent, "li", "cpo-agg-entry");
 	const card = el(item, "div", "cpo-card cpo-agg-card");
@@ -307,7 +310,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 		const icon = createChromeIcon("star");
 		icon.classList.add("cpo-paper-classic-icon");
 		const marker = el(title, "span", "cpo-paper-title-source");
-		marker.title = tr("经典文献", "Classic paper");
+		marker.title = tr("高被引提示：依据被引量与发表年限的启发式标记，不代表学术质量评定", "High-citation indicator: a heuristic based on citations and age, not an assessment of research quality");
 		marker.setAttribute("role", "img");
 		marker.setAttribute("aria-label", marker.title);
 		marker.append(icon);
@@ -320,6 +323,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	paintAuthorChips(card, paper);
 	paintVenueRow(card, paper);
 	paintPaperStateBadges(card, paper, check);
+	if (!paper.isSeed && paper.admission) el(card, "p", "cpo-fact-note", admissionText(paper.admission));
 	if (paper.concepts.length > 0) {
 		const topics = el(card, "div", "cpo-paper-topics");
 		topics.setAttribute("aria-label", tr("论文主题", "Paper topics"));
@@ -352,11 +356,11 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	}
 	const flagged = nonResearchLabel(paper);
 	if (flagged) {
-		el(card, "p", "cpo-side-tip", tr(`OpenAlex 将这条记录标记为「${flagged}」。书评的题名里嵌着原书信息，指向它的引用往往属于原书，作者字段以实际书评作者为准——这是 OpenAlex 的数据特点，不是本插件的映射。`, `OpenAlex marks this record as “${flagged}”. Book review titles may include the original book; citations to the review may belong to the book. The author field reflects the review author. This is a property of the OpenAlex data, not the plugin mapping.`));
+		el(card, "p", "cpo-side-tip", tr(`OpenAlex 将此记录标记为「${flagged}」。请通过原始来源核对文献类型和作者。`, `OpenAlex labels this record as “${flagged}”. Verify its type and authors against the original source.`));
 	}
 	if (check?.mismatched) {
 		const s2 = check.s2Citations === null || check.s2Citations === undefined ? tr("无记录", "No record") : formatCount(check.s2Citations);
-		el(card, "p", "cpo-side-tip", tr(`⚠ 数据源差异悬殊：OpenAlex 被引 ${citationCountText(paper)}，Semantic Scholar 被引 ${s2}。差异这么大通常是记录错配（例如书评继承了原书的引用），引用前请经 DOI 链接核实。`, `⚠ Large source discrepancy: OpenAlex reports ${citationCountText(paper)} citations; Semantic Scholar reports ${s2}. This often indicates a record mismatch, such as a review inheriting the book’s citations. Verify through the DOI before citing.`));
+		el(card, "p", "cpo-side-tip", tr(`⚠ 被引次数差异较大：OpenAlex ${citationCountText(paper)}，Semantic Scholar ${s2}。可能与收录范围、更新或记录归并有关，请通过 DOI 核对论文身份。`, `⚠ Citation counts differ: OpenAlex ${citationCountText(paper)}; Semantic Scholar ${s2}. Coverage, updates, or record grouping may explain the difference. Verify the paper's identity through its DOI.`));
 	}
 }
 
@@ -394,7 +398,7 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 	if (options.seedScore !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), options.seedScore, tr("结构 + 语义信号", "Structure and semantic signals"));
 	paintMeter(card, tr("文献结构相似度", "Structural similarity"), comparableStructuralSimilarity(edge), tr("当前列表与采样中的共享参考文献 / 共被引", "Shared references and co-citations in obtained lists and this sample"), true);
 	if (options.semanticScore !== undefined) {
-		paintMeter(card, tr("文本相似度", "Text similarity"), options.semanticScore, options.semanticHint ?? tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally"), true);
+		paintMeter(card, tr("语义相似度", "Semantic similarity"), options.semanticScore, options.semanticHint ?? tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally"), true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
 	paintStat(grid, tr("共享参考文献", "Shared references"), observedRelationCount(edge, "references"));
@@ -443,8 +447,8 @@ export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstrac
 	const toggle = el(card, "button", "cpo-ghost cpo-abstract-toggle");
 	toggle.type = "button";
 	toggle.setAttribute("aria-expanded", "false");
-	toggle.setAttribute("aria-label", tr("展开全文", "Show full abstract"));
-	toggle.title = tr("展开全文", "Show full abstract");
+	toggle.setAttribute("aria-label", tr("展开摘要", "Show full abstract"));
+	toggle.title = tr("展开摘要", "Show full abstract");
 	toggle.append(createChromeIcon("chevronDown"));
 	toggle.hidden = true;
 	const syncClamp = (): void => {
@@ -464,7 +468,7 @@ export function paintAbstractCard(parent: HTMLElement, paper: PaperNode, abstrac
 		toggle.setAttribute("aria-expanded", String(!collapsed));
 		fade.hidden = !collapsed;
 		toggle.hidden = false;
-		const label = collapsed ? tr("展开全文", "Show full abstract") : tr("收起摘要", "Collapse abstract");
+		const label = collapsed ? tr("展开摘要", "Show full abstract") : tr("收起摘要", "Collapse abstract");
 		toggle.replaceChildren(createChromeIcon(collapsed ? "chevronDown" : "chevronUp"));
 		toggle.setAttribute("aria-label", label);
 		toggle.title = label;
@@ -501,31 +505,40 @@ export function paintSelectionReasons(parent: HTMLElement, rank: SelectionRank, 
 	summary.textContent = tr("入选原因", "Why selected");
 	summary.prepend(createChromeIcon("chevronRight"));
 	details.append(summary);
-	paintMeter(details, tr("权威分", "Authority score"), rank.authority, tr("log 被引 × 新近度，候选池内归一", "Log citations × recency, normalized within the candidate pool"), true);
-	paintMeter(details, tr("选择时语义分", "Semantic score at selection"), rank.semantic, tr("标题 / 主题，本地计算（选择时摘要尚未补取）", "Title and topics, computed locally (abstract not yet fetched at selection)"), true);
-	paintMeter(details, tr("选择时相关性", "Relevance at selection"), rank.relevance, tr("0.5×权威 + 0.5×选择时语义；语义缺失时等于权威分；撤稿作品进一步降权", "0.5 × authority + 0.5 × selection-time semantics; uses authority if semantics are unavailable; retracted works are penalized further"), true);
+	paintMeter(details, tr("被引与时效分", "Citation–recency score"), rank.authority, tr("基于被引量和发表年份的排序信号，不是学术质量评定", "A ranking signal based on citations and publication year, not research quality"), true);
+	const selectionHint = rank.semanticChannel
+		? semanticHintFor(rank.semanticChannel, rank.semanticModel)
+		: tr("根据入选时可用的文本、主题或兼容向量计算；旧快照未记录具体通道", "Based on text, topics, or compatible vectors available at selection; this older snapshot did not record the channel");
+	paintMeter(details, tr("入选时语义分", "Semantic score at selection"), rank.semantic, selectionHint, true);
+	paintMeter(details, tr("入选排序分", "Selection score"), rank.relevance, tr("综合被引与时效、语义信号；缺少语义时仅使用前者，撤稿文献降权。不是相关概率", "Combines citation–recency and semantic signals; uses the former alone if semantics are unavailable. Retracted works are penalized. Not a relevance probability"), true);
 	if (currentScore !== undefined) {
 		paintMeter(details, tr("建图后当前综合分", "Current overall score"), currentScore, tr("结构 + 语义信号；未参与候选入选", "Structure and semantic signals; not used for candidate selection"));
 	}
-	el(details, "p", "cpo-fact-note", tr("入选还受来源配额与多样性（MMR）影响。", "Selection also depends on source quotas and diversity (MMR)."));
+	el(details, "p", "cpo-fact-note", tr("入选还受节点上限、相关来源上限和多样性筛选（MMR）影响。", "Selection also depends on node and related-source limits, and diversity selection (MMR)."));
 	parent.append(details);
 }
 
 export function abstractCaption(
 	paper: PaperNode,
-	sources: { s2: ReadonlySet<string>; crossref: ReadonlySet<string>; missing: ReadonlySet<string> },
+	sources: { s2: ReadonlySet<string>; crossref: ReadonlySet<string>; missing: ReadonlySet<string>; errors?: ReadonlyMap<string, string> },
 ): string {
+	const key = normalizeDoi(paper.doiUrl) ?? paper.id;
 	if (paper.abstract) {
-		const source = sources.s2.has(paper.id) ? "Semantic Scholar" : sources.crossref.has(paper.id) ? "Crossref" : "";
+		const recordedSource = paper.abstractSource ?? (sources.s2.has(key) || sources.s2.has(paper.id) ? "s2" : sources.crossref.has(key) || sources.crossref.has(paper.id) ? "crossref" : undefined);
+		const source = recordedSource === "s2" ? "Semantic Scholar" : recordedSource === "crossref" ? "Crossref" : "";
 		return paper.abstract + (source ? tr(`（摘要来源：${source}）`, ` (abstract source: ${source})`) : "");
 	}
-	if (sources.missing.has(paper.id)) return tr("OpenAlex、Semantic Scholar 和 Crossref 都没有这篇的摘要。", "No abstract is available from OpenAlex, Semantic Scholar, or Crossref.");
-	return tr("OpenAlex 没有摘要，正在查询 Semantic Scholar / Crossref…", "No OpenAlex abstract; checking Semantic Scholar and Crossref…");
+	if (!normalizeDoi(paper.doiUrl)) return tr("暂未获取到摘要；此记录缺少 DOI，无法通过备用来源查询。", "No abstract retrieved. This record has no DOI for fallback lookup.");
+	const error = sources.errors?.get(key) ?? sources.errors?.get(paper.id);
+	if (error) return tr(`暂未获取到摘要，部分请求失败。可重试。详情：${error}`, `No abstract retrieved; some requests failed. Retry is available. Details: ${error}`);
+	if (sources.missing.has(key) || sources.missing.has(paper.id)) return tr("暂未获取到摘要；本次查询未返回摘要内容。", "No abstract retrieved; this lookup returned no abstract text.");
+	return tr("正在尝试从 Semantic Scholar / Crossref 获取摘要…", "Trying Semantic Scholar and Crossref for an abstract…");
 }
 
 export interface PaperDetailOptions {
 	isClassic?: boolean;
 	abstractText: (paper: PaperNode) => string;
+	onRetryAbstract?: () => void;
 	openExternal: (url: string) => void;
 	separate: () => void;
 	conflict: boolean;
@@ -581,7 +594,14 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 	const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
 	paintPaperActions(parent, paper, seed?.id ?? null, stageEdge, stageEvidence, options.actions);
 	paintAbstractCard(parent, paper, options.abstractText);
+	if (options.onRetryAbstract) {
+		const host = parent.querySelector<HTMLElement>(".cpo-abstract-wrap") ?? parent;
+		const retry = el(host, "button", "cpo-text-btn", tr("重试获取摘要", "Retry abstract lookup"));
+		retry.type = "button";
+		retry.onclick = options.onRetryAbstract;
+	}
 	if (seed && !paper.isSeed) {
+		const semanticHint = semanticHintFor(graph.semanticVectorIds?.includes(paper.id) ? "embedding" : "local", graph.semanticModel);
 		const score = graph.seedScore.get(paper.id);
 		const from = stageEdge ? graph.nodes.find((node) => node.id === stageEdge.source) : undefined;
 		const to = stageEdge ? graph.nodes.find((node) => node.id === stageEdge.target) : undefined;
@@ -591,7 +611,7 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 				getEvidence,
 				seedScore: score,
 				semanticScore: graph.semanticScores?.get(paper.id),
-				semanticHint: semanticHintFor(graph.semanticMode),
+				semanticHint,
 			});
 		} else {
 			const recorded = getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id);
@@ -599,7 +619,7 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 				const card = el(parent, "section", "cpo-card");
 				if (score !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), score, tr("结构 + 语义信号", "Structure and semantic signals"));
 				const semantic = graph.semanticScores?.get(paper.id);
-				if (semantic !== undefined) paintMeter(card, tr("文本相似度", "Text similarity"), semantic, semanticHintFor(graph.semanticMode), true);
+				if (semantic !== undefined) paintMeter(card, tr("语义相似度", "Semantic similarity"), semantic, semanticHint, true);
 				if (!recorded) el(card, "p", "cpo-fact-note", tr(`与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`, `No direct citation to the seed recorded · ${SIMILARITY_NOT_CITATION}`));
 			}
 		}

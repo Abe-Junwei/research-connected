@@ -1,7 +1,7 @@
 import { paperRecords, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
-import { CrossrefClient, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, fallbackAbstract, type PostJson } from "./citation-sources";
+import { CrossrefClient, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, fallbackAbstract, type AbstractLookupResult, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
 import { abstractCaption, choosePaperVersion, ORIGIN_TEXT, paintAggregateCard, paintIdentityDecisionActions, paintPaperDetail, paintPaperWorkflowState } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, embedViewStateKey, parseEmbed, type EmbedSpec } from "./embed-syntax";
@@ -11,11 +11,11 @@ import { createChromeIcon, mountBottomSheet, mountGraphChrome, type ExportKind, 
 import { graphExportVersions, literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import { defaultColorMode, type LayoutMode } from "./layout-modes";
 import { SimilarityMap } from "./map-canvas";
-import { mountGraphSurface, placeNodeMenu } from "./graph-surface";
+import { appendStatusDetail, mountGraphSurface, paintGraphStatus, placeNodeMenu } from "./graph-surface";
 import { mountWorkspaceFrame } from "./workspace-frame";
 import { createGraphSession } from "./graph-session";
 import { applyWorkIdentityDecisions, graftNodes } from "./graph-edit";
-import { diagnoseCandidate, expandSecondLayer, loadNeighborhood, RetractedSeedError, type LoadStage, type SimilarityGraph } from "./neighborhood";
+import { diagnoseCandidate, enhancementText, expandSecondLayer, graphStatusSummary, loadNeighborhood, RetractedSeedError, samplingText, WARNING_TEXT, type LoadStage, type SimilarityGraph } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
 import { paintPaperActions } from "./paper-actions";
 import type { ConnectedPapersSettings } from "./settings-model";
@@ -44,7 +44,7 @@ export interface EmbedDeps extends Partial<ReadingWorkflowDeps> {
 }
 
 const STAGE_TEXT: Record<LoadStage, string> = {
-	resolving: tr("正在解析种子论文…", "Resolving the seed paper…"),
+	resolving: tr("正在解析种子文献…", "Resolving the seed paper…"),
 	fetching: tr("正在读取参考文献、施引文献和相关作品…", "Loading references, citing papers, and related works…"),
 	scoring: tr("正在计算相似度…", "Calculating similarity…"),
 };
@@ -80,7 +80,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const brandName = createEl("strong");
 	brandName.textContent = "Research Connected";
 	brand.append(brandMark, brandName);
-	const status = createEl("p");
+	const status = createDiv();
 	status.className = "cpo-status cpo-canvas-seed";
 	status.setAttribute("role", "status");
 
@@ -112,7 +112,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const openGraphAction = createEl("button");
 	openGraphAction.type = "button";
 	openGraphAction.className = "cpo-ghost cpo-open-graph";
-	openGraphAction.append(createChromeIcon("external"), document.createTextNode(tr("在图谱中打开", "Open in graph")));
+	openGraphAction.append(createChromeIcon("external"), document.createTextNode(tr("在工作台中打开", "Open in workbench")));
 	topLine.append(openGraphAction);
 	for (const button of [openGraphAction]) {
 		button.hidden = true;
@@ -268,7 +268,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	});
 	const applyFilter = (): void => {
 		if (sourceGraph) {
-			currentGraph = projectVersionGraph(sourceGraph, associatedProject(), viewFilter);
+			// Scrub only hides later papers. Removing them relayouts each new year onto the right edge.
+			currentGraph = projectVersionGraph(sourceGraph, associatedProject(), { ...viewFilter, scrubYear: null });
 			map.adoptGraph(currentGraph.nodes, currentGraph.edges, currentGraph.seedScore, undefined, false, currentGraph.referenceLists);
 			graphKey.setStats(currentGraph.nodes, currentGraph.edges, currentGraph.referenceLists);
 		}
@@ -285,7 +286,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let currentGraph: SimilarityGraph | null = null;
 	let sourceGraph: SimilarityGraph | null = null;
 	let lastDepthNote = "";
-	seedItem.textContent = tr("在图谱中打开", "Open in graph");
+	seedItem.textContent = tr("在工作台中打开", "Open in workbench");
 	seedItem.hidden = !deps.openGraph;
 	let selected: PaperNode | null = null;
 	let selectedLink: GraphEdge | null = null;
@@ -332,8 +333,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	const tabTitles: Record<GraphTab, string> = {
 		graph: tr("论文详情", "Paper details"),
-		prior: tr("先验工作", "Prior works"),
-		derivative: tr("衍生工作", "Derivative works"),
+		prior: tr("图内常引文献", "Frequently cited references"),
+		derivative: tr("引用本图的文献", "Works citing this graph"),
 		research: tr("研究脉络", "Research narrative"),
 		staged: tr("收藏列表", "Saved papers"),
 		excluded: tr("已排除论文", "Excluded papers"),
@@ -490,7 +491,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const shared = deps.getReadingState?.(paper);
 			if (shared && !shared.confirmed) {
-				chrome?.setExportText(tr("请先确认阅读进度，再创建笔记", "Confirm reading progress before creating a note"));
+				chrome?.setExportText(tr("请先确认阅读状态，再创建笔记", "Confirm reading status before creating a note"));
 				return;
 			}
 			const fields = {
@@ -584,8 +585,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const abstractFromS2 = new Set<string>();
 	const abstractFromCrossref = new Set<string>();
 	const abstractMissing = new Set<string>();
+	const abstractErrors = new Map<string, string>();
+	const fetchedAbstracts = new Map<string, Extract<AbstractLookupResult, { status: "found" }>>();
 
-	const embedAbstractText = (paper: PaperNode): string => abstractCaption(paper, { s2: abstractFromS2, crossref: abstractFromCrossref, missing: abstractMissing });
+	const embedAbstractText = (paper: PaperNode): string => {
+		const cached = fetchedAbstracts.get(doiFromPaper(paper) ?? paper.id);
+		if (!paper.abstract && cached) { paper.abstract = cached.text; paper.abstractSource = cached.source; }
+		return abstractCaption(paper, { s2: abstractFromS2, crossref: abstractFromCrossref, missing: abstractMissing, errors: abstractErrors });
+	};
 
 	const placeDetailPlaceholder = (): void => {
 		session.apply({ type: "select-paper", id: null, source: "refresh" });
@@ -608,8 +615,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			placeDetailPlaceholder();
 			return;
 		}
+		const abstractKey = doiFromPaper(paper) ?? paper.id;
 		if (reveal) {
-			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读进度加载失败", "Could not load reading progress"); });
+			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读状态加载失败", "Could not load reading status"); });
 			tab = "graph";
 			chrome?.setTab("graph");
 			evidenceTitle.textContent = tabTitles.graph;
@@ -634,6 +642,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintPaperDetail(detail, graph, paper, {
 			isClassic: !!map.classicEvidence(paper.id),
 			abstractText: embedAbstractText,
+			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
+				abstractErrors.delete(abstractKey);
+				abstractRequested.delete(abstractKey);
+				showDetail(paper, graph, link);
+			} : undefined,
 			openExternal: deps.openExternal,
 			separate: () => {
 				if (!currentGraph) return;
@@ -682,22 +695,25 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			button.onclick = () => locate(paper);
 			detail.append(hint, button);
 		}
-		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
-			abstractRequested.add(paper.id);
-			const token = generation;
+		if (!paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
+			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
 				semanticScholarApiKey: deps.getSettings().semanticScholarApiKey,
 				contactEmail: deps.getSettings().contactEmail,
 			}).then((result) => {
-				if (!alive || token !== generation) return;
-				if (result) {
+				if (!alive) return;
+				if (result.status === "found") {
+					fetchedAbstracts.set(abstractKey, result);
 					paper.abstract = result.text;
-					if (result.source === "s2") abstractFromS2.add(paper.id);
-					else abstractFromCrossref.add(paper.id);
+					paper.abstractSource = result.source;
+					if (result.source === "s2") abstractFromS2.add(abstractKey);
+					else abstractFromCrossref.add(abstractKey);
+				} else if (result.status === "error") {
+					abstractErrors.set(abstractKey, result.error);
 				} else {
-					abstractMissing.add(paper.id);
+					abstractMissing.add(abstractKey);
 				}
-				if (selected === paper && currentGraph) showDetail(paper, currentGraph, null);
+				if (selected && (doiFromPaper(selected) ?? selected.id) === abstractKey && currentGraph) showDetail(selected, currentGraph, null);
 			});
 		}
 	};
@@ -810,8 +826,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}${graph.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}`, `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · filtered ${graph.skippedNonResearch} reviews and other non-research records` : ""
 		}${graph.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}`);
-		status.textContent = fullStatus;
-		status.title = fullStatus;
+		const enhancementNote = enhancementText(graph);
+		const samples = graph.retrievalStats ? [
+			samplingText(graph.retrievalStats.references, tr("参考文献", "References")),
+			samplingText(graph.retrievalStats.citations, tr("施引文献", "Citing papers")),
+			samplingText(graph.retrievalStats.related, tr("相关作品", "Related works")),
+		] : [];
+		const diagnostics = [fullStatus, ...samples, ...graph.warnings.map(item => WARNING_TEXT[item]), enhancementNote].filter(Boolean).join("\n");
+		paintGraphStatus(status, graphStatusSummary(graph), diagnostics);
 		if (previousSelection) showDetail(graph.nodes.find(node => node.id === previousSelection.id) ?? previousSelection, graph, previousLink);
 		else if (seed) showDetail(seed, graph, null);
 	};
@@ -828,10 +850,12 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const client = new OpenCitationsClient(deps.getJson, deps.getSettings().openCitationsToken);
 		const papers = graph.nodes.flatMap(paperRecords).filter((paper) => doiFromPaper(paper)).slice(0, 10);
 		const edgesBefore = graph.edges.length;
+		let completed = 0, failed = 0;
 		for (const paper of papers) {
 			if (!alive || token !== generation || currentGraph !== graph) return;
 			try {
 				const rows = await client.references(doiFromPaper(paper)!);
+				completed++;
 				if (!alive || token !== generation || currentGraph !== graph) return;
 				for (const row of rows) {
 					const ids = doisFromOpenCitation(row);
@@ -839,9 +863,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					const cited = ids.cited.map((doi) => doiToId.get(doi)).find(Boolean);
 					if (citing && cited) mergeOpenCitation(graph, citing, cited);
 				}
-			} catch {
-				// A failed lookup skips that paper; the map is already complete without it.
-			}
+			} catch { failed++; }
 		}
 		if (!alive || token !== generation || currentGraph !== graph) return;
 		const added = graph.edges.length - edgesBefore;
@@ -849,6 +871,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			map.updateGraphData(graph.edges, graph.referenceLists);
 			graphKey.setStats(graph.nodes, graph.edges, graph.referenceLists);
 		}
+		appendStatusDetail(status, tr(`OpenCitations 检查成功 ${completed}/${papers.length} 篇，失败 ${failed} 篇`, `OpenCitations checked ${completed}/${papers.length} papers successfully; ${failed} failed`), graphStatusSummary(graph, failed > 0));
 		if (!deps.stagePaper) return;
 		try {
 			const settings = deps.getSettings();

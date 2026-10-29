@@ -4,39 +4,36 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected logo"></p>
 
-<p align="center">Map related papers, inspect the evidence behind each connection, and turn your reading into linked notes in Obsidian.</p>
+<p align="center"><strong>From one paper to a connected reading workflow.</strong><br>Discover related research, inspect the evidence, and keep your literature notes connected in Obsidian.</p>
 
 <p align="center"><a href="https://github.com/Abe-Junwei/research-connected#quick-start">Quick start</a> · <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md">User guide</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml">Report a bug</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml">Request a feature</a></p>
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub release"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4+ desktop"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="License"></p>
 
-## Current development branch (unreleased)
+## See the research neighborhood
 
-The following capabilities are implemented on [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) and tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10). They are not a claim about the latest published release. Full acceptance in the real Obsidian host is still pending. The screenshots below illustrate the workflow and may differ from the current star-map appearance.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-pane-dark.png">
+  <img src="docs/images/graph-pane.png" width="1600" alt="Development preview: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
+</picture>
 
-- **Shared reading, separate projects.** Reading progress follows a paper across projects and confirmed version groups; saved and excluded papers remain project-specific. Conflicting progress and note edits appear as pending issues, with explicit resolution, retry, and note-sync opt-out.
-- **Version-aware records.** Source-confirmed relationships and manual merge/separate decisions group versions without guessing from titles. Review ambiguous identity and exclusion scopes, select eligible versions, and preserve version provenance in exports.
-- **Evidence you can inspect.** Inspect citation paths, candidate-selection diagnostics, structural similarity, and missing evidence separately from observed zero. Candidate selection balances relevance and diversity with MMR; semantic signals complement structural evidence.
-- **A readable star map.** Node radius uses log-scaled cumulative citations; missing counts remain unknown. Mature, influential papers receive a heuristic classic marker with a subtle twinkle. The details explain why; this is not an authoritative assessment of academic importance. Motion respects the operating system's reduced-motion preference.
-- **Return to your work.** Save named views and explicitly associate note embeds with a project. Main graphs and embeds use the same reading and evidence workflow. Rendering and interaction updates reduce repeated graph projection and coalesce drag/zoom frames.
+[Light original](docs/images/graph-pane.png) · [Dark original](docs/images/graph-pane-dark.png)
 
-## The map
+*All screenshots: current local development preview, captured October 29, 2026 at 3200 × 2000 (2×). These are not Obsidian-host screenshots or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
 
-![Research Connected graph pane around “Deep learning”: related papers on the left and the selected paper’s relationship evidence on the right](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
+Select a node or an edge to inspect shared references, co-citations, and direct citation evidence. The side panel’s bottom tabs include **Frequently cited references** (cited by at least two visible papers) and **Works citing this graph** (cites at least two visible papers); neither label implies publication order or intellectual influence.
 
-Select a node or an edge to see shared references, co-citations, and direct citation evidence.
+## Three steps, one reading workflow
 
-## What you can do
-
-- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among planar, timeline, and radial layouts.
-- **Inspect each connection.** Read the references and citation evidence behind a relationship. Semantic Scholar, Crossref, and OpenCitations fill gaps and flag mismatched records.
-- **Organize your reading.** Stage papers, mark them to read or read, exclude noise, and save named views. Write literature notes, embed the graph, or export BibTeX, YAML, and Markdown.
+- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among **Planar**, **Year**, and **Radial** layouts.
+- **Inspect each connection.** Read the references and citation evidence behind a relationship. The plugin may retrieve additional abstracts and reference data from OpenAlex, Semantic Scholar, or Crossref; OpenCitations can add citation evidence. A failed request does not prove that a source has no record.
+- **Organize your reading.** **Save paper** adds an individual paper to the project’s saved list; **Save project** saves the project. Set a paper’s **Reading status**, exclude noise, write literature notes, embed the graph, or export BibTeX, YAML, and Markdown.
 
 ## Quick start
 
 1. **Install and enable.** In Obsidian, open **Settings → Community plugins → Browse**, search for **Research Connected**, then install and enable it.
-2. **Build your first map.** Run **Open Research Connected** from the command palette. Paste the DOI below, or enter a paper title, then select **Build**.
-3. **Inspect a connection.** Select a paper or an edge to see why it is on the map. Use **Save view** to return to that arrangement.
+2. **Build your first map.** Run **Open Research Connected** from the command palette. Paste the DOI below, or enter a paper title to choose the **Seed paper**, then select **Build**.
+3. **Inspect a connection.** Select a paper or an edge to see why it is on the map. Use **Save project** to save the project; use **Save paper** to keep an individual paper in its saved list.
 
 ```text
 10.1038/nature14539
@@ -48,13 +45,23 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 
 ## Explore research over time
 
-![Timeline layout showing papers by publication year, with the year band under the graph](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timeline-dark.png">
+  <img src="docs/images/timeline.png" width="1600" alt="Development preview: timeline layout with papers positioned by publication year and the year band below the map">
+</picture>
 
-Switch to **Timeline**. The year slider narrows the visible map, and a saved view returns you to a useful selection.
+[Light original](docs/images/timeline.png) · [Dark original](docs/images/timeline-dark.png)
+
+Choose the **Year** layout. The year band below the map narrows the visible papers by publication year.
 
 ## Keep the graph beside your notes
 
-![A reading note with a Research Connected graph embedded between paragraphs](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/note-embed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/note-embed-dark.png">
+  <img src="docs/images/note-embed.png" width="1600" alt="Development preview: an interactive timeline graph embedded in a reading-note page">
+</picture>
+
+[Light original](docs/images/note-embed.png) · [Dark original](docs/images/note-embed-dark.png)
 
 Add this block to a note. It renders in Reading view and Live Preview.
 
@@ -66,34 +73,47 @@ layout: temporal
 ```
 ````
 
-Select a paper and choose **Export → Write to note** to create a literature note. The plugin recognizes existing notes by DOI or OpenAlex ID, and synchronizes `rc-status` when the reading status changes. Set the folder, filename, body template, and DOI property in settings.
+Select a paper and choose **Export → Write to note** to create a literature note. The plugin recognizes existing notes by DOI or OpenAlex ID. Reading status can be synchronized with linked notes; conflicting values require review. Set the folder, filename, body template, and DOI property in settings.
 
-Embed options, frontmatter, sampling, and algorithms are in the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md). The older `connected-papers` embed name still works.
+Embed options, note properties (YAML frontmatter), sampling, and algorithms are in the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md). The older `connected-papers` embed name still works.
+
+## Development status
+
+<details>
+<summary>Unreleased features and validation boundaries</summary>
+
+The current [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) work is tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10). Full acceptance in the Obsidian host remains pending. Install a release for published functionality.
+
+- Reading status is shared across projects and confirmed version groups; saved papers and exclusions stay project-specific. Conflicts and external note edits require explicit resolution, retry, or sync opt-out.
+- Version groups use source-confirmed relationships or manual decisions, never title-only guesses. Exports retain version provenance.
+- Candidate diagnosis and citation paths distinguish missing evidence from measured zero. MMR balances relevance and diversity; semantic signals supplement structural evidence.
+- Node size uses log-scaled citation counts. The high-citation indicator is a heuristic, not an authoritative assessment. Animation respects reduced-motion preferences.
+
+</details>
 
 ## Before you start
 
 - **Desktop.** Obsidian 1.14.4 or later. Mobile support awaits device testing.
-- **Network.** Building a map queries external scholarly services. Projects and reading states stay in your vault.
+- **Network.** Building a map queries external scholarly services. Projects and reading status stay in your vault; see the privacy note below for what is sent.
 - **Service key.** An OpenAlex API key is optional and recommended. Create one in [OpenAlex settings](https://openalex.org/settings/api). Configuration is in the [guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md).
-- **Sampling.** The map is a citation neighborhood, not every paper that cites the seed.
-- **Notes.** Frontmatter is read to recognize literature notes. A note file changes only when you write one or change its reading status.
+- **Notes.** Note properties (YAML frontmatter) are read to recognize literature notes. A note file changes only when you write one or change its reading status.
 - **AI.** The research narrative is off by default. Exploring the map does not require a language model.
 - **Interface language.** Simplified Chinese for Chinese locales, English otherwise.
 
 ## Network use and privacy
 
-- **OpenAlex** receives the DOI, OpenAlex ID, or search text you enter, and your API key if you set one.
+- **OpenAlex** receives the DOI, OpenAlex ID, or search text you enter, and your API key and optional contact email if set. The email is also sent to Crossref as contact information; it does not guarantee a higher request limit.
 - **Semantic Scholar**, **Crossref**, and **OpenCitations** receive paper identifiers. A key or token is sent only to the service it belongs to.
 - **Your language-model endpoint** receives the selected papers and their citation evidence only after you enable the research narrative and press **Generate**. Abstracts are included only if that option is on.
 
-To match existing literature notes, the plugin lists Markdown paths and reads their cached frontmatter. Copy and export write to the system clipboard; the plugin does not read it. Writing a literature note or changing its reading state updates that vault file.
+To match existing literature notes, the plugin lists Markdown paths and reads their cached note properties. Copy and export write to the system clipboard; the plugin does not read it. Writing a literature note or changing its reading status updates that vault file.
 
-Projects, reading states, saved views, and service credentials are stored in this vault's plugin `data.json`. Credentials are **not encrypted**. The plugin sends no telemetry and does not read notes beyond literature-note frontmatter.
+Projects, reading statuses, saved papers, and service credentials are stored in this vault's plugin `data.json`. Credentials are **not encrypted**; vault sync or backup tools may copy this file. The plugin sends no telemetry and reads note properties (YAML frontmatter) to recognize literature notes.
 
 ## Limitations
 
-- The map is a **sample**, not a complete citation index. Highly cited papers contribute their most-cited citers, not all of them.
-- Similarity and community colors are exploratory. Verify important claims against the original papers.
+- The map is a **sample**, not a complete citation index; consult the user guide for sampling details.
+- Semantic similarity can use compatible vectors as well as local text and topic signals; it is exploratory, not a measure of research quality. Verify important claims against the original papers.
 - OpenAlex has known gaps: missing abstracts, incomplete reference lists, and author disambiguation errors. The [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md#data-quality-known-openalex-issues) lists each gap and what the plugin does about it.
 
 ## Help and feedback

@@ -232,6 +232,10 @@ export async function verifyEvidence(): Promise<void> {
 	// Headless: getContext returns null so draw/resize are no-ops; window is stubbed for listeners.
 	(globalThis as unknown as { window: unknown }).window = {
 		addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, setTimeout, clearTimeout,
+		matchMedia: (query: string) => ({
+			matches: query === "(prefers-reduced-motion: reduce)",
+			addEventListener() {}, removeEventListener() {},
+		}),
 	};
 	const canvas = {
 		addEventListener() {}, removeEventListener() {}, style: {}, width: 0, height: 0,
@@ -293,12 +297,16 @@ export async function verifyEvidence(): Promise<void> {
 	hitNode.y = 0;
 	hitNode.radius = 10;
 	hitNode.shown = true;
-	hitMap.k = 0.25;
 	hitMap.tx = 100;
 	hitMap.ty = 100;
-	assert.equal(hitMap.hit(108, 100)?.id, "W2");
-	hitMap.k = 4;
-	assert.equal(hitMap.hit(140, 100), null);
+	for (const zoom of [0.02, 0.25, 1, 4, 32]) {
+		hitMap.k = zoom;
+		assert.equal(hitMap.hit(108, 100)?.id, "W2", "visible nodes keep a screen-space hit target at every zoom");
+		assert.equal(hitMap.hit(115, 100), null, "points outside the node radius and pointer padding must miss");
+	}
+	hitNode.shown = false;
+	assert.equal(hitMap.hit(100, 100), null, "hidden nodes cannot be hit");
+	hitNode.shown = true;
 	map.setContentFilter({ ...emptyFilter(), yearFrom: 2021, language: "fr" }, mapGraph.nodes);
 	const shown = (map as unknown as { nodes: Array<{ id: string; shown: boolean }> }).nodes;
 	assert.equal(shown.find((node) => node.id === "W2")?.shown, false);
@@ -306,4 +314,5 @@ export async function verifyEvidence(): Promise<void> {
 	map.setLabelMode("off");
 	assert.equal(internals.edges, mapGraph.edges, "enriched edges are swapped in");
 	assert.equal(internals.communities.get("W1"), internals.communities.get("W3"), "communities refresh with new edges");
+	map.destroy();
 }

@@ -33,6 +33,8 @@ export interface SavedGraphSnapshot {
 	semanticScores?: Array<[string, number | null]>;
 	semanticMode?: SimilarityGraph["semanticMode"];
 	semanticModel?: string | null;
+	semanticVectorIds?: SimilarityGraph["semanticVectorIds"];
+	enhancement?: SimilarityGraph["enhancement"];
 	selectionRank?: Array<[string, NonNullable<SimilarityGraph["selectionRank"]> extends ReadonlyMap<string, infer T> ? T : never]>;
 }
 
@@ -1390,7 +1392,7 @@ export function migrateProjectRecords(
 
 export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 	const seed = graph.nodes.find((node) => node.isSeed);
-	if (!seed) throw new Error(tr("研究项目缺少种子论文", "Research project has no seed paper"));
+	if (!seed) throw new Error(tr("研究项目缺少种子文献", "Research project has no seed paper"));
 	return {
 		version: 2,
 		workIdentity: graph.workIdentity,
@@ -1415,6 +1417,8 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 		semanticScores: graph.semanticScores ? [...graph.semanticScores] : undefined,
 		semanticMode: graph.semanticMode,
 		semanticModel: graph.semanticModel,
+		semanticVectorIds: graph.semanticVectorIds,
+		enhancement: graph.enhancement,
 		selectionRank: graph.selectionRank ? [...graph.selectionRank] : undefined,
 	};
 }
@@ -1424,6 +1428,7 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 	const saved = JSON.parse(JSON.stringify(raw)) as Partial<SavedGraphSnapshot>;
 	if (![1, 2].includes(saved.version ?? 0) || !Array.isArray(saved.nodes) || !Array.isArray(saved.edges) || !Array.isArray(saved.seedScore) || !Array.isArray(saved.referenceLists) || !Array.isArray(saved.catalog)) return null;
 	if (!saved.nodes.some((node) => node?.isSeed && node.id === saved.seedId)) return null;
+	if (saved.enhancement !== undefined && !validEnhancement(saved.enhancement)) return null;
 	try {
 		const identity = saved.workIdentity;
 		if (identity && (identity.version !== 1 || !Array.isArray(identity.records) || identity.records.length > 10000 || !identity.records.every((paper) => paper && typeof paper.id === "string" && typeof paper.title === "string" && Array.isArray(paper.authorList)) || !Array.isArray(identity.referenceLists) || !identity.referenceLists.every((entry) => Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1]) && entry[1].every((id) => typeof id === "string")) || !Array.isArray(identity.evidence) || !Array.isArray(identity.directEdges) || !Array.isArray(identity.canonicalIds) || !identity.canonicalIds.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every((id) => typeof id === "string")) || !Array.isArray(identity.separatedIds) || !identity.separatedIds.every((id) => typeof id === "string"))) return null;
@@ -1457,11 +1462,25 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 		semanticScores: saved.semanticScores ? new Map(saved.semanticScores) : undefined,
 		semanticMode: saved.semanticMode,
 		semanticModel: saved.semanticModel,
+		semanticVectorIds: Array.isArray(saved.semanticVectorIds) ? saved.semanticVectorIds.filter(id => typeof id === "string" && /^W\d+$/i.test(id)).slice(0, 5000) : undefined,
+		enhancement: saved.enhancement,
 			selectionRank: saved.selectionRank ? new Map(saved.selectionRank) : undefined,
 		});
 	} catch {
 		return null;
 	}
+}
+
+function validEnhancement(value: unknown): value is NonNullable<SimilarityGraph["enhancement"]> {
+	if (!value || typeof value !== "object") return false;
+	const record = value as Record<string, unknown>;
+	const count = (item: unknown): boolean => typeof item === "number" && Number.isSafeInteger(item) && item >= 0;
+	if (!["candidates", "openAlexRequested", "openAlexAbstracts", "abstractsAdded", "compatibleVectors"].every(key => count(record[key]))) return false;
+	if (!record.s2 || typeof record.s2 !== "object") return false;
+	const stats = record.s2 as Record<string, unknown>;
+	return ["requested", "cacheHits", "requests", "found", "notFound", "unresolved"].every(key => count(stats[key]))
+		&& typeof stats.rateLimited === "boolean" && typeof stats.embeddingFallback === "boolean"
+		&& (stats.error === undefined || typeof stats.error === "string");
 }
 
 export function normalizeProjects(raw: unknown): Record<string, ResearchProject> {

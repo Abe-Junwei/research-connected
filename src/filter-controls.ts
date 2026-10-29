@@ -105,13 +105,11 @@ export function mountGraphKey(
 	const marks = createDiv();
 	marks.className = "cpo-graph-key-marks";
 	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
-	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
-	classic.row.title = tr("经典候选：成熟文献的本地引用支持或累计引用影响；不是经典认证。", "Classic candidates: mature works with local citation support or cumulative citation impact; not a certification.");
 	const ordinary = markRow("cpo-graph-key-star", tr("普通文献", "Paper"));
 	ordinary.n.remove();
 	const focused = markRow("cpo-graph-key-focus", tr("悬停 / 选中", "Hovered / selected"));
 	focused.n.remove();
-	marks.append(ordinary.row, seed.row, classic.row, focused.row);
+	marks.append(ordinary.row, seed.row, focused.row);
 	const color = createSpan();
 	color.className = "cpo-graph-key-color";
 	const dots = createSpan();
@@ -123,7 +121,7 @@ export function mountGraphKey(
 		dots.append(dot);
 	}
 	const colorLabel = createSpan();
-	colorLabel.textContent = tr("引用团", "Citation clusters");
+	colorLabel.textContent = tr("引文群组", "Citation clusters");
 	const groupN = createSpan();
 	groupN.className = "cpo-graph-key-n";
 	groupN.textContent = "0";
@@ -131,19 +129,7 @@ export function mountGraphKey(
 	const statsLine = createDiv();
 	statsLine.className = "cpo-key-stats";
 	statsLine.textContent = tr("0 篇", "0 papers");
-	const explanation = createDiv();
-	explanation.className = "cpo-key-explanation";
-	for (const text of [
-		tr("暗色连线：常态为银蓝轮廓；聚焦时按上方关系颜色高亮。箭头指向被引用文献。", "Dark edges: silver-blue outlines; focused edges use the relationship colors above. Arrows point to cited papers."),
-		tr("尺寸：代表版本累计被引按对数缩放；种子有最小尺寸，缺失取最小值。筛选不重标度。", "Size: log-scaled cumulative citations of the display version; seed has a minimum size, missing counts use the smallest size. Filtering keeps the scale."),
-		tr("经典候选：满八年，且有两篇图内文献引用，或累计被引≥1,000，或在至少十篇成熟文献中位于引用前10%且被引≥100。经验规则，无数量截断；并非经典认证。", "Classic candidates: at least eight years old, with two local citers, or 1,000 cumulative citations, or the top citation decile among at least ten mature works with at least 100 citations. Heuristic, uncapped; not a certification."),
-	]) {
-		const line = createDiv();
-		line.textContent = text;
-		if (explanation.childElementCount === 0) line.className = "cpo-key-night-note";
-		explanation.append(line);
-	}
-	marksSection.append(marks, color, statsLine, explanation);
+	marksSection.append(marks, color, statsLine);
 	content.append(links, marksSection);
 	key.append(label, content);
 	host.append(key);
@@ -162,7 +148,6 @@ export function mountGraphKey(
 			if (el) el.textContent = String(stats.kinds[kind]);
 		}
 		seed.n.textContent = String(stats.seeds);
-		classic.n.textContent = String(stats.classics);
 		groupN.textContent = String(stats.groups);
 	};
 	const setKinds = (selected: GraphFilter["kinds"]): void => {

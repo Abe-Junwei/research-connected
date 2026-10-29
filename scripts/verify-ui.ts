@@ -298,10 +298,10 @@ function keyStats(): void {
 	assert.equal(stats.kinds.coupling, 1);
 	assert.equal(stats.seeds, 1);
 	assert.ok(stats.groups >= 1);
-	const mature = [{ ...paper("A", "related"), year: 1981, citedByCount: 1390 }];
-	assert.equal(graphKeyStats(mature, []).classics, 1, "图例计入无绘图边的高累计引用经典候选");
-	const local = [{ ...paper("S", "seed"), year: 2000 }, { ...paper("A", "reference"), year: 1981, citedByCount: 0 }, { ...paper("B", "citation"), year: 2000 }];
-	assert.equal(graphKeyStats(local, [], new Map([["S", ["A"]], ["B", ["A"]]])).classics, 1, "图例使用完整参考列表统计经典候选");
+	const mature = [{ ...paper("A", "related"), year: 1981, citedByCount: 4500 }];
+	assert.equal(graphKeyStats(mature, []).classics, 1, "图例计入无绘图边和百分位数据的长期经典");
+	const local = [{ ...paper("S", "seed"), year: 2000 }, { ...paper("A", "reference"), year: 1981, citedByCount: 100 }, { ...paper("B", "citation"), year: 2000 }];
+	assert.equal(graphKeyStats(local, [], new Map([["S", ["A"]], ["B", ["A"]]])).classics, 0, "图内引用不能绕过累计引用门槛");
 }
 
 function graphEdits(): void {

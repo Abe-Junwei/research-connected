@@ -19,7 +19,7 @@ export interface StagedList {
 }
 
 const ORIGIN_FALLBACK: Record<Origin, string> = {
-	seed: tr("种子论文", "Seed paper"),
+	seed: tr("种子文献", "Seed paper"),
 	reference: tr("种子的参考文献", "Seed references"),
 	citation: tr("引用了种子", "Cites the seed"),
 	related: tr("OpenAlex 相关作品", "OpenAlex related works"),
@@ -106,6 +106,7 @@ export function displayStageSource(source: string): string {
 		["互引", "Mutual citation"], ["种子引用了它", "Seed cites this paper"],
 		["它引用了种子", "This paper cites the seed"],
 	];
+	if (head === "种子论文" || head === "种子文献" || head === "Seed paper") return tr("种子文献", "Seed paper") + tail;
 	const match = labels.find(([zh, en]) => head === zh || head === en);
 	return match ? tr(match[0], match[1]) + tail : source;
 }

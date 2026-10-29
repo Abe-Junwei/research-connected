@@ -4,39 +4,36 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected のロゴ"></p>
 
-<p align="center">関連する論文を地図にし、つながりごとの根拠を確認して、読んだ内容を Obsidian のリンクされたノートにします。</p>
+<p align="center"><strong>一つの論文から、つながりのある研究へ。</strong><br>関連文献を見つけ、つながりの根拠を確かめ、Obsidian に文献ノートを蓄積します。</p>
 
 <p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/ja/README.md#クイックスタート">クイックスタート</a> · <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md">利用ガイド</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml">不具合を報告</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml">機能を提案</a></p>
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub リリース"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 以降のデスクトップ"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="ライセンス"></p>
 
-## 開発ブランチの機能（未リリース）
+## 論文の研究領域を見渡す
 
-以下は [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) に実装され、[PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) で追跡しています。公開済みリリースの機能一覧ではありません。実際の Obsidian 環境での総合受け入れ確認は未完了です。下の画像は現在の星図の外観と異なる場合があります。UI の対応言語は簡体字中国語と英語です。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="開発版プレビュー：Deep learning をシード論文とする50件の論文地図と、右側の複数の表示中論文に引用された文献">
+</picture>
 
-- 同じ論文と確認済みの版グループはプロジェクト間で読書状況を共有し、保存・除外はプロジェクトごとに管理します。競合やノートの外部編集は明示的に解決でき、同期の再試行・停止も可能です。
-- 出典で確認された関係と手動の統合・分離に基づいて版をまとめます。タイトルからは推測しません。版の選択、除外範囲の確認、出典を含むエクスポートに対応します。
-- 引用経路、候補選定の診断、構造的類似度を確認し、証拠不足と観測値ゼロを区別します。MMR で関連性と多様性を調整し、意味的情報も活用します。
-- ノード半径は累積被引用数の対数で調整し、欠損値は不明と表示します。古く影響力のある論文には理由付きの古典マーカーと瞬きが付きますが、権威的な評価ではありません。動きは OS の設定に従います。
-- 名前付きビューの保存と埋め込みのプロジェクトへの明示的な関連付けに対応します。通常画面と埋め込みで同じ読書処理を使い、ドラッグ・ズーム時の重複処理を削減しました。
+[ライト版の原寸画像](../images/graph-pane.png) · [ダーク版の原寸画像](../images/graph-pane-dark.png)
 
-## 地図
+*画像は現在のローカル開発版プレビューです。撮影日：2026-10-29、解像度：3200 × 2000（2×）。Obsidian 本体での撮影や公開済みリリースの機能保証ではありません。例は “Deep learning”（2015）。公開メタデータは変化します。画像の UI は英語で、対応言語は簡体字中国語と英語です。*
 
-![「Deep learning」を中心にしたグラフ。左が関連論文、右が選択した論文の関係の根拠](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
+ノードか辺を選ぶと、共通の参考文献、共引用、直接の引用根拠を確認できます。右側パネル下部のタブにある「グラフ内で頻繁に引用される文献」は現在表示中の文献2件以上に引用された作品、「このグラフを引用する文献」は表示中の文献を2件以上引用している作品です。発表年の前後関係や思想的影響を意味しません。
 
-ノードか辺を選ぶと、共通の参考文献、共引用、直接の引用根拠が表示されます。
+## 発見・確認・蓄積の三つのワークフロー
 
-## できること
-
-- **関連研究を見つける。** 題名、DOI、または OpenAlex ID を入力し、サンプリングした類似地図を作ります。Planar、Timeline、Radial のレイアウトを切り替えられます。
-- **つながりを確認する。** 関係の背後にある参考文献と引用根拠を読みます。Semantic Scholar、Crossref、OpenCitations が欠けを補い、一致しない記録を示します。
-- **読書を整理する。** 論文を仮置きし、読む予定か既読かを付け、ノイズを外し、名前付きビューを保存します。文献ノートを書いたり、グラフを埋め込んだり、BibTeX、YAML、Markdown を書き出したりできます。
+- **関連研究を見つける。** 題名、DOI、または OpenAlex ID を入力してシード論文を指定し、サンプリングした類似地図を作ります。**Planar**、**Year**、**Radial** のレイアウトを切り替えられます。
+- **つながりを確認する。** 参考文献と引用根拠を読みます。プラグインは OpenAlex、Semantic Scholar、Crossref から要約や参考文献データを取得しようとし、OpenCitations から引用根拠を追加することがあります。リクエスト失敗は、その情報がデータベースにないことを意味しません。
+- **読書を整理する。** **Save paper** は個別の論文をプロジェクトの保存リストに追加し、**Save project** はプロジェクトを保存します。論文の **Reading status** を設定し、不要な論文を除外して、文献ノートの作成、グラフの埋め込み、BibTeX・YAML・Markdown の書き出しができます。
 
 ## クイックスタート
 
 1. **インストールして有効にする。** Obsidian で**設定 → コミュニティプラグイン → 閲覧**を開き、**Research Connected** を検索して、インストールし有効にします。
-2. **最初の地図を作る。** コマンドパレットから **Open Research Connected** を実行します。下の DOI を貼り付けるか、論文題名を入力して **Build** を選びます。
-3. **つながりを確認する。** 論文か辺を選び、地図にある理由を見ます。**Save view** で、その配置に戻れます。
+2. **最初の地図を作る。** コマンドパレットから **Open Research Connected** を実行します。下の DOI を貼り付けるか、論文題名でシード論文を選んで **Build** を選びます。
+3. **つながりを確認する。** 論文か辺を選び、地図にある理由を見ます。**Save project** でプロジェクトを保存し、**Save paper** で論文を個別に保存できます。
 
 ```text
 10.1038/nature14539
@@ -48,13 +45,23 @@
 
 ## 時間軸で研究を見る
 
-![発表年で並べた Timeline。レイアウトの操作と年のスライダーがある](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="開発版プレビュー：発表年で並べた時間軸の地図と下部の年の帯">
+</picture>
 
-**Timeline** に切り替えます。年のスライダーで見える範囲を狭め、保存したビューで役立つ選択に戻れます。
+[ライト版の原寸画像](../images/timeline.png) · [ダーク版の原寸画像](../images/timeline-dark.png)
+
+**Year** レイアウトに切り替えます。グラフ下部の年の帯で、発表年に基づいて表示範囲を絞り込めます。
 
 ## ノートのそばにグラフを置く
 
-![段落のあいだに Research Connected のグラフを埋め込んだ読書ノート](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/note-embed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="開発版プレビュー：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
+</picture>
+
+[ライト版の原寸画像](../images/note-embed.png) · [ダーク版の原寸画像](../images/note-embed-dark.png)
 
 次のブロックをノートに追加します。リーディングビューとライブプレビューで表示されます。
 
@@ -66,34 +73,48 @@ layout: temporal
 ```
 ````
 
-論文を選び、**Export → Write to note** で文献ノートを作ります。プラグインは DOI または OpenAlex ID で既存のノートを認識し、読書状態が変わると `rc-status` を同期します。フォルダ、ファイル名、本文テンプレート、DOI プロパティは設定で指定します。
+論文を選び、**Export → Write to note** で文献ノートを作ります。プラグインは DOI または OpenAlex ID で既存のノートを認識します。Reading status は関連ノートと同期できます。状態が競合する場合は確認が必要です。フォルダ、ファイル名、本文テンプレート、DOI プロパティは設定で指定します。
 
-埋め込みオプション、フロントマター、サンプリング、アルゴリズムは[利用ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)にあります。古い埋め込み名 `connected-papers` も使えます。
+埋め込みオプション、ノートのプロパティ（YAML frontmatter）、サンプリング、アルゴリズムは[利用ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)にあります。古い埋め込み名 `connected-papers` も使えます。
+
+## 開発状況
+
+<details>
+<summary>未リリース機能と検証範囲</summary>
+
+現在の [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) の開発は [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) で追跡しています。実際の Obsidian 環境での総合検証は未完了です。公開版の機能はリリースを参照してください。
+
+- 同じ論文と確認済みの版グループで読書状態を共有し、Save paper と除外はプロジェクトごとに管理します。状態の競合や外部編集は明示的な解決、再試行、同期停止が可能です。
+- 版の統合は出典の確認または手動の判断に基づき、タイトルからは推測しません。出力に版の出典を残します。
+- 候補診断と引用経路では証拠不足と観測値ゼロを区別します。MMR が関連性と多様性を調整し、意味的情報が構造的根拠を補います。
+- ノードの大きさは被引用数の対数に基づきます。高被引用インジケーターは説明付きの目安であり、権威的な評価ではありません。動きは OS の設定に従います。
+
+</details>
 
 ## 始める前に
 
 - **デスクトップ。** Obsidian 1.14.4 以降。モバイルは実機での確認待ちです。
-- **ネットワーク。** 地図を作ると、外部の学術サービスへ問い合わせます。プロジェクトと読書状態は保管庫に残ります。
+- **ネットワーク。** 地図を作ると、外部の学術サービスへ問い合わせます。プロジェクトと読書状態は保管庫に残ります。送信データは下のプライバシー説明を確認してください。
 - **サービスキー。** OpenAlex API キーは任意で、設定を推奨します。[OpenAlex の設定](https://openalex.org/settings/api)で作成できます。手順は[ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)にあります。
-- **サンプリング。** 地図は引用の近傍から取った標本であり、起点を引用するすべての論文ではありません。
-- **ノート。** 文献ノートを認識するため、フロントマターを読みます。ノートのファイルが変わるのは、書き込むときか読書状態を変えるときだけです。
+- **サンプリング。** 地図は引用の近傍から取った標本であり、シード論文を引用するすべての論文ではありません。
+- **ノート。** 文献ノートを認識するため、ノートのプロパティ（YAML frontmatter）を読みます。ノートのファイルが変わるのは、書き込むときか読書状態を変えるときだけです。
 - **AI。** 研究の筋書きは初期状態でオフです。地図を見るのに言語モデルは不要です。
 - **表示言語。** 中国語の環境では簡体字、それ以外（日本語を含む）では英語です。上のコマンドとボタン名は、そのため英語のままです。
 
 ## 通信とプライバシー
 
-- **OpenAlex** は、入力した DOI、OpenAlex ID、検索文、そして設定した API キーを受け取ります。
+- **OpenAlex** は、入力した DOI、OpenAlex ID、検索文、設定した API キーと任意の連絡先メールアドレスを受け取ります。メールアドレスは Crossref に連絡先情報としても送られます。リクエスト枠の増加は保証されません。
 - **Semantic Scholar**、**Crossref**、**OpenCitations** は論文の識別子を受け取ります。キーやトークンは、それが属するサービスにだけ送られます。
 - **言語モデルのエンドポイント**は、研究の筋書きを有効にして **Generate research narrative** を押したあとだけ、選んだ論文とその引用根拠を受け取ります。要約が含まれるのは、そのオプションがオンのときだけです。
 
-既存の文献ノートを照合するため、プラグインは Markdown のパスを列挙し、キャッシュされたフロントマターを読みます。コピーと書き出しはシステムのクリップボードへ書きます。プラグインはクリップボードを読みません。文献ノートを書く、または読書状態を変えると、その保管庫のファイルが更新されます。
+既存の文献ノートを照合するため、プラグインは Markdown のパスを列挙し、ノートのプロパティ（YAML frontmatter）を読みます。コピーと書き出しはシステムのクリップボードへ書きます。プラグインはクリップボードを読みません。文献ノートを書く、または読書状態を変えると、その保管庫のファイルが更新されます。
 
-プロジェクト、読書状態、保存したビュー、サービスの資格情報は、この保管庫のプラグイン `data.json` に保存されます。資格情報は**暗号化されません**。プラグインは利用統計を送らず、文献ノートのフロントマター以外のノートは読みません。
+プロジェクト、読書状態、保存した論文、サービスの資格情報は、この保管庫のプラグイン `data.json` に保存されます。資格情報は**暗号化されません**。保管庫の同期・バックアップツールがこのファイルを複製する場合があります。プラグインは利用統計を送らず、文献ノートのプロパティ以外のノート内容は読みません。
 
 ## 制限
 
 - 地図は**標本**であり、完全な引用索引ではありません。被引用数の多い論文については、それを引用している論文のうち被引用数が多いものだけが入り、すべてではありません。
-- 類似度とコミュニティの色は探索用です。重要な主張は原論文で確認してください。
+- 意味的類似度には、互換性のあるベクトルだけでなくローカルのテキストやトピック情報も使われる場合があります。研究の質を示すものではありません。重要な主張は原論文で確認してください。
 - OpenAlex には既知の欠けがあります。要約がない、参考文献リストが不完全、著者の名寄せの誤りです。[利用ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md#data-quality-known-openalex-issues)が、それぞれの欠けとプラグインの扱いを挙げています。
 
 ## ヘルプとフィードバック

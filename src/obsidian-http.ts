@@ -1,6 +1,6 @@
 import { tr } from "./i18n";
 import { requestUrl } from "obsidian";
-import { explainStatus, OpenAlexError, type GetJson } from "./openalex";
+import { explainStatus, OpenAlexError, retryAfterMs, type GetJson } from "./openalex";
 
 /** Non-OpenAlex hosts routed through obsidianGetJson, so their errors name the right service. */
 const SERVICE_NAME: Record<string, string> = {
@@ -42,7 +42,7 @@ export const obsidianGetJson: GetJson = async (url, init) => {
 		throw new OpenAlexError(explainGet(url, undefined));
 	}
 	if (response.status >= 400) {
-		throw new OpenAlexError(explainGet(url, response.status), response.status);
+		throw new OpenAlexError(explainGet(url, response.status), response.status, retryAfterMs(response.headers));
 	}
 	try {
 		const json: unknown = response.json;
@@ -69,7 +69,7 @@ export const obsidianPostJson = async (
 	} catch {
 		throw new OpenAlexError(tr(`无法连接 ${service}。`, `Could not connect to ${service}.`));
 	}
-	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status);
+	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status, retryAfterMs(response.headers));
 	try {
 		const json: unknown = response.json;
 		return json;

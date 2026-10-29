@@ -79,7 +79,7 @@ export async function verifyExportBrowser(): Promise<void> {
 						existing = true; await click(3);
 						check(/已找到文献笔记|Literature notes found/.test(message()) && !copied && writes === (writeNote ? 1 : 0), `${label}: existing notes are not duplicated`);
 						existing = false; confirmed = false; await click(3);
-						check(/请先确认阅读进度|Confirm reading progress/.test(message()) && !copied && writes === (writeNote ? 1 : 0), `${label}: reading conflicts cannot silently create an unread note`);
+						check(/请先确认阅读状态|Confirm reading status/.test(message()) && !copied && writes === (writeNote ? 1 : 0), `${label}: reading conflicts cannot silently create an unread note`);
 						if (!embed) {
 							confirmed = true;
 							const [key, project] = Object.entries(settings.researchProjects)[0]!;

@@ -1,13 +1,14 @@
 import "../src/host-language";
+import { classicCandidates } from "../src/aggregates";
 import { channelsFromCss } from "../src/theme-color";
 import { mountGraphApp } from "../src/app";
 import { mountEmbed } from "../src/embed-mount";
 import { paintWorkflowLibrary } from "../src/workflow-library";
-import { paintAbstractCard, paintIdentityDecisionActions, paintPaperWorkflowState, paintRelationSection } from "../src/detail-cards";
+import { paintMetadataCard, paintAbstractCard, paintIdentityDecisionActions, paintPaperWorkflowState, paintRelationSection } from "../src/detail-cards";
 import { paintPaperActions, paintPaperActionFeedback } from "../src/paper-actions";
 import type { ProjectPaperState, ResearchProject } from "../src/project-state";
 import { createChromeIcon } from "../src/graph-chrome";
-import { DEFAULT_SETTINGS } from "../src/settings-model";
+import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../src/settings-model";
 import type { GraphEdge, PaperNode } from "../src/types";
 import { SimilarityMap } from "../src/map-canvas";
 import { fixtureGet } from "../preview/fixture";
@@ -15,7 +16,9 @@ import { mountGraphSurface } from "../src/graph-surface";
 import { createReadingWorkflow } from "../src/reading-workflow";
 import { verifyProjectBrowser } from "./verify-project-browser";
 import { verifyExportBrowser } from "./verify-export-browser";
+import { verifyIntroCamera, verifyMapResizeBrowser } from "./verify-map-resize-browser";
 import { syntheticGraph } from "./perf-fixture";
+import type { GetJson } from "../src/openalex";
 
 function check(value: unknown, message: string): asserts value {
 	if (!value) throw new Error(message);
@@ -62,6 +65,13 @@ function readableContrast(element: HTMLElement): number {
 }
 
 async function verify(): Promise<void> {
+	if (new URLSearchParams(location.search).has("copy-only")) {
+		await verifyCopyUi();
+		document.body.dataset.result = "passed";
+		return;
+	}
+	await verifyMapResizeBrowser();
+	await verifyIntroCamera();
 	check(channelsFromCss("oklch(pow(0.235, calc(1 / 1)) 0 285)", { r: 255, g: 255, b: 255 }).r < 140, "Obsidian OKLCH dark theme resolves to dark RGB channels");
 	const uncaught: unknown[] = [];
 	const radialGradient = CanvasRenderingContext2D.prototype.createRadialGradient;
@@ -145,6 +155,22 @@ async function verify(): Promise<void> {
 		controlHost.replaceChildren();
 	}
 	const paper = { id: "W2", title: "Control test", year: 2020, authors: "", citedByCount: 0, origin: "reference" as const, abstract: "", isSeed: false } as PaperNode;
+	const automaticPaper = { ...paper, title: "Language, Usage and Cognition", year: 2010, citedByCount: 3486, concepts: [], authorList: [] };
+	paintMetadataCard(controlHost, automaticPaper, null, classicCandidates([automaticPaper], [], 2026).has(automaticPaper.id));
+	paintPaperActions(controlHost, automaticPaper, "W1", null, null, {
+		getPaperState: () => undefined, setStaged: () => {}, openExternal: () => {},
+	});
+	const automaticStar = controlHost.querySelector<SVGElement>(".cpo-card-title .cpo-icon-glyph")!;
+	check(getComputedStyle(automaticStar).fill !== "none", "Language, Usage and Cognition keeps its automatic solid star without a manual mark");
+	check(!controlHost.querySelector(".cpo-card-title button"), "automatic classic star is a non-interactive indicator");
+	controlHost.replaceChildren();
+	const ordinaryPaper = { ...automaticPaper, title: "From discourse to syntax and back", year: 2009, citedByCount: 171 };
+	paintMetadataCard(controlHost, ordinaryPaper, null, classicCandidates([ordinaryPaper], [], 2026).has(ordinaryPaper.id));
+	paintPaperActions(controlHost, ordinaryPaper, "W1", null, null, {
+		getPaperState: () => undefined, setStaged: () => {}, openExternal: () => {},
+	});
+	check(!controlHost.querySelector(".cpo-card-title svg, .cpo-card-title button"), "a 2009 paper with 171 citations has no star or manual classic control");
+	controlHost.replaceChildren();
 	let state: ProjectPaperState = { paper, reading: "read", staged: false, excluded: true, source: "test", updatedAt: 1 };
 	let writes = 0;
 	let reject = true;
@@ -370,7 +396,7 @@ async function verify(): Promise<void> {
 	const ordinaryMark = key.querySelector<HTMLElement>(".cpo-graph-key-star")!;
 	check(getComputedStyle(ordinaryMark).display !== "none" && getComputedStyle(ordinaryMark.querySelector("i")!).backgroundImage.includes("radial-gradient"), "dark legend shows a stellar paper core");
 	check(getComputedStyle(key.querySelector("i[data-kind]")!).height === "1px", "dark legend uses thin constellation line samples");
-	check(key.querySelector(".cpo-key-night-note")!.textContent!.includes("箭头"), "dark legend explains focus colors and citation direction");
+	check(!key.querySelector(".cpo-graph-key-classic, .cpo-key-explanation"), "legend omits classic, dark-edge, and size notes");
 	const backgroundStar = stage.querySelector<SVGElement>(".cpo-stars circle")!;
 	const starAnimation = backgroundStar.getAnimations()[0]!;
 	const starTime = starAnimation.currentTime;
@@ -538,6 +564,7 @@ async function verify(): Promise<void> {
 	favorite.click();
 	await new Promise((resolve) => window.setTimeout(resolve, 0));
 	check(favorite.getAttribute("aria-pressed") === "false", "favorite can be removed");
+	check(!root.querySelector(".cpo-paper-manual-classic"), "main graph has no manual classic control");
 	const reading = root.querySelector<HTMLButtonElement>('.cpo-reading-option[value="read"]')!;
 	root.querySelector<HTMLButtonElement>(".cpo-reading-trigger")!.click();
 	reading.click();
@@ -649,9 +676,10 @@ async function verify(): Promise<void> {
 	const embedHost = document.createElement("div");
 	embedHost.style.cssText = "position:fixed;left:0;top:0;width:559px;height:640px;z-index:30;background:#fff;";
 	document.body.append(embedHost);
+	const embedSettings = { ...DEFAULT_SETTINGS, researchProjects: {} };
 	const unmountEmbed = mountEmbed(embedHost, {
 		source: "doi: 10.1038/nature14539\nheight: 640",
-		getSettings: () => ({ ...DEFAULT_SETTINGS, researchProjects: {} }),
+		getSettings: () => embedSettings,
 		getJson: fixtureGet,
 		openExternal: () => undefined,
 	});
@@ -674,6 +702,7 @@ async function verify(): Promise<void> {
 	const embedBack = embed.querySelector<HTMLButtonElement>(".cpo-detail-return")!;
 	const embedCanvas = embed.querySelector("canvas")!;
 	check(pointerHits(embed, embedToggle) && pointerHits(embed, embedBack), "embed toggle and return are clickable at 559px");
+	check(!embed.querySelector(".cpo-paper-manual-classic"), "embed has no manual classic control");
 	const embedZoom = embedCanvas.dataset.zoom;
 	const embedSelected = embedCanvas.dataset.selected;
 	embed.querySelector<HTMLButtonElement>('[aria-label="放大"]')!.click();
@@ -1081,16 +1110,16 @@ async function verify(): Promise<void> {
 	labelContext.clearRect = paint;
 	document.body.dataset.dragRender = JSON.stringify({ frames: 12, events: 60, paints: dragPaints, elapsed: performance.now() - dragStart });
 	check(dragPaints <= 14, `pointer input and star animation share a frame: ${dragPaints} paints for 12 frames`);
-	const foundationNodes = [labeled("W1", "Seed", 2015, 10, true), labeled("W2", "Foundation", 1981, 0, false), labeled("W3", "Citer", 2024, 10, false)];
+	const foundationNodes = [labeled("W1", "Seed", 2015, 10, true), labeled("W2", "Foundation", 1981, 4500, false), labeled("W3", "Citer", 2024, 10, false)];
 	const foundationLists = new Map([["W1", ["W2"]], ["W3", ["W2"]]]);
 	labelMap.setGraph(foundationNodes, [], new Map(), foundationLists);
-	check(starMap.classicGlow.has("W2"), "canvas marks foundational works from full reference lists without drawn edges");
+	check(starMap.classicGlow.has("W2"), "canvas marks long-term classics without drawn edges or percentiles");
 	labelMap.adoptGraph(foundationNodes, [], new Map(), undefined, false, foundationLists);
 	check(starMap.classicGlow.has("W2"), "adopting a graph retains its classic evidence");
 	labelMap.updateGraphData([], new Map());
-	check(!starMap.classicGlow.has("W2"), "replacing citation evidence clears obsolete classic marks");
-	labelMap.setGraph([labeled("W2", "Language Universals and Linguistic Typology", 1981, 1390, false), labeled("W3", "Linguistic Diversity in Space and Time", 1992, 1664, false), labeled("W4", "The Minimalist Program", 2014, 8245, false)], [], new Map());
-	check(starMap.classicGlow.size === 3, "all three highly cited books receive stellar classic marks without local citation edges");
+	check(starMap.classicGlow.has("W2"), "citation list changes do not change cumulative citation qualification");
+	labelMap.setGraph([labeled("W2", "Language Universals and Linguistic Typology", 1981, 1390, false), labeled("W3", "Linguistic Diversity in Space and Time", 1992, 1664, false), { ...labeled("W4", "The Minimalist Program", 2014, 8245, false), normalizedCitation: { percentile: 0.999, top1Percent: true } }], [], new Map());
+	check(starMap.classicGlow.size === 3, "all three books qualify through long-term citation accumulation");
 	labelMap.destroy();
 	labelHost.remove();
 	const motionHost = document.createElement("div");
@@ -1152,6 +1181,68 @@ async function verify(): Promise<void> {
 	check(uncaught.length === 0, `no uncaught browser errors: ${uncaught.map(String).join(", ")}`);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, rename exit, abstract clamp, empty export, full graph, continuous star motion, node labels, rapid zoom, narrow return, reopen, cleanup";
 	document.body.dataset.result = "passed";
+}
+
+async function verifyCopyUi(): Promise<void> {
+	const root = document.querySelector<HTMLElement>("#app")!;
+	const waitFor = async (ready: () => boolean): Promise<void> => {
+		const start = performance.now();
+		while (!ready()) {
+			check(performance.now() - start < 15000, "copy UI check timed out");
+			await new Promise(resolve => setTimeout(resolve, 40));
+		}
+	};
+	const stripAbstracts = (value: unknown): unknown => {
+		if (!value || typeof value !== "object") return value;
+		if (Array.isArray(value)) return value.map(stripAbstracts);
+		return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "abstract_inverted_index").map(([key, item]) => [key, stripAbstracts(item)]));
+	};
+	for (const embedded of [false, true]) {
+		root.replaceChildren();
+		let failLookup = true;
+		let lookupRequests = 0;
+		const getJson: GetJson = async (url, init) => {
+			if (url.includes("semanticscholar")) {
+				lookupRequests++;
+				if (failLookup) throw new Error("HTTP 429 copy-test");
+				return { abstract: "Recovered abstract for copy test" };
+			}
+			if (url.includes("crossref")) return { message: {} };
+			return stripAbstracts(await fixtureGet(url, init));
+		};
+		const settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS, s2Reconcile: false, semanticScholarApiKey: embedded ? "copy-test-embed" : "copy-test-pane", researchProjects: {} };
+		const cleanup = embedded
+			? mountEmbed(root, { source: "doi: 10.1234/seed", getSettings: () => settings, getJson, openExternal: () => {} })
+			: mountGraphApp(root, {
+				initialDoi: "10.1234/seed", getSettings: () => settings, getJson, openExternal: () => {},
+				persistSettings: () => {},
+				saveProject: (project, key) => { settings.researchProjects[key ?? project.seedId] = project; },
+			}).destroy;
+		try {
+			await waitFor(() => Boolean(root.querySelector(".cpo-status-details")));
+			const expand = root.querySelector<HTMLButtonElement>(".cpo-panel-toggle.is-right");
+			if (expand?.getAttribute("aria-label")?.includes("Expand")) expand.click();
+			await waitFor(() => Boolean(root.querySelector(".cpo-abstract")?.textContent?.includes("HTTP 429")));
+			const retry = Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(button => /Retry abstract lookup|重试获取摘要/.test(button.textContent ?? ""));
+			check(retry, "both pane and embed expose abstract retry after a failed request");
+			check(!root.querySelector(".cpo-abstract")?.textContent?.includes("都没有"), "errors do not imply absent provider abstracts");
+			check(lookupRequests === 1, "failed abstract lookup does not loop during redraw");
+			failLookup = false;
+			retry.click();
+			await waitFor(() => root.querySelector(".cpo-abstract")?.textContent?.includes("Recovered abstract") === true);
+			check(Number(lookupRequests) === 2, "explicit retry makes another provider request");
+			check(root.querySelector(".cpo-abstract")?.textContent?.includes("Semantic Scholar"), "recovered abstract retains source attribution");
+			const diagnostic = root.querySelector<HTMLDetailsElement>(".cpo-status-details")!;
+			diagnostic.querySelector<HTMLElement>("summary")!.click();
+			check(diagnostic.open && diagnostic.querySelector("p")!.getBoundingClientRect().height > 0, "sampling diagnostics expand visibly");
+			const box = diagnostic.querySelector("p")!.getBoundingClientRect();
+			check(box.left >= 0 && box.right <= innerWidth, `sampling diagnostics remain inside the viewport: ${box.left}–${box.right}/${innerWidth}`);
+			const buttons = Array.from(root.querySelectorAll<HTMLElement>('[role="tab"]')).map(button => button.textContent);
+			check(buttons.some(text => text === "Frequently cited references" || text === "图内常引文献"), "aggregate title names citation evidence rather than prior knowledge");
+			check(buttons.some(text => text === "Works citing this graph" || text === "引用本图的文献"), "aggregate title does not imply derivative research");
+			console.log(`Copy and abstract retry UI passed: ${embedded ? "embed" : "pane"}`);
+		} finally { cleanup(); }
+	}
 }
 
 void verify().catch((error: unknown) => {

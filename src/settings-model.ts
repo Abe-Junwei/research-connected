@@ -18,7 +18,7 @@ export interface ConnectedPapersSettings {
 	sampleDepth: SampleDepth;
 	/** Cross-check OpenAlex numbers against Semantic Scholar and backfill missing reference lists. */
 	s2Reconcile: boolean;
-	/** Fetch SPECTER2 embeddings with the S2 bulk request for semantic scoring (needs s2Reconcile). */
+	/** Fetch model-labeled embeddings with candidate enrichment (needs s2Reconcile). */
 	semanticEmbedding: boolean;
 	includeReferences: boolean;
 	includeCitations: boolean;

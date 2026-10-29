@@ -41,7 +41,7 @@ export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: bo
 	const allKnown = new Map([...graph.catalog, ...graph.nodes].map((paper) => [paper.id, paper]));
 	const visible = new Set(graph.nodes.map((paper) => paper.id));
 	const seed = graph.nodes.find((paper) => paper.isSeed) ?? graph.nodes[0];
-	if (!seed) throw new Error(tr("当前图谱没有种子论文。", "The current graph has no seed paper."));
+	if (!seed) throw new Error(tr("当前图谱没有种子文献。", "The current graph has no seed paper."));
 	const make = (paper: PaperNode): NarrativeEvidencePaper => ({
 		id: paper.id,
 		title: paper.title,

@@ -303,8 +303,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 
 	const tabs: Array<[GraphTab, string]> = [
 		["graph", tr("论文详情", "Paper details")],
-		["prior", tr("先验工作", "Prior work")],
-		["derivative", tr("衍生工作", "Later work")],
+		["prior", tr("图内常引文献", "Frequently cited references")],
+		["derivative", tr("引用本图的文献", "Works citing this graph")],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", tr("研究脉络", "Research narrative")]);
 	if (options.libraryTab) tabs.push(["staged", tr("收藏与排除", "Saved and excluded")]);

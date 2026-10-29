@@ -296,6 +296,43 @@
 }
 
 .cpo-statusbar .cpo-status { flex: 1; }
+.cpo-statusbar:has(.cpo-status-details) { overflow: visible; }
+.cpo-status:has(.cpo-status-details) {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	overflow: visible;
+}
+.cpo-status-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.cpo-status-details { flex: none; }
+.cpo-status-details > summary { cursor: pointer; }
+.cpo-status-details > p {
+	position: absolute;
+	right: 0;
+	bottom: 100%;
+	z-index: 20;
+	width: min(460px, 70vw);
+	max-width: 100%;
+	box-sizing: border-box;
+	max-height: 240px;
+	overflow: auto;
+	margin: 8px 0;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	line-height: 1.6;
+}
+.cpo-embed .cpo-status-details > p { top: 100%; bottom: auto; }
 .cpo-statusbar .cpo-undo { flex: none; padding: 3px 8px; font-size: 11px; }
 .cpo-statusbar.cpo-statusbar .cpo-undo.cpo-undo[hidden] { display: none; }
 .cpo-evidence-header .cpo-diagnose { flex: none; margin: 0; padding: 3px 8px; font-size: 11px; }
@@ -936,8 +973,7 @@
 	gap: 8px;
 }
 
-.cpo-graph-key-seed,
-.cpo-graph-key-classic {
+.cpo-graph-key-seed {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -954,33 +990,6 @@
 	border-radius: 99px;
 	background: var(--text-muted);
 	box-shadow: 0 0 0 1.5px #333943, 0 0 0 3px rgba(51, 57, 67, 0.35);
-}
-
-.cpo-graph-key-classic i {
-	width: 8px;
-	height: 8px;
-	flex: none;
-	border-radius: 99px;
-	background: #7b68ee;
-	animation: cpo-classic-breath 3.5s ease-in-out infinite;
-}
-
-@keyframes cpo-classic-breath {
-	from, to {
-		transform: scale(1);
-		box-shadow: 0 0 6px rgba(123, 104, 238, 0.4), 0 0 14px rgba(123, 104, 238, 0.18);
-	}
-	50% {
-		transform: scale(1.03);
-		box-shadow: 0 0 8px rgba(123, 104, 238, 0.7), 0 0 18px rgba(123, 104, 238, 0.35), 0 0 28px rgba(123, 104, 238, 0.14);
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.cpo-graph-key-classic i {
-		animation: none;
-		opacity: 1;
-	}
 }
 
 .cpo-graph-key-color {
@@ -1185,7 +1194,6 @@
 .cpo-rail .cpo-graph-key-marks { gap: 4px; }
 
 .cpo-rail .cpo-graph-key-seed,
-.cpo-rail .cpo-graph-key-classic,
 .cpo-rail .cpo-graph-key-color {
 	min-height: 24px;
 	padding-inline: 5px;
@@ -3064,7 +3072,7 @@ button.cpo-agg-item {
 .cpo-surface .cpo-paper-actions button.cpo-paper-action { font-size: 12px; }
 .cpo-paper-action .cpo-icon-glyph { width: 14px; height: 14px; flex: none; }
 .cpo-paper-title-source { margin-inline-start: 8px; vertical-align: middle; }
-.cpo-paper-classic-icon { width: 14px; height: 14px; color: var(--interactive-accent); fill: currentColor; }
+.cpo-icon-glyph.cpo-paper-classic-icon { width: 14px; height: 14px; color: var(--interactive-accent); fill: currentColor; }
 .cpo-paper-action-error { color: var(--text-error, #b42318); font-size: 11px; }
 .cpo-diagnose-back {
 	display: inline-flex;
@@ -4240,8 +4248,7 @@ button.cpo-agg-item {
 .cpo-graph-legend .cpo-graph-key-color { margin-top: 6px; }
 
 .cpo-graph-key-star,
-.cpo-graph-key-focus,
-.cpo-key-night-note { display: none; }
+.cpo-graph-key-focus { display: none; }
 
 .is-night-canvas .cpo-graph-key-star,
 .is-night-canvas .cpo-graph-key-focus {
@@ -4252,9 +4259,7 @@ button.cpo-agg-item {
 	color: var(--text-muted);
 }
 
-.is-night-canvas .cpo-key-night-note { display: block; }
-
-.is-night-canvas :is(.cpo-graph-key-star, .cpo-graph-key-seed, .cpo-graph-key-classic, .cpo-graph-key-focus) i {
+.is-night-canvas :is(.cpo-graph-key-star, .cpo-graph-key-seed, .cpo-graph-key-focus) i {
 	position: relative;
 	flex: none;
 	width: 10px;
@@ -4269,14 +4274,6 @@ button.cpo-agg-item {
 	box-shadow: 0 0 0 1px #b8b2ee, 0 0 9px #969be888;
 }
 
-.is-night-canvas .cpo-graph-key-classic i::after {
-	content: "";
-	position: absolute;
-	inset: -4px;
-	background: linear-gradient(transparent, #c9c0ff, transparent) center / 1px 100% no-repeat,
-		linear-gradient(90deg, transparent, #c9c0ff, transparent) center / 100% 1px no-repeat;
-}
-
 .is-night-canvas .cpo-graph-key-focus i {
 	box-shadow: 0 0 0 2px #d4a24a, 0 0 7px #969be866;
 }
@@ -4284,17 +4281,6 @@ button.cpo-agg-item {
 .is-night-canvas .cpo-graph-key i[data-kind] {
 	height: 1px;
 	box-shadow: 0 0 4px color-mix(in srgb, currentColor 20%, transparent);
-}
-
-.cpo-key-explanation {
-	display: grid;
-	gap: 6px;
-	max-width: 240px;
-	margin-top: 8px;
-	color: var(--text-muted);
-	font-size: 11px;
-	line-height: 1.5;
-	white-space: normal;
 }
 
 .cpo-bar .cpo-workspace-tools > .cpo-actions-bar {
@@ -4407,6 +4393,12 @@ button.cpo-agg-item {
 }
 
 .cpo-canvas-seed > .cpo-seed-mark { display: none; }
+.cpo-surface .cpo-stage > .cpo-status.cpo-canvas-seed {
+	flex-direction: row;
+	align-items: center;
+	overflow: visible;
+	pointer-events: auto;
+}
 .cpo-surface .cpo-canvas-seed > .cpo-seed-meta { display: block; max-width: 100%; }
 .cpo-surface .cpo-canvas-seed > .cpo-seed-title { flex: none; }
 
@@ -4662,11 +4654,12 @@ button.cpo-agg-item {
 .cpo-project-group > .cpo-workspace-tools { flex-shrink: 0; }
 
 .cpo-project-menu .cpo-menu-items {
-	left: auto;
-	right: 0;
+	left: 0;
+	right: auto;
+	box-sizing: border-box;
 	width: 320px;
-	min-width: 320px;
-	max-width: 320px;
+	min-width: 0;
+	max-width: calc(100vw - 32px);
 	padding: 4px;
 }
 
@@ -4684,35 +4677,33 @@ button.cpo-agg-item {
 
 .cpo-menu-row.is-current { background: color-mix(in srgb, var(--text-normal) 8%, transparent); }
 
-.cpo-menu-row .cpo-menu-switch {
-	display: flex;
-	align-items: center;
-	gap: 8px;
+.cpo-project-menu .cpo-menu-row button.cpo-menu-switch {
+	display: block;
 	width: 100%;
 	height: 28px;
 	min-width: 0;
+	margin: 0;
 	padding: 0 8px;
-	overflow-x: scroll;
-	overflow-y: hidden;
-	text-overflow: unset;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
-	scrollbar-width: none;
 	text-align: left;
 	font-size: 12px;
 	font-weight: 600;
+	line-height: 28px;
 	background: transparent;
 }
-
-.cpo-menu-row .cpo-menu-switch::-webkit-scrollbar { display: none; }
 
 .cpo-menu-row .cpo-menu-switch:hover,
 .cpo-menu-row .cpo-row-action:hover { background: var(--background-modifier-hover); }
 
 .cpo-menu-row.is-current .cpo-menu-switch::before {
 	content: "";
-	flex: none;
+	display: inline-block;
 	width: 6px;
 	height: 6px;
+	margin-right: 8px;
+	vertical-align: middle;
 	border-radius: 50%;
 	background: var(--interactive-accent);
 }

@@ -1,5 +1,14 @@
 export const LOGO_ICON = "research-connected-logo";
 
+// Obsidian custom icons use a 100-unit viewBox; draw on a Lucide-style 24-unit grid.
+export const UI_ICON_SVG = `<g transform="scale(4.1666666667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M6.42 6.42 9.88 9.88M14.12 9.88 17.58 6.42M12 15v3"></path>
+<circle cx="12" cy="12" r="3"></circle>
+<circle cx="5" cy="5" r="2"></circle>
+<circle cx="19" cy="5" r="2"></circle>
+<circle cx="12" cy="20" r="2"></circle>
+</g>`;
+
 // Geometry exported from the approved Stitch logo.
 export const LOGO_SVG = `<g fill="none">
 <line stroke="#9ca3af" stroke-width="1.2" x1="38" x2="24" y1="52" y2="28"></line>

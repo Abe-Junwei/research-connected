@@ -58,7 +58,7 @@ export function normalizeReadingWorkflow(value: unknown): ReadingWorkflowStore |
 	if (!candidate || candidate.version !== 1 || !candidate.records || typeof candidate.records !== "object" || Array.isArray(candidate.records)) throw new Error(tr("保存的阅读流程无效，已保留原数据", "Invalid saved reading workflow; original data retained"));
 	for (const record of Object.values(candidate.records)) {
 		if (!record?.paper?.id || !Array.isArray(record.paper.concepts) || !(record.reading === null || valid(record.reading)) || !Array.isArray(record.sources) || !record.notes || typeof record.notes !== "object" || !Number.isFinite(record.updatedAt)) throw new Error(tr("保存的阅读记录无效，已保留原数据", "Invalid saved reading record; original data retained"));
-		for (const source of record.sources) if (typeof source.source !== "string" || !(source.reading === null || valid(source.reading))) throw new Error(tr("阅读进度来源无效", "Invalid reading source"));
+		for (const source of record.sources) if (typeof source.source !== "string" || !(source.reading === null || valid(source.reading))) throw new Error(tr("阅读状态来源无效", "Invalid reading source"));
 		for (const note of Object.values(record.notes)) if (typeof note.path !== "string" || typeof note.revision !== "string" || typeof note.participating !== "boolean" || !Number.isFinite(note.attempts) || (note.issue !== undefined && !["failed", "edited", "invalid"].includes(note.issue))) throw new Error(tr("笔记同步记录无效", "Invalid note sync record"));
 	}
 	return candidate;
@@ -204,7 +204,7 @@ export function createReadingWorkflow(options: ReadingWorkflowOptions): ReadingW
 		await save(record, seedId, patch.staged, projectKey, paper);
 		if (patch.reading !== undefined) {
 			try { await synchronize(record); }
-			catch (error) { throw new Error(tr(`阅读进度已保存；笔记同步记录保存失败，请重试：${error instanceof Error ? error.message : String(error)}`, `Reading progress was saved, but the note sync record could not be saved. Retry: ${error instanceof Error ? error.message : String(error)}`)); }
+			catch (error) { throw new Error(tr(`阅读状态已保存；笔记同步记录保存失败，请重试：${error instanceof Error ? error.message : String(error)}`, `Reading status was saved, but the note sync record could not be saved. Retry: ${error instanceof Error ? error.message : String(error)}`)); }
 		}
 	});
 	const papers = (): PaperNode[] => {

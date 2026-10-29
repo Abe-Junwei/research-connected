@@ -4,39 +4,36 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected 标志"></p>
 
-<p align="center">把相关论文画成图谱，查看每条关系的证据，并把阅读整理成 Obsidian 里相互链接的笔记。</p>
+<p align="center"><strong>从一篇论文，走向有脉络的研究阅读。</strong><br>发现相关文献，核查连接证据，在 Obsidian 中积累相互链接的文献笔记。</p>
 
 <p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/zh-cn/README.md#快速开始">快速开始</a> · <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md">使用指南</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml">报告问题</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml">功能建议</a></p>
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 发布版本"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 及以上桌面版"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="许可"></p>
 
-## 当前开发分支（尚未发布）
+## 看清一篇论文的研究邻域
 
-以下能力已在 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 实现，由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 跟踪；不代表最新发布版已包含这些功能。真实 Obsidian 宿主的完整验收尚未完成。下方截图用于展示工作流程，与目前星图外观可能不同。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="开发版预览：以 Deep learning 为种子文献的 50 篇文献图谱，右侧显示被多篇当前可见文献引用的作品">
+</picture>
 
-- **共享阅读进度，独立项目管理。** 同一论文及已确认的版本组跨项目共享阅读进度；暂存和排除仍属于各项目。进度冲突、笔记外部编辑会进入待处理，可明确解决、重试或停止笔记同步。
-- **版本感知。** 按来源确认的版本关系和手动合并／拆分决策归组，不按标题猜测。可处理身份及排除范围歧义、选择可用版本，并在导出中保留版本来源。
-- **可检查的证据。** 查看引用路径、候选筛选诊断与结构相似度；缺少证据与实测为零分别呈现。MMR 平衡候选相关性与多样性，语义信号补充结构证据。
-- **更易读的星图。** 节点半径按累计被引量对数缩放，缺失数值标为未知。成熟且有影响的论文获得启发式经典标记和自然闪烁，详情解释命中理由；这不是学术权威认定。动态效果遵循操作系统的减少动态效果偏好。
-- **恢复研究现场。** 保存命名视图，明确关联嵌入图谱与项目。主图和嵌入图复用阅读及证据流程；交互优化减少重复图谱投影，并合并拖拽、缩放帧。
+[浅色原图](../images/graph-pane.png) · [暗色原图](../images/graph-pane-dark.png)
 
-## 图谱
+*本页截图均来自当前本地开发版预览，摄于 2026-10-29，分辨率 3200 × 2000（2×）。不是 Obsidian 宿主截图，也不代表最新发布版已包含所示功能。示例为 “Deep learning”（2015）；实时公共元数据可能变化。截图界面为英文，插件同时支持简体中文。*
 
-![以 “Deep learning” 为中心的图谱：左侧是相关论文，右侧是所选论文的关系证据](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
+选中节点或边可查看共同参考文献、共被引和直接引用证据。右侧内容标签中，**图内常引文献**指被至少两篇当前可见文献引用的作品；**引用本图的文献**指引用至少两篇当前可见文献的作品。这些名称不表示发表先后或思想继承。
 
-选中一个节点或一条边，即可看到共同参考文献、共被引和直接引用证据。
+## 发现、核查、积累：三个核心工作流
 
-## 能做什么
-
-- **发现相关研究。** 输入题名、DOI 或 OpenAlex ID，生成一张采样后的相似图谱。可在平面、时间和放射布局之间切换。
-- **检查每条关系。** 查看一条关系背后的参考文献和引用证据。Semantic Scholar、Crossref 和 OpenCitations 补全缺口，并标出不匹配的记录。
-- **整理阅读。** 暂存论文，标记待读或已读，排除干扰，并保存命名视图。可以写文献笔记、嵌入图谱，或导出 BibTeX、YAML 和 Markdown。
+- **发现相关研究。** 输入题名、DOI 或 OpenAlex ID，指定种子文献并生成采样后的相似图谱。可在平面、年份和放射布局之间切换。
+- **检查每条关系。** 查看参考文献和引用证据。插件可能通过 OpenAlex、Semantic Scholar 或 Crossref 获取摘要和参考文献数据，也可能通过 OpenCitations 补充引用证据；请求失败不代表来源中没有记录。
+- **整理阅读。** **收藏文献**会将单篇论文加入项目收藏列表，**保存项目**则保存项目。设置论文的**阅读状态**，排除干扰，写文献笔记、嵌入图谱，或导出 BibTeX、YAML 和 Markdown。
 
 ## 快速开始
 
 1. **安装并启用。** 在 Obsidian 中打开**设置 → 第三方插件 → 浏览**，搜索 **Research Connected**，然后安装并启用。
-2. **构建第一张图谱。** 从命令面板运行**打开 Research Connected**。粘贴下面的 DOI，或输入论文题名，然后选择**构建**。
-3. **检查一条关系。** 选中一篇论文或一条边，查看它为什么出现在图谱上。使用**保存视图**，以便以后回到这次排列。
+2. **构建第一张图谱。** 从命令面板运行**打开 Research Connected**。粘贴下面的 DOI，或输入论文题名以选择**种子文献**，然后选择**构建**。
+3. **检查一条关系。** 选中一篇论文或一条边，查看它为什么出现在图谱上。使用**保存项目**保存项目；使用**收藏文献**将单篇论文加入收藏列表。
 
 ```text
 10.1038/nature14539
@@ -48,13 +45,23 @@
 
 ## 按时间查看研究
 
-![按发表年份排列的时间布局，带有布局控件和年份滑块](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="开发版预览：按发表年份排列的时间图谱，下方显示年份带">
+</picture>
 
-切换到**时间**。图谱下方的年份带缩小可见范围，并标出当前样本每年有多少篇。已保存的视图可以回到某次有用的选择。
+[浅色原图](../images/timeline.png) · [暗色原图](../images/timeline-dark.png)
+
+切换到**年份**布局。图谱下方的年份带可按发表年份缩小可见范围。
 
 ## 把图谱放在笔记旁边
 
-![阅读笔记中，段落之间嵌入了 Research Connected 图谱](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/note-embed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="开发版预览：在阅读笔记页面中嵌入可交互的时间图谱">
+</picture>
+
+[浅色原图](../images/note-embed.png) · [暗色原图](../images/note-embed-dark.png)
 
 把下面的代码块放进笔记。它会在阅读视图和实时预览中显示。
 
@@ -66,34 +73,48 @@ layout: temporal
 ```
 ````
 
-选中一篇论文，然后选择**导出 → 写入笔记**，即可创建文献笔记。插件可以根据 DOI 或 OpenAlex ID 识别已有笔记，并在阅读状态改变时同步 `rc-status`。目标文件夹、文件名、正文模板和 DOI 属性在设置中配置。
+选中一篇论文，然后选择**导出 → 写入笔记**，即可创建文献笔记。插件可以根据 DOI 或 OpenAlex ID 识别已有笔记。阅读状态可与关联笔记同步；状态冲突需要核对。目标文件夹、文件名、正文模板和 DOI 属性在设置中配置。
 
-嵌入选项、前言、采样和算法见[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。旧的 `connected-papers` 嵌入名称仍然可用。
+嵌入选项、笔记属性（YAML frontmatter）、采样和算法见[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。旧的 `connected-papers` 嵌入名称仍然可用。
+
+## 开发状态
+
+<details>
+<summary>尚未发布的功能与验证边界</summary>
+
+当前 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 的工作由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 跟踪。真实 Obsidian 宿主的完整验收尚未完成；发布版能力以正式版本为准。
+
+- 同一论文和已确认版本组跨项目共享阅读状态，收藏文献与排除仍按项目独立管理。状态冲突或外部编辑需明确解决、重试或停止同步。
+- 按来源证实或手动决定的关系归组版本，不按标题猜测；导出保留版本来源。
+- 候选诊断和引用路径区分缺少证据与实测为零。MMR 平衡相关性与多样性，语义信号补充结构证据。
+- 节点大小按被引量对数缩放。高被引提示是启发式指标，不是权威评定；动态效果遵循减少动态效果偏好。
+
+</details>
 
 ## 使用前须知
 
 - **桌面端。** 需要 Obsidian 1.14.4 或更高版本。移动端尚待设备测试。
-- **网络。** 构建图谱会查询外部学术服务。项目和阅读状态保存在库中。
+- **网络。** 构建图谱会查询外部学术服务。项目和阅读状态保存在库中；具体数据流见下方隐私说明。
 - **服务密钥。** OpenAlex API 密钥可选，建议填写。可在 [OpenAlex 设置](https://openalex.org/settings/api)创建，配置方法见[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。
-- **采样。** 图谱是引文邻域的样本，不是引用该种子的全部论文。
-- **笔记。** 插件读取文献笔记的前言以识别已有笔记。只有在写入笔记或更改阅读状态时才会改动笔记文件。
+- **采样。** 图谱是引文邻域的样本，不是引用种子文献的全部论文。
+- **笔记。** 插件读取笔记属性（YAML frontmatter）以识别文献笔记。只有在写入笔记或更改阅读状态时才会改动笔记文件。
 - **人工智能。** 研究脉络默认关闭。浏览图谱不需要语言模型。
 - **界面语言。** 中文环境使用简体中文，其他环境使用英文。
 
 ## 网络使用与隐私
 
-- **OpenAlex** 会收到你输入的 DOI、OpenAlex ID 或检索文本，以及你设置的 API 密钥。
+- **OpenAlex** 会收到你输入的 DOI、OpenAlex ID 或检索文本，以及设置的 API 密钥和可选联系邮箱。该邮箱也会作为联系信息发送给 Crossref；不保证提高请求额度。
 - **Semantic Scholar**、**Crossref** 和 **OpenCitations** 会收到论文标识。密钥或令牌只发送给对应的服务。
 - **语言模型端点** 只在启用研究脉络并按下**生成研究脉络**后，收到所选论文及其引用证据。只有打开相应选项时才会包含摘要。
 
-为识别已有文献笔记，插件会列出 Markdown 路径并读取缓存的前言。复制和导出写入系统剪贴板；插件不读取剪贴板。写入文献笔记或更改其阅读状态时，会更新对应的库文件。
+为识别已有文献笔记，插件会列出 Markdown 路径并读取笔记属性（YAML frontmatter）。复制和导出写入系统剪贴板；插件不读取剪贴板。写入文献笔记或更改其阅读状态时，会更新对应的库文件。
 
-项目、阅读状态、已保存视图和服务凭据保存在本库插件的 `data.json` 中。凭据**未加密**。插件不发送遥测数据，除文献笔记的前言外不读取笔记。
+项目、阅读状态、收藏文献和服务凭据保存在本库插件的 `data.json` 中。凭据**未加密**；库同步或备份工具可能会复制此文件。插件不发送遥测数据，也不读取文献笔记属性以外的笔记内容。
 
 ## 限制
 
 - 图谱是**样本**，不是完整的引文索引。高被引论文贡献的是被引最多的施引文献，不是全部施引文献。
-- 相似度和社群颜色用于探索。重要论断请对照原始论文核对。
+- 语义相似度可能使用兼容向量以及本地文本和主题信号；它用于探索，不代表研究质量。重要论断请对照原始论文核对。
 - OpenAlex 有已知缺口：缺少摘要、参考文献列表不完整，以及作者消歧错误。[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md#data-quality-known-openalex-issues)列出了每一项以及插件的处理方式。
 
 ## 帮助与反馈

@@ -9,7 +9,7 @@ export type LayoutMode = "force2d" | "temporal" | "radial";
 
 export type ColorMode = "year" | "community" | "graph" | "topic";
 
-/** 平面按引用团着色；时间/放射仍用相对种子的主题相似度。 */
+/** 平面按引文群组着色；年份/放射仍用相对种子的主题相似度。 */
 export function defaultColorMode(layout: LayoutMode): ColorMode {
 	return layout === "force2d" ? "community" : "topic";
 }

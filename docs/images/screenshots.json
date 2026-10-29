@@ -1,0 +1,54 @@
+{
+  "capturedAt": "2026-10-29T03:56:19.256Z",
+  "source": "Current local development preview, not the Obsidian host or a published release",
+  "sample": "Deep learning (2015), DOI 10.1038/nature14539; live public metadata, sampled graph",
+  "viewport": {
+    "width": 1600,
+    "height": 1000,
+    "deviceScaleFactor": 2
+  },
+  "captures": [
+    {
+      "file": "graph-pane.png",
+      "mode": "planar",
+      "theme": "light",
+      "width": 3200,
+      "height": 2000
+    },
+    {
+      "file": "graph-pane-dark.png",
+      "mode": "planar",
+      "theme": "dark",
+      "width": 3200,
+      "height": 2000
+    },
+    {
+      "file": "timeline-dark.png",
+      "mode": "timeline",
+      "theme": "dark",
+      "width": 3200,
+      "height": 2000
+    },
+    {
+      "file": "timeline.png",
+      "mode": "timeline",
+      "theme": "light",
+      "width": 3200,
+      "height": 2000
+    },
+    {
+      "file": "note-embed.png",
+      "mode": "note embed",
+      "theme": "light",
+      "width": 3200,
+      "height": 2000
+    },
+    {
+      "file": "note-embed-dark.png",
+      "mode": "note embed",
+      "theme": "dark",
+      "width": 3200,
+      "height": 2000
+    }
+  ]
+}

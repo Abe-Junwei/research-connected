@@ -8,6 +8,7 @@ import { nicholsSnapshot, workIdentityFixtureGet } from "./work-identity-fixture
 import { normalizeProjects } from "../src/project-state";
 import { createReadingWorkflow, normalizeReadingWorkflow } from "../src/reading-workflow";
 import { fixtureGet, fixturePost } from "./fixture";
+import { writePreviewSettings } from "./storage";
 
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) {
@@ -36,7 +37,7 @@ try {
 
 if (identity && !Object.keys(previewSettings.researchProjects).length) previewSettings.researchProjects = normalizeProjects({ W4245234602: { version: 1, seedId: "W4245234602", name: "Nichols 1986", updatedAt: 1, views: [], snapshot: nicholsSnapshot() } });
 const persistSettings = (): void => {
-	window.localStorage.setItem(storageKey, JSON.stringify(previewSettings));
+	writePreviewSettings(storageKey, previewSettings, legacyStorageKey);
 	window.dispatchEvent(new Event("research-connected-project"));
 };
 

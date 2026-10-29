@@ -5,19 +5,17 @@ import type { PaperNode } from "./types";
  * 本地语义相似度（proposal-5 Phase A）：BM25（标题 + 摘要 + concepts）
  * 与 OpenAlex 主题余弦的加权合成。纯本地计算，不发任何请求。
  *
- * 候选排序发生在摘要批量补取之前，那时 abstract 字段为空，同一套代码
- * 自动退化为「标题 + concepts」；建图完成后摘要已就位，再用同一函数
- * 得到展示用的完整分数。
+ * 候选先在预算内补取摘要，再排序；缺失时退化为标题与主题。
  */
 
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 /** BM25 与主题余弦都有时的 BM25 权重（主题占 0.4）。 */
 const TEXT_WEIGHT = 0.6;
-/** SPECTER2 向量与主题余弦都有时的向量权重（主题占 0.25）。 */
+/** 同模型向量与主题余弦都有时的向量权重（主题占 0.25）。 */
 const EMBED_WEIGHT = 0.75;
 
-/** SPECTER2 余弦，钳到 0–1（负值视为无信号）；维度不符或零向量返回 null。 */
+/** 余弦，钳到 0–1；无效、维度不符或零向量返回 null。 */
 export function embeddingCosine(a: readonly number[], b: readonly number[]): number | null {
 	if (a.length === 0 || a.length !== b.length) return null;
 	let dot = 0;
@@ -26,11 +24,12 @@ export function embeddingCosine(a: readonly number[], b: readonly number[]): num
 	for (let i = 0; i < a.length; i++) {
 		const ai = a[i]!;
 		const bi = b[i]!;
+		if (!Number.isFinite(ai) || !Number.isFinite(bi)) return null;
 		dot += ai * bi;
 		normA += ai * ai;
 		normB += bi * bi;
 	}
-	if (normA === 0 || normB === 0) return null;
+	if (!Number.isFinite(dot) || !Number.isFinite(normA) || !Number.isFinite(normB) || normA === 0 || normB === 0) return null;
 	const cos = dot / (Math.sqrt(normA) * Math.sqrt(normB));
 	return Math.max(0, Math.min(1, cos));
 }
@@ -69,7 +68,7 @@ export interface SemanticScorer {
 
 /**
  * 以 seed 为查询、corpus 为文档集构建打分器；BM25 分数在语料内按最大值归一。
- * 传入 embeddings（SPECTER2，键为节点 id）时，seed 与节点都有向量的对改用
+ * 传入已验证同模型的 embeddings（键为节点 id）时，seed 与节点都有向量的对改用
  * 0.75×向量余弦 + 0.25×主题余弦；单侧缺向量的节点自动退回本地 BM25 通道。
  */
 export function buildSemanticScorer(

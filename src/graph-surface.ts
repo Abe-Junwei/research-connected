@@ -20,6 +20,32 @@ export interface GraphSurface {
 	yearHost: HTMLDivElement;
 }
 
+export function paintGraphStatus(status: HTMLElement, summaryText: string, diagnostics: string): void {
+	const summary = createSpan();
+	summary.className = "cpo-status-text";
+	summary.textContent = summaryText;
+	const details = createEl("details");
+	details.className = "cpo-status-details";
+	const label = createEl("summary");
+	label.textContent = tr("采样详情", "Sampling details");
+	const content = createEl("p");
+	content.textContent = diagnostics;
+	details.append(label, content);
+	status.replaceChildren(summary, details);
+	status.title = diagnostics;
+}
+
+export function appendStatusDetail(status: HTMLElement, note: string, summaryText?: string): void {
+	const summary = status.querySelector(".cpo-status-text");
+	const diagnostics = status.querySelector(".cpo-status-details > p");
+	if (summary && diagnostics) {
+		if (summaryText !== undefined) summary.textContent = summaryText;
+		diagnostics.textContent = `${diagnostics.textContent ?? ""}\n${note}`;
+		status.title = diagnostics.textContent;
+	} else if (summaryText !== undefined) paintGraphStatus(status, summaryText, `${status.textContent ?? ""}\n${note}`);
+	else status.textContent = `${status.textContent ?? ""} · ${note}`;
+}
+
 export function placeNodeMenu(stage: HTMLElement, menu: HTMLElement, x: number, y: number): void {
 	const rect = stage.getBoundingClientRect();
 	const pad = 8;

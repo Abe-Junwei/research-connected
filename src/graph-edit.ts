@@ -20,6 +20,7 @@ export interface EditableGraph {
 	catalog: readonly PaperNode[];
 	semanticScores?: ReadonlyMap<string, number | null>;
 	semanticMode?: "embedding" | "local";
+	semanticVectorIds?: readonly string[];
 	selectionRank?: ReadonlyMap<string, SelectionRank>;
 	citationEvidence?: CitationEvidenceStore;
 	coCitationContextIds?: readonly string[];
@@ -96,7 +97,7 @@ export function refreshDerived<T extends EditableGraph>(input: T, canonicalize =
 	const seedScore = new Map(structuralScore);
 	for (const node of graph.nodes) {
 		if (node.isSeed) continue;
-		// Keep decision-time scores for existing nodes (including SPECTER2 scores).
+		// Keep existing semantic scores, including model-validated embedding scores.
 		// Deep-dug nodes have no vector, so use the same local fallback as missing-vector candidates.
 		const semantic = graph.semanticScores?.has(node.id)
 			? graph.semanticScores.get(node.id) ?? null
@@ -181,6 +182,7 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		coCitationContextIds: [...new Set([...sourceContexts].map(resolve))],
 		excludedIds: graph.excludedIds ? [...new Set(graph.excludedIds.map(resolve))].filter((id) => !nodes.some((paper) => paper.id === id && paper.isSeed)) : undefined,
 		semanticScores: graph.semanticScores ? new Map([...graph.semanticScores].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
+		semanticVectorIds: graph.semanticVectorIds?.filter(id => !changedIds.has(id) && resolve(id) === id),
 		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts], confirmedGroups: previous?.confirmedGroups, sourceRelations: previous?.sourceRelations },
 	};
 }
