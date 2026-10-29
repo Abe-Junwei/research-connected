@@ -1,5 +1,7 @@
 import type { StagedPaper } from "./staging";
 import type { ResearchProject } from "./project-state";
+import type { ReadingWorkflowStore } from "./reading-workflow";
+import type { SourceVersionRelation, WorkIdentityDecision } from "./work-identity";
 export type SampleDepth = "standard" | "extended" | "deep";
 
 export interface ConnectedPapersSettings {
@@ -16,7 +18,7 @@ export interface ConnectedPapersSettings {
 	sampleDepth: SampleDepth;
 	/** Cross-check OpenAlex numbers against Semantic Scholar and backfill missing reference lists. */
 	s2Reconcile: boolean;
-	/** Fetch SPECTER2 embeddings with the S2 bulk request for semantic scoring (needs s2Reconcile). */
+	/** Fetch model-labeled embeddings with candidate enrichment (needs s2Reconcile). */
 	semanticEmbedding: boolean;
 	includeReferences: boolean;
 	includeCitations: boolean;
@@ -35,6 +37,10 @@ export interface ConnectedPapersSettings {
 	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
 	graftedBySeed: Record<string, string[]>;
 	researchProjects: Record<string, ResearchProject>;
+	readingWorkflow?: ReadingWorkflowStore;
+	workflowMigration?: { version: 1; backup: string; completedAt: number };
+	workIdentityDecisions?: WorkIdentityDecision[];
+	sourceVersionRelations?: SourceVersionRelation[];
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {

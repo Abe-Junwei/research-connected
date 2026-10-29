@@ -40,3 +40,11 @@ export function observeResponsiveMode(root: HTMLElement, onResize?: () => void):
 	apply();
 	return observer;
 }
+
+/** Narrow detail covers the graph. Returns true only on the transition into that cover. */
+export function setDetailCover(root: HTMLElement, active: boolean): boolean {
+	const cover = active && root.classList.contains("is-narrow");
+	const entered = cover && !root.classList.contains("is-detail-cover");
+	root.classList.toggle("is-detail-cover", cover);
+	return entered;
+}

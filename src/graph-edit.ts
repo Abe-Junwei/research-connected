@@ -1,9 +1,9 @@
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
 import { CitationEvidenceStore, edgeCitationPairs, type CitationEvidence } from "./citation-evidence";
-import { paperHasId, paperRecords, workIndex, type WorkIdentity } from "./work-identity";
+import { paperHasId, paperRecords, sourceVersionGroups, workIndex, type SourceVersionRelation, type WorkIdentity, type WorkIdentityDecision } from "./work-identity";
 import type { SelectionRank } from "./neighborhood";
-import type { GraphEdge, PaperNode } from "./types";
+import type { DirectLink, GraphEdge, PaperNode } from "./types";
 
 export const EXPAND_CAP = 8;
 /** Max seeds remembered for grafted members. */
@@ -20,6 +20,7 @@ export interface EditableGraph {
 	catalog: readonly PaperNode[];
 	semanticScores?: ReadonlyMap<string, number | null>;
 	semanticMode?: "embedding" | "local";
+	semanticVectorIds?: readonly string[];
 	selectionRank?: ReadonlyMap<string, SelectionRank>;
 	citationEvidence?: CitationEvidenceStore;
 	coCitationContextIds?: readonly string[];
@@ -60,8 +61,8 @@ export function graftNodes<T extends EditableGraph>(
 	return normalizeWorkGraph({ ...graph, nodes: [...graph.nodes, ...extra], referenceLists, catalog, coCitationContextIds: [...contexts] });
 }
 
-export function refreshDerived<T extends EditableGraph>(input: T): T {
-	const graph = canonicalizeWorkGraph(input);
+export function refreshDerived<T extends EditableGraph>(input: T, canonicalize = true): T {
+	const graph = canonicalize ? canonicalizeWorkGraph(input) : input;
 	const seed = graph.nodes.find((node) => node.isSeed);
 	if (!seed) return graph;
 	const references = new Map<string, Set<string>>();
@@ -96,7 +97,7 @@ export function refreshDerived<T extends EditableGraph>(input: T): T {
 	const seedScore = new Map(structuralScore);
 	for (const node of graph.nodes) {
 		if (node.isSeed) continue;
-		// Keep decision-time scores for existing nodes (including SPECTER2 scores).
+		// Keep existing semantic scores, including model-validated embedding scores.
 		// Deep-dug nodes have no vector, so use the same local fallback as missing-vector candidates.
 		const semantic = graph.semanticScores?.has(node.id)
 			? graph.semanticScores.get(node.id) ?? null
@@ -112,7 +113,7 @@ export function refreshDerived<T extends EditableGraph>(input: T): T {
 /** Reversible source records stay alongside the derived work graph. */
 function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 	const previous = graph.workIdentity;
-	const index = workIndex([...(previous?.records ?? []), ...graph.catalog, ...graph.nodes], graph.nodes.map((paper) => paper.id), previous?.separatedIds);
+	const index = workIndex([...(previous?.records ?? []), ...graph.catalog, ...graph.nodes], graph.nodes.map((paper) => paper.id), previous?.separatedIds, previous?.confirmedGroups);
 	if (!previous && index.records.length === index.papers.length) return graph;
 	const oldIds = new Map(previous?.canonicalIds ?? []);
 	const resolve = (id: string): string => index.ids.get(id) ?? id;
@@ -181,7 +182,8 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		coCitationContextIds: [...new Set([...sourceContexts].map(resolve))],
 		excludedIds: graph.excludedIds ? [...new Set(graph.excludedIds.map(resolve))].filter((id) => !nodes.some((paper) => paper.id === id && paper.isSeed)) : undefined,
 		semanticScores: graph.semanticScores ? new Map([...graph.semanticScores].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
-		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts] },
+		semanticVectorIds: graph.semanticVectorIds?.filter(id => !changedIds.has(id) && resolve(id) === id),
+		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts], confirmedGroups: previous?.confirmedGroups, sourceRelations: previous?.sourceRelations },
 	};
 }
 
@@ -190,9 +192,39 @@ export function normalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 	return normalized === graph ? graph : refreshDerived(normalized);
 }
 
+export function applyWorkIdentityDecisions<T extends EditableGraph>(graph: T, decisions: readonly WorkIdentityDecision[] = [], relations: readonly SourceVersionRelation[] = graph.workIdentity?.sourceRelations ?? []): T {
+	if (!decisions.length && !relations.length) return normalizeWorkGraph(graph);
+	const separated = new Set(graph.workIdentity?.separatedIds ?? []);
+	const groups = sourceVersionGroups(relations, decisions, (graph.workIdentity?.confirmedGroups ?? []).filter(group => !relations.some(relation => relation.ids.some(id => group.includes(id)))));
+	for (const decision of [...decisions].sort((a, b) => a.updatedAt - b.updatedAt)) {
+		for (const id of decision.ids) { if (decision.kind === "separate") separated.add(id); else separated.delete(id); }
+	}
+	const clear = (paper: PaperNode): PaperNode => ({ ...paper, recordsSeparated: separated.has(paper.id) });
+	return normalizeWorkGraph({ ...graph, nodes: graph.nodes.map(clear), catalog: graph.catalog.map(clear), workIdentity: { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], ...graph.workIdentity, separatedIds: [...separated], confirmedGroups: groups, sourceRelations: [...relations] } });
+}
+
 export function separateWorkRecords<T extends EditableGraph>(graph: T, paper: PaperNode): T {
 	if (!graph.workIdentity || !paper.records?.length) return graph;
 	return normalizeWorkGraph({ ...graph, workIdentity: { ...graph.workIdentity, separatedIds: [...new Set([...graph.workIdentity.separatedIds, ...paper.records.map((record) => record.id)])] } });
+}
+
+/** Drop a keep-separate decision so workIndex may merge those records again. */
+export function releaseSeparatedRecords<T extends EditableGraph>(graph: T, ids: readonly string[]): T {
+	if (!graph.workIdentity || ids.length === 0) return graph;
+	const drop = new Set(ids);
+	const separatedIds = graph.workIdentity.separatedIds.filter((id) => !drop.has(id));
+	if (separatedIds.length === graph.workIdentity.separatedIds.length) return graph;
+	const clear = <P extends PaperNode>(paper: P): P => {
+		if (!paper.recordsSeparated || !paperRecords(paper).some((record) => drop.has(record.id))) return paper;
+		const { recordsSeparated: _flag, ...rest } = paper;
+		return rest as P;
+	};
+	return normalizeWorkGraph({
+		...graph,
+		nodes: graph.nodes.map(clear),
+		catalog: graph.catalog.map(clear),
+		workIdentity: { ...graph.workIdentity, separatedIds },
+	});
 }
 
 export function chooseExpand(
@@ -309,4 +341,117 @@ function nextWithout(list: string[] | undefined, id: string): string[] | null {
 	const filtered = list.filter((item) => item !== id);
 	if (filtered.length === list.length) return list;
 	return filtered.length ? filtered : null;
+}
+
+export interface VersionLink {
+	citingId: string;
+	citedId: string;
+	source: string;
+	year: number | null;
+}
+
+export interface ResearchProjection {
+	edges: Array<{ source: string; target: string; direct: DirectLink; links: VersionLink[] }>;
+	selfCitations: VersionLink[];
+	sharedResearchRefs: Array<{ a: string; b: string; shared: number }>;
+	coCitedBy: Array<{ a: string; b: string; contexts: number }>;
+	insufficient: string[];
+	selectedId: string | null;
+}
+
+function researchId(id: string, researchOf: ReadonlyMap<string, string>): string {
+	return researchOf.get(id) ?? id;
+}
+
+function pairKey(a: string, b: string): string {
+	return a < b ? `${a}\0${b}` : `${b}\0${a}`;
+}
+
+/** Collapse version and service duplicates onto confirmed researches. Does not fetch. */
+export function projectResearchRelations(
+	links: readonly VersionLink[],
+	referenceLists: ReadonlyMap<string, readonly string[]>,
+	contexts: readonly (readonly string[])[],
+	researchOf: ReadonlyMap<string, string>,
+	selectedId: string | null,
+): ResearchProjection {
+	const groups = new Map<string, { low: string; high: string; forward: VersionLink[]; back: VersionLink[] }>();
+	const selfCitations: VersionLink[] = [];
+	const insufficient: string[] = [];
+	for (const link of links) {
+		if (!link.citingId || !link.citedId || !link.source) {
+			insufficient.push(`${link.citingId || "?"}->${link.citedId || "?"}`);
+			continue;
+		}
+		const source = researchId(link.citingId, researchOf);
+		const target = researchId(link.citedId, researchOf);
+		if (source === target) {
+			selfCitations.push(link);
+			continue;
+		}
+		const low = source < target ? source : target;
+		const high = source < target ? target : source;
+		const key = pairKey(source, target);
+		const group = groups.get(key) ?? { low, high, forward: [], back: [] };
+		if (source === low) group.forward.push(link);
+		else group.back.push(link);
+		groups.set(key, group);
+	}
+	const edges = [...groups.values()].map((group) => {
+		const direct: DirectLink = group.forward.length && group.back.length ? "mutual" : group.forward.length ? "source-cites-target" : "target-cites-source";
+		return { source: group.low, target: group.high, direct, links: [...group.forward, ...group.back] };
+	});
+	const refsOf = new Map<string, Set<string>>();
+	for (const [versionId, refs] of referenceLists) {
+		const research = researchId(versionId, researchOf);
+		const set = refsOf.get(research) ?? new Set<string>();
+		for (const ref of refs) {
+			const target = researchId(ref, researchOf);
+			if (target !== research) set.add(target);
+		}
+		refsOf.set(research, set);
+	}
+	const researches = [...refsOf.keys()].sort();
+	const sharedResearchRefs: Array<{ a: string; b: string; shared: number }> = [];
+	for (let i = 0; i < researches.length; i += 1) {
+		for (let j = i + 1; j < researches.length; j += 1) {
+			const a = researches[i]!;
+			const b = researches[j]!;
+			let shared = 0;
+			for (const ref of refsOf.get(a) ?? []) if (refsOf.get(b)?.has(ref)) shared += 1;
+			if (shared > 0) sharedResearchRefs.push({ a, b, shared });
+		}
+	}
+	const coCounts = new Map<string, number>();
+	for (const context of contexts) {
+		const present = [...new Set(context.filter((id) => id).map((id) => researchId(id, researchOf)))].sort();
+		for (let i = 0; i < present.length; i += 1) {
+			for (let j = i + 1; j < present.length; j += 1) {
+				const key = pairKey(present[i]!, present[j]!);
+				coCounts.set(key, (coCounts.get(key) ?? 0) + 1);
+			}
+		}
+	}
+	const coCitedBy = [...coCounts].map(([key, contexts]) => {
+		const [a, b] = key.split("\0");
+		return { a: a!, b: b!, contexts };
+	});
+	const known = new Set<string>([...researchOf.keys(), ...researchOf.values()]);
+	for (const link of links) {
+		if (link.citingId) known.add(link.citingId);
+		if (link.citedId) known.add(link.citedId);
+	}
+	for (const versionId of referenceLists.keys()) known.add(versionId);
+	return {
+		edges,
+		selfCitations,
+		sharedResearchRefs,
+		coCitedBy,
+		insufficient,
+		selectedId: selectedId && known.has(selectedId) ? selectedId : null,
+	};
+}
+
+export function omitSeedExceptionLinks(links: readonly VersionLink[], exceptionIds: ReadonlySet<string>): VersionLink[] {
+	return links.filter((link) => !exceptionIds.has(link.citingId) && !exceptionIds.has(link.citedId));
 }

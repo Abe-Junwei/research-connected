@@ -1,11 +1,48 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 const css = readFileSync("styles.css", "utf8");
 const app = readFileSync("src/app.ts", "utf8");
 const embed = readFileSync("src/embed-mount.ts", "utf8");
 const responsive = readFileSync("src/responsive.ts", "utf8");
 const surface = readFileSync("src/graph-surface.ts", "utf8");
+const logo = readFileSync("src/logo.ts", "utf8");
+const plugin = readFileSync("src/main.ts", "utf8");
+const view = readFileSync("src/view.ts", "utf8");
+const uiIcon = logo.match(/export const UI_ICON_SVG = `([\s\S]*?)`;/)?.[1];
+assert.ok(uiIcon, "host navigation has a dedicated icon separate from the brand logo");
+assert.match(uiIcon, /stroke="currentColor"/, "navigation icon follows host theme and interaction colors");
+assert.match(uiIcon, /fill="none"/, "navigation nodes are outlined");
+assert.match(uiIcon, /stroke-width="2"/, "navigation icon uses Lucide-style stroke weight");
+assert.match(uiIcon, /transform="scale\(4\.1666666667\)"/, "24-unit geometry fits Obsidian's 100-unit custom icon viewBox");
+assert.equal((uiIcon.match(/<circle\b/g) ?? []).length, 4, "navigation icon has one central and three peripheral nodes");
+assert.doesNotMatch(uiIcon, /#[\da-f]{3,8}\b|opacity=|stroke-dasharray=|<svg\b/i, "navigation icon has no brand colors, halos, or nested viewport");
+assert.match(plugin, /addIcon\(LOGO_ICON, UI_ICON_SVG\)/, "plugin registers the theme-aware navigation icon");
+assert.match(plugin, /addRibbonIcon\(LOGO_ICON,/, "ribbon uses the registered navigation icon");
+assert.match(view, /getIcon\(\): string\s*\{\s*return LOGO_ICON;/, "tab and ribbon share the navigation icon");
+assert.match(logo, /export const LOGO_SVG =/, "original brand artwork remains available");
+const screenshots = JSON.parse(readFileSync("docs/images/screenshots.json", "utf8"));
+assert.deepEqual(screenshots.viewport, { width: 1600, height: 1000, deviceScaleFactor: 2 });
+assert.deepEqual(screenshots.captures.map(capture => capture.file).sort(), [
+	"graph-pane-dark.png", "graph-pane.png", "note-embed-dark.png", "note-embed.png", "timeline-dark.png", "timeline.png",
+]);
+for (const capture of screenshots.captures) {
+	const png = readFileSync(`docs/images/${capture.file}`);
+	assert.equal(png.subarray(1, 4).toString(), "PNG", `${capture.file} is a PNG`);
+	assert.equal(png.readUInt32BE(16), 3200, `${capture.file} has native 2x width`);
+	assert.equal(png.readUInt32BE(20), 2000, `${capture.file} has native 2x height`);
+}
+for (const file of ["README.md", ...["zh-cn", "zh-tw", "ja", "ko"].map(lang => `docs/${lang}/README.md`)]) {
+	const readme = readFileSync(file, "utf8");
+	assert.equal((readme.match(/<picture>/g) ?? []).length, 3, `${file} has three theme-aware workflow images`);
+	assert.equal((readme.match(/prefers-color-scheme: dark/g) ?? []).length, 3, `${file} supports dark screenshots`);
+	for (const image of readme.matchAll(/(?:src|srcset)="([^"]+\.png)"/g)) {
+		readFileSync(resolve(dirname(file), image[1]));
+	}
+	assert.match(readme, /3200 × 2000/, `${file} states the original resolution`);
+	assert.ok(readme.indexOf("<details>") > readme.indexOf("```research-connected"), `${file} keeps development detail after the quick start and workflows`);
+}
 
 for (const token of ["surface", "canvas", "ink", "muted", "border", "accent", "focus", "sidebar-min", "sidebar-max"]) {
 	assert.match(css, new RegExp(`--rc-${token}:`), `missing --rc-${token}`);
@@ -16,7 +53,7 @@ assert.match(css, /\.cpo-detail-source-actions/, "source links sit beside the se
 assert.match(css, /\.cpo-sidebar-resizer\.is-dragging \+ \.cpo-evidence-sidebar/, "sidebar drag does not animate width");
 assert.match(app, /tabsHost:\s*sidebarTabs/, "pane tabs live in the evidence sidebar");
 assert.match(app, /libraryTab:\s*true/, "pane library is a right-sidebar tab");
-assert.match(readFileSync("src/graph-chrome.ts", "utf8"), /libraryTab[\s\S]*?暂存与排除/, "library tab is labeled 暂存与排除");
+assert.match(readFileSync("src/graph-chrome.ts", "utf8"), /libraryTab[\s\S]*?收藏与排除/, "library tab is labeled 收藏与排除");
 assert.doesNotMatch(app, /cpo-library-open/, "top-right library button is gone");
 assert.match(embed, /tabsHost:\s*sidebarTabs/, "embed tabs live in the evidence sidebar");
 assert.match(css, /\.cpo-sidebar-tabs\s*\{[^}]*margin-top:\s*auto/, "tabs stay at the sidebar bottom");
@@ -26,7 +63,8 @@ assert.match(responsive, /WIDE_SURFACE_WIDTH = 1200/, "wide breakpoint is 1200")
 assert.match(responsive, /NARROW_EMBED_WIDTH = 560/, "embed stays side-by-side in the default note column");
 assert.match(app, /observeResponsiveMode\(root/, "pane must use shared responsive state");
 assert.match(embed, /observeResponsiveMode\(shell/, "embed must use shared responsive state");
-assert.match(embed, /defaultWidth:\s*260/, "embed evidence rail starts at the minimum width");
+assert.match(readFileSync("src/sidebar-resize.ts", "utf8"), /const DEFAULT_WIDTH = 360/, "shared evidence rail defaults to 360px");
+assert.doesNotMatch(embed, /defaultWidth:\s*260/, "embed uses the shared evidence rail default");
 assert.match(app, /mountGraphKey\(stage,/, "pane legend overlays the canvas");
 assert.match(embed, /mountGraphKey\(stage,/, "embed legend overlays the canvas");
 assert.match(css, /\.cpo-stage > \.cpo-graph-legend\s*\{[^}]*left:\s*16px;[^}]*bottom:\s*12px;[^}]*background:\s*var\(--background-primary\);[^}]*box-shadow:\s*none;/, "bottom-left legend is opaque without a card");
@@ -55,10 +93,9 @@ assert.doesNotMatch(embed, /cpo-rail-filter/, "embed has no filter tab");
 assert.match(css, /\.cpo-graph-key\b/, "graph key strip is styled");
 assert.match(css, /\.cpo-rail-layouts \.cpo-layout-icon\s*\{[^}]*display:\s*inline-flex/, "expanded layout rows align icons with labels");
 assert.match(css, /\.cpo-project-group\s*\{[^}]*align-items:\s*center/, "project controls share a centered baseline");
-assert.match(css, /@keyframes cpo-classic-breath/, "classic glow is keyed in the legend");
-assert.match(readFileSync("src/filter-controls.ts", "utf8"), /经典文献/, "legend names classic papers");
+assert.doesNotMatch(readFileSync("src/filter-controls.ts", "utf8"), /经典文献|暗色连线|尺寸：/, "legend omits classic, dark-edge, and size notes");
 assert.match(readFileSync("src/filter-controls.ts", "utf8"), /种子文献/, "legend names the seed");
-assert.match(readFileSync("src/filter-controls.ts", "utf8"), /引用团/, "grouped layout keeps community color");
+assert.match(readFileSync("src/filter-controls.ts", "utf8"), /引文群组/, "grouped layout keeps community color");
 assert.doesNotMatch(readFileSync("src/filter-controls.ts", "utf8"), /年归一/, "size copy is gone");
 assert.doesNotMatch(readFileSync("src/filter-controls.ts", "utf8"), /weak/, "weak-edge chip is gone from the legend");
 assert.match(embed, /semanticScholarApiKey\.trim\(\)/, "embed cache must include S2 key presence");
@@ -76,7 +113,7 @@ assert.match(embed, /mountWorkspaceFrame/, "embed uses the shared frame");
 assert.doesNotMatch(frame, /leftToggle|toggleLeft|leftOpen/, "shared frame no longer manages a left sidebar");
 assert.match(frame, /is-sidebar-collapsed/, "shared frame collapses the evidence rail");
 assert.match(frame, /onCommit/, "width changes do not use the save callback");
-assert.match(embed, /在图谱中打开/, "embed sends heavy actions to the graph pane");
+assert.match(embed, /在工作台中打开/, "embed sends heavy actions to the graph pane");
 assert.doesNotMatch(embed, /expandAround/, "embed does not deep-dive on its own");
 assert.match(app, /paintPaperDetail\(detail,/, "pane uses the shared paper detail");
 assert.match(embed, /paintPaperDetail\(detail,/, "embed uses the shared paper detail");
@@ -84,7 +121,11 @@ const details = readFileSync("src/detail-cards.ts", "utf8");
 assert.match(details, /paintSelectionReasons\(parent, rankInfo, score\)/, "shared paper detail paints selection reasons");
 assert.match(details, /createEl\("details"\)/, "入选原因 uses native details");
 assert.match(details, /createEl\("summary"\)/, "入选原因 uses native summary");
-assert.match(details, /选择时相关性/, "relevance meter is shown");
+assert.match(details, /入选排序分/, "selection score is not labeled as relevance probability");
+assert.doesNotMatch(details, /选择时摘要尚未补取|权威分|展开全文|通常是记录错配|都没有这篇的摘要/, "detail copy avoids stale or unsupported claims");
+assert.match(details, /rank\.semanticChannel/, "historical semantic labels use selection-time provenance");
+assert.match(app + embed, /onRetryAbstract/, "abstract request failures can be retried");
+assert.match(surface, /cpo-status-details/, "sampling diagnostics are accessible beyond the compact status");
 assert.match(details, /建图后当前综合分/, "post-graph score is labeled as not used in selection");
 assert.match(details, /cpo-paper-venue/, "venue renders as clean editorial line");
 assert.match(surface, /cpo-node-menu-sep/, "node menu separates graph actions, reading status, and exclusion");
@@ -94,8 +135,10 @@ assert.match(css, /\.cpo-surface button\.cpo-primary\b/, "pane and embed share b
 assert.doesNotMatch(css, /\.cpo-root button,\n\.cpo-embed button/, "paired root/embed button selectors collapsed");
 assert.match(app, /cpo-surface/, "pane root carries the shared surface class");
 assert.match(embed, /cpo-surface/, "embed shell carries the shared surface class");
-assert.match(app, /function switchProject[\s\S]*?buildResolved\(\{ kind: "openalex", value: project\.seedId \}, true, project\.currentView\)/, "switching a project reloads its graph");
+assert.match(app, /function switchProject[\s\S]*?restoreGraphSnapshot\(project\.snapshot\)/, "switching a project restores its saved graph without requesting a rebuild");
 assert.match(app, /cpo-project-confirm/, "delete shows a confirm button");
+assert.match(css, /\.cpo-project-menu \.cpo-menu-items\s*\{[^}]*left:\s*0;[^}]*right:\s*auto;/, "project list opens from the trigger's left edge");
+assert.match(css, /\.cpo-project-menu \.cpo-menu-items\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*320px;[^}]*min-width:\s*0;[^}]*max-width:\s*calc\(100vw - 32px\);/, "project list includes its padding within the viewport width limit");
 assert.match(css, /\.cpo-surface\.is-narrow \.cpo-evidence-sidebar > \.cpo-panel-toggle\.is-right/, "narrow evidence toggle stays in the title bar");
 assert.match(css, /\.cpo-paper-actions\s*\{[^}]*flex-wrap:\s*wrap/, "paper actions wrap instead of clipping");
 assert.doesNotMatch(css, /opacity:\s*0\.72/, "available controls are not faded");

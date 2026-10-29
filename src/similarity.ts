@@ -92,6 +92,7 @@ function connect(
 			target: b,
 			weight: Math.min(1, weight),
 			structuralSimilarity: parts ? parts.structuralSimilarity : null,
+			structuralCoverage: parts?.coverage,
 			coupling: parts?.coupling ?? 0,
 			sharedRefs: parts?.sharedRefs ?? 0,
 			coCitation: parts?.coCitation ?? 0,
@@ -154,6 +155,7 @@ function connect(
 interface PairParts {
 	weight: number;
 	structuralSimilarity: number | null;
+	coverage: { references: boolean; coCitation: boolean };
 	coupling: number;
 	sharedRefs: number;
 	coCitation: number;
@@ -181,12 +183,16 @@ function pairParts(
 	const highCitesLow = highRefs.has(low);
 	const direct = lowCitesHigh || highCitesLow ? 1 : 0;
 	const structuralRaw = COUPLING_WEIGHT * overlapped.cosine + COCITATION_WEIGHT * cited.score;
-	const hasStructureCoverage = (aRefs.size > 0 && bRefs.size > 0) || contexts.some((context) => context.size > 0);
+	const coverage = {
+		references: aRefs.size > 0 && bRefs.size > 0,
+		coCitation: cited.countA > 0 && cited.countB > 0,
+	};
 	return {
 		weight: Math.min(1, structuralRaw + DIRECT_WEIGHT * direct),
-		structuralSimilarity: hasStructureCoverage
+		structuralSimilarity: coverage.references || coverage.coCitation
 			? Math.min(1, structuralRaw / (COUPLING_WEIGHT + COCITATION_WEIGHT))
 			: null,
+		coverage,
 		coupling: overlapped.cosine,
 		sharedRefs: overlapped.shared,
 		coCitation: cited.score,
@@ -221,7 +227,7 @@ function coCitation(
 	a: string,
 	b: string,
 	contexts: ReadonlyArray<ReadonlySet<string>>,
-): { score: number; both: number } {
+): { score: number; both: number; countA: number; countB: number } {
 	let both = 0;
 	let countA = 0;
 	let countB = 0;
@@ -232,8 +238,8 @@ function coCitation(
 		if (hasB) countB += 1;
 		if (hasA && hasB) both += 1;
 	}
-	if (both === 0 || countA === 0 || countB === 0) return { score: 0, both: 0 };
-	return { score: both / Math.sqrt(countA * countB), both };
+	if (both === 0 || countA === 0 || countB === 0) return { score: 0, both: 0, countA, countB };
+	return { score: both / Math.sqrt(countA * countB), both, countA, countB };
 }
 
 function pairKey(a: string, b: string): string {

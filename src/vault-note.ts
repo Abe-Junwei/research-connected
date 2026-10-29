@@ -1,9 +1,42 @@
 import { TFile, type App } from "obsidian";
-import { indexLiteratureFiles, type IndexedNote } from "./export-graph";
+import { indexLiteratureFiles, matchLiteratureNote, type IndexedNote } from "./export-graph";
 import { tr } from "./i18n";
 import { paperDois, paperRecords } from "./work-identity";
 import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
+import type { ReadingNote } from "./reading-workflow";
+import { normalizeDoi } from "./paper";
+
+export function listReadingNotes(app: App, paper: PaperNode, doiProperty: string): ReadingNote[] {
+	return app.vault.getMarkdownFiles().flatMap(file => {
+		const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter;
+		const raw: unknown = frontmatter?.["rc-status"];
+		return matchLiteratureNote([{ path: file.path, frontmatter }], paper, doiProperty)
+			? [{ path: file.path, raw, revision: `${file.stat.mtime}:${file.stat.size}` }] : [];
+	});
+}
+
+export function listReadingPapers(app: App, doiProperty: string): PaperNode[] {
+	return app.vault.getMarkdownFiles().flatMap(file => {
+		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+		if (!fm || !("rc-status" in fm)) return [];
+		const id = typeof fm.openalex === "string" ? fm.openalex.match(/W\d+/i)?.[0]?.toUpperCase() : undefined;
+		const doi = normalizeDoi(typeof fm[doiProperty] === "string" ? fm[doiProperty] : typeof fm.doi === "string" ? fm.doi : null);
+		if (!id && !doi) return [];
+		return [{ id: id ?? `doi:${doi!}`, title: typeof fm.title === "string" ? fm.title : file.basename, authors: "", authorList: [], year: null, citedByCount: 0, citationCountStatus: "missing" as const, abstract: "", doiUrl: doi ? `https://doi.org/${doi}` : null, openAlexUrl: id ? `https://openalex.org/${id}` : "", isSeed: false, origin: "related" as const, language: null, workType: null, venue: null, retracted: false, concepts: [] }];
+	});
+}
+
+export async function writeReadingNote(app: App, path: string, expected: ReadingNote, reading: ReadingStatus): Promise<string> {
+	const file = app.vault.getAbstractFileByPath(path);
+	if (!(file instanceof TFile)) throw new Error(tr("笔记不存在", "Note is missing"));
+	if (`${file.stat.mtime}:${file.stat.size}` !== expected.revision) throw new Error(tr("笔记已有新修改，请先确认", "Note changed; review before retrying"));
+	await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+		if (JSON.stringify(frontmatter["rc-status"]) !== JSON.stringify(expected.raw)) throw new Error(tr("笔记进度已有新修改，请先确认", "Note progress changed; review before retrying"));
+		frontmatter["rc-status"] = reading;
+	});
+	return `${file.stat.mtime}:${file.stat.size}`;
+}
 
 const remembered = new Map<string, IndexedNote>();
 let indexed: { property: string; byDoi: Map<string, IndexedNote>; byId: Map<string, IndexedNote> } | null = null;

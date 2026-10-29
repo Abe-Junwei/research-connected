@@ -17,11 +17,11 @@
 				--text-muted: #6b7280;
 				--background-modifier-border: #e5e2da;
 				--background-modifier-hover: rgba(60, 64, 70, 0.08);
-				--interactive-accent: #b38b4d;
-				--interactive-accent-hover: #a47a3e;
+				--interactive-accent: #7856c8;
+				--interactive-accent-hover: #6a4cb0;
 				--graph-node: #5c6570;
 				--graph-text: #3a3f45;
-				--graph-node-focused: #b38b4d;
+				--graph-node-focused: #7856c8;
 			}
 			#embed .cpo-bar { padding-right: 80px; }
 			.cpo-theme-toggle {
@@ -75,7 +75,7 @@
 			}
 			p {
 				margin: 0 0 16px;
-				color: #6b7280;
+				color: var(--text-muted, #6b7280);
 				line-height: 1.5;
 			}
 		</style>
@@ -97,9 +97,11 @@
 			</p>
 		</article>
 		<script>
+			const previewChinese = new URLSearchParams(location.search).get("lang") !== "en";
+			document.documentElement.lang = previewChinese ? "zh-Hans" : "en";
 			const previewThemes = {
-				paper: { "--background-primary": "#ffffff", "--background-secondary": "#f6f5f2", "--text-normal": "#3a3f45", "--text-muted": "#6b7280", "--background-modifier-border": "#e5e2da", "--interactive-accent": "#b38b4d", "--graph-node": "#5c6570", "--graph-text": "#3a3f45", "--graph-node-focused": "#b38b4d" },
-				night: { "--background-primary": "#1a1d24", "--background-secondary": "#232833", "--text-normal": "#e6e4df", "--text-muted": "#a8a299", "--background-modifier-border": "rgba(255,255,255,.14)", "--interactive-accent": "#d4a656", "--graph-node": "#d5d0c6", "--graph-text": "#e6e4df", "--graph-node-focused": "#d4a656" },
+				paper: { "--background-primary": "#ffffff", "--background-secondary": "#f6f5f2", "--text-normal": "#3a3f45", "--text-muted": "#6b7280", "--background-modifier-border": "#e5e2da", "--interactive-accent": "#7856c8", "--interactive-accent-hover": "#6a4cb0", "--graph-node": "#5c6570", "--graph-text": "#3a3f45", "--graph-node-focused": "#7856c8" },
+				night: { "--background-primary": "#1a1d24", "--background-secondary": "#232833", "--text-normal": "#e6e4df", "--text-muted": "#a8a299", "--background-modifier-border": "rgba(255,255,255,.14)", "--interactive-accent": "#a994e8", "--interactive-accent-hover": "#b9a6ee", "--graph-node": "#d5d0c6", "--graph-text": "#e6e4df", "--graph-node-focused": "#a994e8" },
 			};
 			const themeToggle = document.getElementById("cpo-theme-toggle");
 			let previewTheme = "paper";
@@ -111,10 +113,10 @@
 				}
 				const dark = next === "night";
 				themeToggle.setAttribute("aria-pressed", String(dark));
-				themeToggle.setAttribute("aria-label", dark ? "切换为浅色" : "切换为深色");
+				themeToggle.setAttribute("aria-label", previewChinese ? (dark ? "切换为浅色" : "切换为深色") : (dark ? "Switch to light theme" : "Switch to dark theme"));
 				window.dispatchEvent(new Event("research-connected-theme"));
 			};
-			themeToggle.setAttribute("aria-label", "切换为深色");
+			themeToggle.setAttribute("aria-label", previewChinese ? "切换为深色" : "Switch to dark theme");
 			themeToggle.addEventListener("click", () => applyPreviewTheme(previewTheme === "paper" ? "night" : "paper"));
 		</script>
 		<script src="./embed.js"></script>

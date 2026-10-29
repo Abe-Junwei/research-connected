@@ -1,13 +1,23 @@
 import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
 import { normalizeDoi, reconstructAbstract, shortId } from "./paper";
-import type { Origin, PaperNode, SearchHit } from "./types";
+import type { Origin, PaperNode, SearchHit, TopicTag } from "./types";
+
+interface RawTopic {
+	id?: string | null;
+	display_name?: string | null;
+	score?: number | null;
+	subfield?: { id?: string | null; display_name?: string | null } | null;
+	field?: { id?: string | null; display_name?: string | null } | null;
+	domain?: { id?: string | null; display_name?: string | null } | null;
+}
 
 export interface RawWork {
 	id?: string;
 	display_name?: string;
 	publication_year?: number | null;
 	cited_by_count?: number;
+	citation_normalized_percentile?: { value?: number | null; is_in_top_1_percent?: boolean | null } | null;
 	doi?: string | null;
 	authorships?: Array<{ author?: { display_name?: string | null } | null } | null> | null;
 	abstract_inverted_index?: Record<string, number[]> | null;
@@ -16,7 +26,8 @@ export interface RawWork {
 	type?: string | null;
 	is_retracted?: boolean;
 	concepts?: Array<{ display_name?: string | null; score?: number | null } | null> | null;
-	topics?: Array<{ id?: string | null; display_name?: string | null; score?: number | null } | null> | null;
+	topics?: Array<RawTopic | null> | null;
+	primary_topic?: RawTopic | null;
 	primary_location?: { source?: { display_name?: string | null } | null } | null;
 	biblio?: { volume?: string | null; issue?: string | null; first_page?: string | null; last_page?: string | null } | null;
 }
@@ -45,18 +56,29 @@ export interface SampledWorks {
 	error?: string;
 }
 
-const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location,biblio";
+const LIST_SELECT = "id,display_name,publication_year,cited_by_count,citation_normalized_percentile,doi,authorships,language,type,is_retracted,primary_topic,topics,concepts,primary_location,biblio";
 const WORK_SELECT = `${LIST_SELECT},abstract_inverted_index,referenced_works,related_works`;
 const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
 
 export class OpenAlexError extends Error {
 	readonly status?: number;
+	readonly retryAfterMs?: number;
 
-	constructor(message: string, status?: number) {
+	constructor(message: string, status?: number, retryAfterMs?: number) {
 		super(message);
 		this.name = "OpenAlexError";
 		this.status = status;
+		this.retryAfterMs = retryAfterMs;
 	}
+}
+
+export function retryAfterMs(headers: Record<string, string>, now = Date.now()): number | undefined {
+	const value = Object.entries(headers).find(([key]) => key.toLowerCase() === "retry-after")?.[1]?.trim();
+	if (!value) return undefined;
+	const seconds = Number(value);
+	if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+	const date = Date.parse(value);
+	return Number.isFinite(date) ? Math.max(0, date - now) : undefined;
 }
 
 export function explainStatus(status: number | undefined): string {
@@ -303,11 +325,16 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 	const title = (raw.display_name ?? "").trim();
 	if (!title) return null;
 	const names = authorNames(raw.authorships);
+	const normalized = raw.citation_normalized_percentile;
+	const percentile = normalized?.value;
 	return {
 		id,
 		title,
 		year: typeof raw.publication_year === "number" ? raw.publication_year : null,
-		citedByCount: typeof raw.cited_by_count === "number" ? raw.cited_by_count : 0,
+		citedByCount: Number.isSafeInteger(raw.cited_by_count) && raw.cited_by_count! >= 0 ? raw.cited_by_count! : 0,
+		citationCountStatus: Number.isSafeInteger(raw.cited_by_count) && raw.cited_by_count! >= 0 ? "known" : "missing",
+		normalizedCitation: typeof percentile === "number" && Number.isFinite(percentile) && percentile >= 0 && percentile <= 1 && typeof normalized?.is_in_top_1_percent === "boolean"
+			? { percentile, top1Percent: normalized.is_in_top_1_percent } : null,
 		authors: formatAuthorNames(names),
 		authorList: names,
 		abstract: reconstructAbstract(raw.abstract_inverted_index),
@@ -327,6 +354,7 @@ export function toPaper(raw: RawWork, origin: Origin): PaperNode | null {
 		retracted: raw.is_retracted === true,
 		concepts: conceptNames(raw.topics, raw.concepts),
 		topicTags: topicTags(raw.topics, raw.concepts),
+		primaryTopic: toTopicTag(raw.primary_topic),
 	};
 }
 
@@ -338,6 +366,7 @@ export function toSearchHit(raw: RawWork): SearchHit | null {
 		title: paper.title,
 		year: paper.year,
 		citedByCount: paper.citedByCount,
+		citationCountStatus: paper.citationCountStatus,
 		authors: paper.authors,
 	};
 }
@@ -370,13 +399,30 @@ function conceptNames(topics: RawWork["topics"], concepts: RawWork["concepts"]):
 	return names;
 }
 
-function topicTags(topics: RawWork["topics"], concepts: RawWork["concepts"]): Array<{ id: string; name: string; score: number }> {
+function classification(value: RawTopic["field"]): TopicTag["field"] {
+	const id = value?.id?.trim();
+	const name = value?.display_name?.trim();
+	return id && name ? { id, name } : undefined;
+}
+
+function toTopicTag(topic: RawTopic | null | undefined): TopicTag | null {
+	const id = topic?.id?.trim();
+	const name = topic?.display_name?.trim();
+	if (!id || !name) return null;
+	return {
+		id, name,
+		score: typeof topic?.score === "number" && Number.isFinite(topic.score) ? Math.max(0, Math.min(1, topic.score)) : 1,
+		subfield: classification(topic?.subfield),
+		field: classification(topic?.field),
+		domain: classification(topic?.domain),
+	};
+}
+
+function topicTags(topics: RawWork["topics"], concepts: RawWork["concepts"]): TopicTag[] {
 	if (topics?.length) {
 		return topics.flatMap((topic) => {
-			const id = topic?.id?.trim();
-			const name = topic?.display_name?.trim();
-			if (!id || !name) return [];
-			return [{ id, name, score: Math.max(0, Math.min(1, topic?.score ?? 1)) }];
+			const tag = toTopicTag(topic);
+			return tag ? [tag] : [];
 		});
 	}
 	return (concepts ?? []).flatMap((concept) => {

@@ -4,7 +4,7 @@ import { type YearHistogram } from "./year-histogram";
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded" | "pending";
 
 let tabPanelSequence = 0;
 
@@ -13,7 +13,7 @@ const CHROME_ICONS = {
 	play: "play", pause: "pause", edit: "pencil", trash: "trash-2",
 	save: "save", project: "folder", views: "layers", refresh: "rotate-cw",
 	fit: "maximize", diagnose: "search", external: "external-link",
-	bookmark: "bookmark", bookmarkCheck: "bookmark-check", read: "book-open",
+	star: "star", bookmark: "bookmark", bookmarkCheck: "bookmark-check", read: "book-open",
 	exclude: "circle-minus", copy: "copy", table: "table", note: "file-text",
 	export: "download", chevronDown: "chevron-down", chevronUp: "chevron-up", chevronRight: "chevron-right",
 	plus: "plus", minus: "minus", back: "chevron-left", filter: "list-filter",
@@ -87,6 +87,7 @@ export interface GraphChrome {
 	setExportText(text: string, showPreview?: boolean): void;
 	copyText(text: string, label: string): Promise<void>;
 	clearExportText(): void;
+	exportOptions(): { mode: "one" | "all"; includeSeedException: boolean };
 	destroy(): void;
 }
 
@@ -302,14 +303,14 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 
 	const tabs: Array<[GraphTab, string]> = [
 		["graph", tr("论文详情", "Paper details")],
-		["prior", tr("先验工作", "Prior work")],
-		["derivative", tr("衍生工作", "Later work")],
+		["prior", tr("图内常引文献", "Frequently cited references")],
+		["derivative", tr("引用本图的文献", "Works citing this graph")],
 	];
 	if (options.researchButton !== undefined) tabs.push(["research", tr("研究脉络", "Research narrative")]);
-	if (options.libraryTab) tabs.push(["staged", tr("暂存与排除", "Saved and excluded")]);
+	if (options.libraryTab) tabs.push(["staged", tr("收藏与排除", "Saved and excluded")]);
 	const tabButtons = new Map<GraphTab, HTMLButtonElement>();
 	const selectTab = (next: GraphTab): void => {
-		const shown: GraphTab = next === "excluded" && tabButtons.has("staged") ? "staged" : next;
+		const shown: GraphTab = (next === "excluded" || next === "pending") && tabButtons.has("staged") ? "staged" : next;
 		for (const [key, item] of tabButtons) {
 			const selected = key === shown;
 			item.classList.toggle("is-on", selected);
@@ -355,6 +356,11 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	exportMenu.append(exportSummary);
 	const exportItems = createDiv();
 	exportItems.className = "cpo-export-items";
+	const versionMode = createEl("select"); versionMode.setAttribute("aria-label", tr("导出版本范围", "Export version range"));
+	for (const [value, text] of [["one", tr("每项一个展示版本", "One displayed version per research")], ["all", tr("所有符合条件的版本", "All eligible versions")]] as const) { const option = createEl("option"); option.value = value; option.textContent = text; versionMode.append(option); }
+	const seedException = createEl("input"); seedException.type = "checkbox";
+	const seedLabel = createEl("label"); seedLabel.append(seedException, document.createTextNode(tr("包含起点例外", "Include seed exception")));
+	exportItems.append(versionMode, seedLabel);
 	const exportHint = createDiv();
 	exportHint.className = "cpo-tool-hint";
 	exportHint.hidden = true;
@@ -391,6 +397,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(exportMenu, output);
 
 	return {
+		exportOptions: () => ({ mode: versionMode.value === "all" ? "all" : "one", includeSeedException: seedException.checked }),
 		setLayout(mode: LayoutMode): void {
 			layoutButtons.get(mode)?.click();
 		},

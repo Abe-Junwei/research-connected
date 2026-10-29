@@ -67,7 +67,7 @@ export function evidenceLabel(evidence: CitationEvidence | null): string {
 	if (!evidence) return tr("暂无额外引用证据", "No additional citation evidence");
 	const labels = evidence.intents.map((intent) => INTENT_TEXT[intent]);
 	if (evidence.influential) labels.push(tr("高影响", "Highly influential"));
-	return labels.length > 0 ? labels.join(" · ") : tr("已确认引用关系，暂无引用意图", "Citation confirmed; intent unavailable");
+	return labels.join(" · ");
 }
 
 const INTENT_TEXT: Record<CitationIntent, string> = {

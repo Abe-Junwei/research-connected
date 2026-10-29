@@ -1,5 +1,5 @@
 import { tr } from "./i18n";
-import { classicInfluence } from "./aggregates";
+import { classicCandidates, classicInfluence, type ClassicEvidence } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import { edgeVisible, focusNodes, nodeVisible, type GraphFilter } from "./graph-filter";
 import { citationLabelAlpha, nodeLabel, type LabelMode } from "./labels";
@@ -8,7 +8,34 @@ import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
 import { channelsFromCss, clearThemeColorCache, rgba, type Rgb } from "./theme-color";
-import { GRAPH_ZOOM_MAX, GRAPH_ZOOM_MIN, citationRadius, clamp, classicBreath, fitViewScale, yearColor, yearNormalizedCitations } from "./visual";
+import { GRAPH_ZOOM_MAX, GRAPH_ZOOM_MIN, citationRadii, clamp, classicBreath, fitViewScale, yearColor } from "./visual";
+
+const INTRO_SPREAD = 2250;
+const INTRO_FADE = 750;
+/** Default sample size. Its reveal stays three seconds; other sizes scale from here. */
+const INTRO_REFERENCE_NODES = 50;
+
+/** Fewer nodes finish sooner. More nodes take longer, up to three times the default. */
+export function introTiming(count: number): { spread: number; fade: number } {
+	const scale = clamp(Math.max(count, 2) / INTRO_REFERENCE_NODES, 0.45, 3);
+	return { spread: Math.round(INTRO_SPREAD * scale), fade: INTRO_FADE };
+}
+
+/** Zoom follows one ease-out curve from the seed to the full graph. No per-node steps. */
+export function introZoom(progress: number, kSeed: number, kFull: number): number {
+	const u = clamp(progress, 0, 1);
+	const s = 1 - (1 - u) * (1 - u);
+	if (!(kSeed > 0) || !(kFull > 0)) return kFull;
+	const radius = (1 - s) / kSeed + s / kFull;
+	return 1 / radius;
+}
+
+/** Seed is fully visible immediately; farther nodes fade in across the reveal. */
+export function introAlpha(elapsed: number, distance: number, span: number, spread = INTRO_SPREAD, fade = INTRO_FADE): number {
+	if (elapsed >= spread + fade) return 1;
+	if (span <= 0 || distance <= 0) return 1;
+	return clamp((elapsed - (distance / span) * spread) / fade, 0, 1);
+}
 
 interface DrawNode extends PaperNode {
 	x: number;
@@ -33,6 +60,7 @@ export class SimilarityMap {
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
 	onEdgeSelect: ((edge: GraphEdge) => void) | null = null;
 	onNodeMenu: ((paper: PaperNode | null, x: number, y: number) => void) | null = null;
+	onEngage: ((engaged: boolean) => void) | null = null;
 	onDeleteRequest: (() => void) | null = null;
 
 	private ctx: CanvasRenderingContext2D | null = null;
@@ -45,12 +73,17 @@ export class SimilarityMap {
 	private cssWidth = 1;
 	private cssHeight = 1;
 	private selectedId: string | null = null;
+	/** Dim unrelated nodes only after the user chooses one. The seed starts selected without this. */
+	private engaged = false;
 	private hoverId: string | null = null;
 	private focus: Set<string> | null = null;
+	private focusId: string | null = null;
+	private focusStarted = 0;
 	private kindVisible: Record<RelationKind, boolean> = { direct: true, cocitation: true, coupling: true, weak: false };
 	private contentFilter: GraphFilter | null = null;
 	private filterNodes = new Map<string, PaperNode>();
 	private labelMode: LabelMode = "author-year";
+	private labelOpacity = new Map<string, { value: number; at: number }>();
 	private dragging: Drag | null = null;
 	private moved = false;
 	private downX = 0;
@@ -64,6 +97,7 @@ export class SimilarityMap {
 	private bgStart = "#ffffff";
 	private bgEnd = "#f7f6f3";
 	private graphNode = "#8a7fd8";
+	private communityPrimary = communityColor(0);
 	private graphNodeFocused = "#4a90d9";
 	private labelMuted = "#6b7280";
 	private ink: Rgb = { r: 90, g: 96, b: 106 };
@@ -81,13 +115,23 @@ export class SimilarityMap {
 	private minYear = 0;
 	private maxYear = 0;
 	private simAlpha = 0;
-	private simFrame: number | null = null;
 	private edgeRest = new Map<string, number>();
 	/** Wheel zoom eases toward this target (pan and pinch stay immediate). */
 	private zoomAnim: { k: number; tx: number; ty: number } | null = null;
-	private zoomFrame: number | null = null;
-	private pulseFrame: number | null = null;
+	private pulsing = false;
+	private tooltipSize: { width: number; height: number } | null = null;
+	private drawFrame: number | null = null;
 	private wheelNeedsModifier = false;
+	/** performance.now() when a freshly built graph started revealing from the seed; 0 when idle. */
+	private introAt = 0;
+	/** True until the build turn finishes. Synchronous layout must not start the clock. */
+	private introHold = false;
+	private introQueued = false;
+	private introSeedX = 0;
+	private introSeedY = 0;
+	private introSpan = 0;
+	private introSpread = INTRO_SPREAD;
+	private introFade = INTRO_FADE;
 
 	private setCursor(cursor: "grab" | "grabbing" | "pointer"): void {
 		this.canvas.classList.toggle("is-pointer", cursor === "pointer");
@@ -104,6 +148,7 @@ export class SimilarityMap {
 	}
 
 	setViewState(state: { zoom: number; centerX: number; centerY: number; selectedId: string | null }): void {
+		this.zoomAnim = null;
 		this.k = clamp(state.zoom, GRAPH_ZOOM_MIN, GRAPH_ZOOM_MAX);
 		this.tx = this.cssWidth / 2 - state.centerX * this.k;
 		this.ty = this.cssHeight / 2 - state.centerY * this.k;
@@ -148,7 +193,14 @@ export class SimilarityMap {
 		this.bindMotion();
 	}
 
-	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>): void {
+	private referenceLists: ReadonlyMap<string, readonly string[]> | undefined;
+
+	classicEvidence(id: string): ClassicEvidence | undefined {
+		return classicCandidates(this.nodes, this.edges, undefined, this.referenceLists).get(id);
+	}
+
+	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, referenceLists?: ReadonlyMap<string, readonly string[]>): void {
+		this.referenceLists = referenceLists;
 		this.simAlpha = 0;
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
@@ -156,15 +208,22 @@ export class SimilarityMap {
 		this.seedScore = seedScore;
 		this.edges = edges;
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
-		this.classicGlow = classicInfluence(nodes, edges);
-		this.ensurePulse();
+		this.classicGlow = classicInfluence(nodes, edges, undefined, this.referenceLists);
 		// 不重置 layoutMode：布局由应用层（chrome 按钮）持有，建图后回灌。
 		this.scrubYear = null;
+		// 列表和详情还在这次调用栈里同步绘制。时钟若现在开始，等浏览器真正露出画布时展开已经结束。
+		this.introAt = 0;
+		this.introSpread = INTRO_SPREAD;
+		this.introFade = INTRO_FADE;
+		this.introHold = !this.reducedMotion && nodes.length >= 2;
 		this.rebuild(nodes, true);
+		if (this.introHold) this.armIntro();
+		this.ensurePulse();
 	}
 
 	/** Keep existing coordinates by default; reflow and fit after removals/restores when requested. */
-	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string, reflow = false): void {
+	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string, reflow = false, referenceLists?: ReadonlyMap<string, readonly string[]>): void {
+		this.referenceLists = referenceLists;
 		const prev = new Map(this.nodes.map((node) => [node.id, node]));
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
@@ -172,15 +231,12 @@ export class SimilarityMap {
 		this.seedScore = seedScore;
 		this.edges = edges;
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
-		this.classicGlow = classicInfluence(nodes, edges);
-		this.ensurePulse();
+		this.classicGlow = classicInfluence(nodes, edges, undefined, this.referenceLists);
 		const host = nearId ? prev.get(nearId) : null;
-		const placed = reflow || !host
+		const placed = reflow || !host && nodes.some(node => !prev.has(node.id))
 			? new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]))
 			: null;
-		const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year));
-		const minCited = Math.min(...norms);
-		const maxCited = Math.max(...norms);
+		const radii = citationRadii(nodes);
 		this.nodes = nodes.map((node, index) => {
 			const old = prev.get(node.id);
 			const at = placed?.get(node.id);
@@ -193,12 +249,13 @@ export class SimilarityMap {
 				y,
 				homeX: x,
 				homeY: y,
-				radius: at?.radius ?? citationRadius(norms[index] ?? 0, minCited, maxCited, node.isSeed),
+				radius: at?.radius ?? radii[index]!,
 				color: this.colorOf(node),
 				shown: this.isShown(node),
 			};
 		});
 		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
+		this.ensurePulse();
 		this.captureStructure();
 		if (this.selectedId && !this.nodes.some((node) => node.id === this.selectedId)) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
@@ -216,10 +273,11 @@ export class SimilarityMap {
 	 * Swap in enriched edges (e.g. OpenCitations gap-filling) without touching
 	 * layout mode, color mode, scrub year, node positions, or the view transform.
 	 */
-	updateGraphData(edges: GraphEdge[]): void {
+	updateGraphData(edges: GraphEdge[], referenceLists = this.referenceLists): void {
+		this.referenceLists = referenceLists;
 		this.edges = edges;
 		this.communities = detectCommunities(this.nodes.map((node) => node.id), edges);
-		this.classicGlow = classicInfluence(this.nodes, edges);
+		this.classicGlow = classicInfluence(this.nodes, edges, undefined, this.referenceLists);
 		this.ensurePulse();
 		this.maxWeight = edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		this.recolor();
@@ -235,6 +293,7 @@ export class SimilarityMap {
 	}
 
 	setLayout(mode: LayoutMode): void {
+		this.simAlpha = 0;
 		this.layoutMode = mode;
 		this.readTheme();
 		this.rebuild(this.nodes, false);
@@ -294,14 +353,40 @@ export class SimilarityMap {
 		this.draw();
 	}
 
+	/** Drop the selection dim and show every node again. The seed marker stays. */
+	clearFocus(): void {
+		this.hoverId = null;
+		this.setEngaged(false);
+		this.draw();
+	}
+
+	focusPaper(id: string): void {
+		const node = this.nodes.find((item) => item.id === id);
+		if (!node) return;
+		this.adjusted = true;
+		this.setViewState({ ...this.getViewState(), centerX: node.x, centerY: node.y, selectedId: id });
+	}
+
+	private setEngaged(value: boolean): void {
+		const changed = this.engaged !== value;
+		this.engaged = value;
+		this.refreshFocus();
+		if (changed) this.onEngage?.(value);
+	}
+
 	private refreshFocus(): void {
-		const id = this.hoverId ?? this.selectedId;
+		const id = this.hoverId ?? (this.engaged ? this.selectedId : null);
+		if (id !== this.focusId) {
+			this.focusId = id;
+			this.focusStarted = performance.now();
+		}
 		this.focus = id
 			? focusNodes(id, this.edges, (edge) => this.edgeShown(edge))
 			: null;
 	}
 
 	resize(): void {
+		this.tooltipSize = null;
 		const stageRect = this.stage.getBoundingClientRect();
 		const dpr = window.devicePixelRatio || 1;
 		const width = Math.max(1, Math.round(stageRect.width));
@@ -309,6 +394,10 @@ export class SimilarityMap {
 		// Keep world point at the old center; do not refit — panel collapse must not rezoom.
 		const cx = (this.cssWidth / 2 - this.tx) / this.k;
 		const cy = (this.cssHeight / 2 - this.ty) / this.k;
+		if (this.zoomAnim) {
+			this.zoomAnim.tx += (width - this.cssWidth) / 2;
+			this.zoomAnim.ty += (height - this.cssHeight) / 2;
+		}
 		this.cssWidth = width;
 		this.cssHeight = height;
 		this.tx = width / 2 - cx * this.k;
@@ -326,6 +415,7 @@ export class SimilarityMap {
 		this.fontFamily = getComputedStyle(this.stage).fontFamily || "sans-serif";
 		this.readTheme();
 		this.draw();
+		if (this.introHold) this.armIntro();
 	}
 
 	zoomBy(factor: number): void {
@@ -359,6 +449,30 @@ export class SimilarityMap {
 		return { minX, minY, maxX, maxY };
 	}
 
+	/** Zoom around the seed. The scale follows the reveal, and the seed stays centered. */
+	private frameRevealed(): void {
+		if (this.adjusted || this.cssWidth < 2 || this.cssHeight < 2) return;
+		this.zoomAnim = null;
+		const seed = this.nodes.find((node) => node.isSeed);
+		const cx = seed?.x ?? this.introSeedX;
+		const cy = seed?.y ?? this.introSeedY;
+		let span = 0;
+		let maxRadius = seed?.radius ?? 8;
+		for (const node of this.nodes) {
+			if (!node.shown) continue;
+			maxRadius = Math.max(maxRadius, node.radius);
+			span = Math.max(span, Math.hypot(node.x - cx, node.y - cy));
+		}
+		const seedRadius = Math.max(seed?.radius ?? 8, 1);
+		const kSeed = fitViewScale(this.cssWidth, this.cssHeight, seedRadius * 2, seedRadius * 2);
+		const kFull = fitViewScale(this.cssWidth, this.cssHeight, Math.max(seedRadius, span + maxRadius) * 2, Math.max(seedRadius, span + maxRadius) * 2);
+		const elapsed = this.introAt ? performance.now() - this.introAt : this.introSpread;
+		const progress = elapsed / Math.max(1, this.introSpread);
+		this.k = introZoom(progress, kSeed, kFull);
+		this.tx = this.cssWidth / 2 - cx * this.k;
+		this.ty = this.cssHeight / 2 - cy * this.k;
+	}
+
 	private physicsOn(): boolean {
 		return this.layoutMode === "force2d";
 	}
@@ -366,20 +480,7 @@ export class SimilarityMap {
 	private reheat(alpha: number): void {
 		if (!this.physicsOn() || this.nodes.length > 350) return;
 		this.simAlpha = Math.max(this.simAlpha, alpha);
-		if (this.simFrame !== null) return;
-		const step = (): void => {
-			if (!this.alive || this.simAlpha < 0.02) {
-				this.simFrame = null;
-				this.simAlpha = 0;
-				this.captureStructure();
-				return;
-			}
-			this.tick(this.simAlpha);
-			this.simAlpha *= this.dragging?.kind === "node" ? 0.985 : 0.94;
-			this.draw();
-			this.simFrame = this.raf(step);
-		};
-		this.simFrame = this.raf(step);
+		this.requestDraw();
 	}
 
 	private captureStructure(): void {
@@ -512,8 +613,7 @@ export class SimilarityMap {
 	}
 
 	private stopPulse(): void {
-		if (this.pulseFrame !== null) this.caf(this.pulseFrame);
-		this.pulseFrame = null;
+		this.pulsing = false;
 	}
 
 	private readTheme(): void {
@@ -530,33 +630,24 @@ export class SimilarityMap {
 		const paperLum = (paper.r * 299 + paper.g * 587 + paper.b * 114) / 1000;
 		this.night = paperLum < 140;
 		this.canvas.closest(".cpo-surface")?.classList.toggle("is-night-canvas", this.night);
+		this.communityPrimary = themeColor(canvasStyles.getPropertyValue("--cpo-community-primary"), communityColor(0));
 		this.graphNode = themeColor(canvasStyles.getPropertyValue("--graph-node"), rgba(this.ink, 1));
 		this.graphNodeFocused = themeColor(canvasStyles.getPropertyValue("--graph-node-focused") || accent, rgba(this.accent, 1));
 		this.labelMuted = themeColor(canvasStyles.getPropertyValue("--text-muted"), "#6b7280");
 		this.recolor();
+		this.ensurePulse();
 	}
 
 	private ensurePulse(): void {
-		if (this.reducedMotion || this.pulseFrame !== null || this.classicGlow.size === 0) return;
-		const step = (): void => {
-			if (!this.alive || this.classicGlow.size === 0) {
-				this.pulseFrame = null;
-				return;
-			}
-			this.draw();
-			this.pulseFrame = this.raf(step);
-		};
-		this.pulseFrame = this.raf(step);
+		this.pulsing = !this.reducedMotion && this.nodes.some(node => this.night || this.classicGlow.has(node.id));
+		if (this.pulsing) this.requestDraw();
 	}
 
 	destroy(): void {
 		this.alive = false;
-		if (this.simFrame !== null) this.caf(this.simFrame);
-		if (this.zoomFrame !== null) this.caf(this.zoomFrame);
-		if (this.pulseFrame !== null) this.caf(this.pulseFrame);
-		this.simFrame = null;
-		this.zoomFrame = null;
-		this.pulseFrame = null;
+		this.pulsing = false;
+		if (this.drawFrame !== null) this.caf(this.drawFrame);
+		this.drawFrame = null;
 		if (this.motionQuery && this.onMotion) this.motionQuery.removeEventListener("change", this.onMotion);
 		this.motionQuery = null;
 		this.onMotion = null;
@@ -575,37 +666,13 @@ export class SimilarityMap {
 
 	private zoomAt(sx: number, sy: number, factor: number): void {
 		this.adjusted = true;
-		const next = clamp(this.k * factor, GRAPH_ZOOM_MIN, GRAPH_ZOOM_MAX);
-		const world = this.screenToWorld(sx, sy);
+		const base = this.zoomAnim ?? { k: this.k, tx: this.tx, ty: this.ty };
+		const next = clamp(base.k * factor, GRAPH_ZOOM_MIN, GRAPH_ZOOM_MAX);
+		const world = { x: (sx - base.tx) / base.k, y: (sy - base.ty) / base.k };
 		// Ease toward the target like the Obsidian graph; rapid wheel ticks just
 		// move the target, and one rAF loop converges on it.
 		this.zoomAnim = { k: next, tx: sx - world.x * next, ty: sy - world.y * next };
-		if (this.zoomFrame !== null) return;
-		const step = (): void => {
-			const target = this.zoomAnim;
-			if (!this.alive || !target) {
-				this.zoomFrame = null;
-				return;
-			}
-			const dk = target.k - this.k;
-			const dtx = target.tx - this.tx;
-			const dty = target.ty - this.ty;
-			if (Math.abs(dk) < 0.002 && Math.abs(dtx) < 0.5 && Math.abs(dty) < 0.5) {
-				this.k = target.k;
-				this.tx = target.tx;
-				this.ty = target.ty;
-				this.zoomAnim = null;
-				this.zoomFrame = null;
-				this.draw();
-				return;
-			}
-			this.k += dk * 0.3;
-			this.tx += dtx * 0.3;
-			this.ty += dty * 0.3;
-			this.draw();
-			this.zoomFrame = this.raf(step);
-		};
-		this.zoomFrame = this.raf(step);
+		this.requestDraw();
 	}
 
 	private onWheel = (event: WheelEvent): void => {
@@ -703,7 +770,7 @@ export class SimilarityMap {
 		this.moved = true;
 		this.adjusted = true;
 		this.hideTooltip();
-		this.draw();
+		this.requestDraw();
 	}
 
 	private onPointerMove = (event: PointerEvent): void => {
@@ -723,7 +790,7 @@ export class SimilarityMap {
 			if (nextHover !== this.hoverId) {
 				this.hoverId = nextHover;
 				this.refreshFocus();
-				this.draw();
+				this.requestDraw();
 			}
 			this.setCursor(hit ? "pointer" : "grab");
 			this.placeTooltip(hit, local.x, local.y);
@@ -748,7 +815,7 @@ export class SimilarityMap {
 			this.setCursor("grabbing");
 		}
 		this.hideTooltip();
-		this.draw();
+		this.requestDraw();
 	};
 
 	private onPointerUp = (event: PointerEvent): void => {
@@ -780,12 +847,14 @@ export class SimilarityMap {
 		if (dragging.kind === "node") {
 			const node = this.nodes.find((item) => item.id === dragging.id) ?? null;
 			this.selectedId = node?.id ?? null;
+			this.setEngaged(node !== null);
 			this.onSelect?.(node);
 		} else {
 			const local = this.localPoint(this.downX, this.downY);
 			const node = this.hit(local.x, local.y);
 			if (node) {
 				this.selectedId = node.id;
+				this.setEngaged(true);
 				this.onSelect?.(node);
 				this.draw();
 				return;
@@ -795,7 +864,7 @@ export class SimilarityMap {
 			for (const edge of this.edges) {
 				if (!this.edgeShown(edge)) continue;
 				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
-				if (!a || !b || !this.isShown(a) || !this.isShown(b)) continue;
+				if (!a || !b || !this.isShown(a) || !this.isShown(b) || this.introOf(a) <= 0 || this.introOf(b) <= 0) continue;
 				const dx = b.x-a.x, dy = b.y-a.y;
 				const t = Math.max(0, Math.min(1, ((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy || 1)));
 				const d = Math.hypot(p.x-a.x-t*dx, p.y-a.y-t*dy);
@@ -803,6 +872,7 @@ export class SimilarityMap {
 			}
 			if (closest && this.onEdgeSelect) { this.onEdgeSelect(closest); return; }
 			this.selectedId = null;
+			this.setEngaged(false);
 			this.onSelect?.(null);
 		}
 		this.draw();
@@ -831,7 +901,7 @@ export class SimilarityMap {
 			event.stopPropagation();
 			this.selectedId = null;
 			this.hoverId = null;
-			this.refreshFocus();
+			this.setEngaged(false);
 			this.onSelect?.(null);
 			this.draw();
 			return;
@@ -853,7 +923,7 @@ export class SimilarityMap {
 				const dx = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
 				const dy = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
 				const next = this.nodes
-					.filter((node) => node.shown && node.id !== current.id)
+					.filter((node) => node.shown && this.introOf(node) > 0 && node.id !== current.id)
 					.map((node) => {
 						const vx = node.x - current.x;
 						const vy = node.y - current.y;
@@ -865,7 +935,7 @@ export class SimilarityMap {
 					.sort((a, b) => a.score - b.score)[0]?.node;
 				if (next) {
 					this.selectedId = next.id;
-					this.refreshFocus();
+					this.setEngaged(true);
 					this.onSelect?.(next);
 					this.draw();
 				}
@@ -902,9 +972,12 @@ export class SimilarityMap {
 			return;
 		}
 		this.tooltip.hidden = false;
-		this.tooltip.textContent = node.title;
-		const width = this.tooltip.offsetWidth || 180;
-		const height = this.tooltip.offsetHeight || 32;
+		if (this.tooltip.textContent !== node.title) {
+			this.tooltip.textContent = node.title;
+			this.tooltipSize = null;
+		}
+		this.tooltipSize ??= { width: this.tooltip.offsetWidth || 180, height: this.tooltip.offsetHeight || 32 };
+		const { width, height } = this.tooltipSize;
 		const left = x + width + 16 > this.cssWidth ? Math.max(8, x - width - 12) : x + 14;
 		const top = y + height + 16 > this.cssHeight ? Math.max(8, y - height - 10) : y + 14;
 		this.tooltip.style.left = `${left}px`;
@@ -912,14 +985,16 @@ export class SimilarityMap {
 	}
 
 	private hideTooltip(): void {
+		if (this.tooltip.hidden) return;
 		this.tooltip.hidden = true;
 		this.tooltip.textContent = "";
+		this.tooltipSize = null;
 	}
 
 	private hit(sx: number, sy: number): DrawNode | null {
 		for (let i = this.nodes.length - 1; i >= 0; i--) {
 			const node = this.nodes[i];
-			if (!node || !node.shown) continue;
+			if (!node || !node.shown || this.introOf(node) <= 0) continue;
 			const x = node.x * this.k + this.tx;
 			const y = node.y * this.k + this.ty;
 			const dx = sx - x;
@@ -952,7 +1027,43 @@ export class SimilarityMap {
 		return { x: clientX - rect.left, y: clientY - rect.top };
 	}
 
+	/** Coalesce pointer, zoom, physics and twinkle updates into one paint per frame. */
+	private requestDraw(): void {
+		if (!this.alive || this.drawFrame !== null) return;
+		this.drawFrame = this.raf(() => {
+			this.drawFrame = null;
+			const target = this.zoomAnim;
+			if (target) {
+				const dk = target.k - this.k, dtx = target.tx - this.tx, dty = target.ty - this.ty;
+				if (Math.abs(dk) < 0.002 && Math.abs(dtx) < 0.5 && Math.abs(dty) < 0.5) {
+					this.k = target.k; this.tx = target.tx; this.ty = target.ty;
+					this.zoomAnim = null;
+				} else {
+					this.k += dk * 0.3; this.tx += dtx * 0.3; this.ty += dty * 0.3;
+				}
+			}
+			if (this.simAlpha > 0) {
+				if (this.simAlpha < 0.02) {
+					this.simAlpha = 0;
+					this.captureStructure();
+				} else {
+					this.tick(this.simAlpha);
+					this.simAlpha *= this.dragging?.kind === "node" ? 0.985 : 0.94;
+				}
+			}
+			this.draw();
+			if (this.pulsing || this.zoomAnim || this.simAlpha > 0 || this.introAt) this.requestDraw();
+		});
+	}
+
 	private draw(): void {
+		if (this.alive) this.syncIntro();
+		const data = this.canvas.dataset;
+		if (data) {
+			data.zoom = this.k.toFixed(3);
+			data.selected = this.selectedId ?? "";
+			data.focus = this.focus ? "1" : "";
+		}
 		const ctx = this.ctx;
 		if (!ctx || !this.alive) return;
 		const width = this.cssWidth;
@@ -975,39 +1086,72 @@ export class SimilarityMap {
 		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
+		const focusEdges = this.night && focus !== null ? this.edges.filter(edge =>
+			(edge.source === this.focusId || edge.target === this.focusId) &&
+			byId.get(edge.source)?.shown && byId.get(edge.target)?.shown && this.edgeShown(edge),
+		).length : 0;
+		const glowAlpha = 0.13 * Math.sqrt(8 / Math.max(8, focusEdges));
+		const reveal = this.reducedMotion ? 1 : clamp((performance.now() - this.focusStarted) / 180, 0, 1);
 		ctx.lineCap = "round";
 		for (const edge of this.edges) {
 			const a = byId.get(edge.source);
 			const b = byId.get(edge.target);
 			if (!a || !b || !a.shown || !b.shown) continue;
+			const appear = Math.min(this.introOf(a), this.introOf(b));
+			if (appear <= 0) continue;
 			const kind = relationKind(edge);
 			if (!this.edgeShown(edge)) continue;
 			const dimmed = focus !== null && !(focus.has(edge.source) && focus.has(edge.target));
-			const focused = focus !== null && !dimmed;
+			const focused = focus !== null && !dimmed && (!this.night || edge.source === this.focusId || edge.target === this.focusId);
 			const ax = a.x * this.k + this.tx;
 			const ay = a.y * this.k + this.ty;
 			const bx = b.x * this.k + this.tx;
 			const by = b.y * this.k + this.ty;
-			// 默认对齐 Obsidian 图谱：细、浅、中性灰；聚焦时才按关系类型着色。
+			const distance = Math.hypot(bx - ax, by - ay);
+			const clearance = this.night && distance > 0 ? Math.min(0.65, distance * 0.9 / (a.radius + b.radius)) : 0;
+			const ux = distance > 0 ? (bx - ax) / distance : 0;
+			const uy = distance > 0 ? (by - ay) / distance : 0;
+			// Dark constellation outlines stay below stars; focus retains relationship colors.
 			const sameCommunity = this.communities.get(edge.source) === this.communities.get(edge.target);
+			const relatedness = clamp(edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight, 0, 1);
 			const strokeStyle = dimmed
-				? rgba(this.ink, 0.08)
+				? rgba(this.ink, this.night ? 0.035 : 0.08)
 				: focused
-					? hexRgba(RELATION_COLOR[kind], 0.85)
-					: sameCommunity
+					? hexRgba(RELATION_COLOR[kind], this.night ? 0.72 : 0.85)
+					: this.night
+						? rgba({ r: 155, g: 177, b: 215 }, (sameCommunity ? 0.24 : 0.14) + 0.12 * Math.sqrt(relatedness))
+						: sameCommunity
 						? rgba(this.ink, 0.28)
 						: rgba(this.ink, 0.14);
 			ctx.beginPath();
-			ctx.moveTo(ax, ay);
-			ctx.lineTo(bx, by);
+			ctx.moveTo(ax + ux * a.radius * clearance, ay + uy * a.radius * clearance);
+			ctx.lineTo(bx - ux * b.radius * clearance, by - uy * b.radius * clearance);
 			ctx.strokeStyle = strokeStyle;
-			const relatedness = clamp(edge.structuralSimilarity === null ? 0 : edge.structuralSimilarity ?? edge.weight, 0, 1);
-			ctx.lineWidth = clamp(0.55 + Math.sqrt(relatedness) * 1.4 + (focused ? 0.35 : 0), 0.55, 2.2);
+			ctx.lineWidth = this.night
+				? focused ? 1 + Math.sqrt(relatedness) * 0.3 : 0.5 + Math.sqrt(relatedness) * 0.5
+				: clamp(0.55 + Math.sqrt(relatedness) * 1.4 + (focused ? 0.35 : 0), 0.55, 2.2);
+			if (this.night && focused) {
+				const tint = channelsFromCss(strokeStyle, this.ink);
+				const pale = { r: tint.r * 0.65 + 220 * 0.35, g: tint.g * 0.65 + 230 * 0.35, b: tint.b * 0.65 + 250 * 0.35 };
+				const outline = ctx.createLinearGradient(ax, ay, bx, by);
+				outline.addColorStop(0, rgba(pale, 0.18));
+				outline.addColorStop(0.2, rgba(pale, 0.82));
+				outline.addColorStop(0.8, rgba(pale, 0.82));
+				outline.addColorStop(1, rgba(pale, 0.18));
+				ctx.strokeStyle = outline;
+				const coreWidth = ctx.lineWidth;
+				ctx.globalAlpha = glowAlpha * reveal * appear;
+				ctx.lineWidth = 3;
+				ctx.stroke();
+				ctx.lineWidth = coreWidth;
+				ctx.globalAlpha = (0.35 + 0.65 * reveal) * appear;
+			} else ctx.globalAlpha = appear;
 			ctx.stroke();
+			ctx.globalAlpha = appear;
 			if (kind !== "direct") continue;
 			ctx.fillStyle = strokeStyle;
-			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * this.k);
-			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * this.k);
+			if (edge.direct === "source-cites-target" || edge.direct === "mutual") strokeArrow(ctx, ax, ay, bx, by, b.radius * (this.night ? 1 : this.k), this.night, focused);
+			if (edge.direct === "target-cites-source" || edge.direct === "mutual") strokeArrow(ctx, bx, by, ax, ay, a.radius * (this.night ? 1 : this.k), this.night, focused);
 		}
 
 		const ordered = [...this.nodes].sort((a, b) => a.radius - b.radius || (a.isSeed ? 1 : 0) - (b.isSeed ? 1 : 0));
@@ -1024,15 +1168,16 @@ export class SimilarityMap {
 		const span = Math.max(1, yearSpan);
 		const yearBand = this.stage.parentElement?.querySelector<HTMLElement>(".cpo-year-band:not([hidden])");
 		const bars = yearBand?.querySelector<HTMLElement>(".cpo-year-bars");
+		const labelY = yearBand
+			? Math.min(this.cssHeight - 7, yearBand.getBoundingClientRect().top - this.canvas.getBoundingClientRect().top - 6)
+			: this.cssHeight - 7;
 		if (bars) {
 			const offset = bars.getBoundingClientRect().left - this.canvas.getBoundingClientRect().left;
 			bars.style.setProperty("--year-origin", `${(yearSpan === 0 ? 0 : -width / 2) * this.k + this.tx - offset}px`);
 			bars.style.setProperty("--year-step", `${yearSpan === 0 ? 0 : width / span * this.k}px`);
 			bars.style.setProperty("--year-min", String(this.minYear));
 		}
-		const labelY = yearBand
-			? Math.min(this.cssHeight - 7, yearBand.getBoundingClientRect().top - this.canvas.getBoundingClientRect().top - 6)
-			: this.cssHeight - 7;
+
 		const bottom = labelY - 19;
 		const top = 24;
 		const ticks = [...new Set([this.minYear, Math.round((this.minYear + this.maxYear) / 2), this.maxYear])];
@@ -1066,9 +1211,32 @@ export class SimilarityMap {
 		const x = node.x * this.k + this.tx;
 		const y = node.y * this.k + this.ty;
 		const radius = node.radius + (node.id === this.hoverId ? 1.6 : 0);
+		const extent = radius + 32; // Include the longest rays, halos and selection rings.
+		if (x + extent < 0 || y + extent < 0 || x - extent > this.cssWidth || y - extent > this.cssHeight) return;
 		const dimmed = this.focus !== null && !this.focus.has(node.id);
-		if (dimmed) ctx.globalAlpha = 0.25;
-		if (node.isSeed) {
+		const active = node.id === this.hoverId || node.id === this.selectedId;
+		const classic = this.classicGlow.has(node.id) && !node.isSeed;
+		const importance = node.isSeed ? 1 : this.classicGlow.get(node.id) ?? 0;
+		const moving = !this.reducedMotion;
+		const detail = this.night ? active || classic ? 1 : clamp((this.k - 0.25) / 1.25, 0.15, 1) : 1;
+		const beat = (classic || this.night && node.isSeed) && moving ? classicBreath(node.id, performance.now() * (this.night ? classic ? 0.7 : 0.45 : 1)) : 0;
+		const twinkleFloor = classic ? 0.6 : 0.3;
+		const twinkle = this.night && moving ? twinkleFloor + (1 - twinkleFloor) * classicBreath(node.id, performance.now() * 0.5) : 1;
+		const color = this.colorMode === "graph" && active ? this.graphNodeFocused : node.color;
+		const appear = this.introOf(node);
+		if (appear <= 0) return;
+		ctx.globalAlpha = (dimmed ? 0.25 : 1) * twinkle * appear;
+		if (this.night) {
+			const halo = (node.isSeed ? 10 + 2 * beat : classic ? 4 + 3 * beat : 3) * detail;
+			const glow = ctx.createRadialGradient(x, y, 0, x, y, radius + halo);
+			glow.addColorStop(0, withAlpha(color, (node.isSeed ? 0.5 : classic ? 0.3 + 0.08 * beat : 0.24) * detail));
+			glow.addColorStop(0.45, withAlpha(color, 0.12 * detail));
+			glow.addColorStop(1, withAlpha(color, 0));
+			ctx.fillStyle = glow;
+			ctx.beginPath();
+			ctx.arc(x, y, radius + halo, 0, Math.PI * 2);
+			ctx.fill();
+		} else if (node.isSeed) {
 			const glow = ctx.createRadialGradient(x, y, radius, x, y, radius + 22);
 			glow.addColorStop(0, rgba(this.accent, 0.22));
 			glow.addColorStop(1, rgba(this.accent, 0));
@@ -1079,30 +1247,97 @@ export class SimilarityMap {
 		}
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
-		const active = node.id === this.hoverId || node.id === this.selectedId;
-		const classic = this.classicGlow.has(node.id) && !node.isSeed;
-		const beat = classic && !this.reducedMotion ? classicBreath(node.id) : 0;
-		ctx.fillStyle = this.colorMode === "graph" && active ? this.graphNodeFocused : node.color;
+		if (this.night) {
+			const tint = channelsFromCss(color, this.accent);
+			// Artistic warm/cool tint, not a temperature inferred from paper data.
+			const warmth = clamp((tint.r - tint.b) / 160, -1, 1);
+			const stellar = warmth < 0
+				? { r: 255 + 95 * warmth, g: 245 + 45 * warmth, b: 235 - 20 * warmth }
+				: { r: 255, g: 245 - 65 * warmth, b: 235 - 115 * warmth };
+			const violet = clamp((Math.min(tint.r, tint.b) - tint.g) / 60, 0, 1);
+			stellar.r += (207 - stellar.r) * violet;
+			stellar.g += (164 - stellar.g) * violet;
+			stellar.b += (255 - stellar.b) * violet;
+			const core = ctx.createRadialGradient(x, y, 0, x, y, radius);
+			const nucleus = clamp(1.2 / radius, 0.05, 0.24);
+			core.addColorStop(0, rgba({ r: 235 + stellar.r * 0.08, g: 235 + stellar.g * 0.08, b: 235 + stellar.b * 0.08 }, 1));
+			core.addColorStop(nucleus * 0.5, rgba(stellar, 1));
+			core.addColorStop(nucleus, rgba({ r: stellar.r * 0.55 + tint.r * 0.45, g: stellar.g * 0.55 + tint.g * 0.45, b: stellar.b * 0.55 + tint.b * 0.45 }, 1));
+			core.addColorStop(0.35, withAlpha(color, 0.85));
+			core.addColorStop(0.7, withAlpha(color, 0.25));
+			core.addColorStop(1, withAlpha(color, 0));
+			ctx.fillStyle = core;
+		} else ctx.fillStyle = color;
 		ctx.fill();
+		if (this.night && node.isSeed) {
+			// Optical diffraction detail belongs to bright stars, not every data point.
+			const axes = importance >= 0.7 ? 4 : 2;
+			for (let axis = 0; axis < axes; axis++) {
+				const angle = 0.25 + axis * Math.PI / axes;
+				const reach = (radius + (4 + importance * 12) * detail) * (0.9 + 0.1 * beat) * (axis % 2 ? 0.65 : 1);
+				const dx = Math.cos(angle) * reach;
+				const dy = Math.sin(angle) * reach;
+				const ray = ctx.createLinearGradient(x - dx, y - dy, x + dx, y + dy);
+				ray.addColorStop(0, withAlpha(color, 0));
+				ray.addColorStop(0.5, withAlpha(color, (0.3 + 0.3 * importance + 0.12 * beat) * detail));
+				ray.addColorStop(1, withAlpha(color, 0));
+				ctx.beginPath();
+				ctx.moveTo(x - dx, y - dy);
+				ctx.lineTo(x + dx, y + dy);
+				ctx.strokeStyle = ray;
+				ctx.lineWidth = 0.6 + importance * 0.7;
+				ctx.stroke();
+			}
+		}
+		if (this.night && classic) {
+			const axes = importance >= 0.7 ? 4 : 2;
+			const tint = channelsFromCss(color, this.accent);
+			const rayColor = { r: (tint.r + 255) / 2, g: (tint.g + 255) / 2, b: (tint.b + 255) / 2 };
+			for (let axis = 0; axis < axes; axis++) {
+				const angle = 0.25 + axis * Math.PI / axes;
+				const reach = (radius + 9 + importance * 5 + 4 * beat) * (axis % 2 ? 0.8 : 1);
+				const dx = Math.cos(angle) * reach;
+				const dy = Math.sin(angle) * reach;
+				const ray = ctx.createLinearGradient(x - dx, y - dy, x + dx, y + dy);
+				ray.addColorStop(0, rgba(rayColor, 0));
+				ray.addColorStop(0.3, rgba(rayColor, 0.16 + 0.06 * beat));
+				ray.addColorStop(0.5, rgba(rayColor, 0.7 + 0.2 * beat));
+				ray.addColorStop(0.7, rgba(rayColor, 0.16 + 0.06 * beat));
+				ray.addColorStop(1, rgba(rayColor, 0));
+				ctx.beginPath();
+				ctx.moveTo(x - dx, y - dy);
+				ctx.lineTo(x + dx, y + dy);
+				ctx.strokeStyle = ray;
+				ctx.lineWidth = 3;
+				const alpha = ctx.globalAlpha;
+				ctx.globalAlpha *= 0.22;
+				ctx.stroke();
+				ctx.globalAlpha = alpha;
+				ctx.lineWidth = 1;
+				ctx.stroke();
+			}
+		}
 		// 峰值时淡化描边，让光晕从盘缘融出去。普通圆点不加外圈。
-		if (classic) {
+		if (classic && !this.night) {
 			ctx.lineWidth = 1;
 			ctx.strokeStyle = withAlpha(shadeColor(node.color, 0.85), Math.max(0.08, 1 - 0.92 * beat));
 			ctx.stroke();
 		}
-		if (classic) {
+		if (classic && !this.night) {
 			drawClassicSelfGlow(ctx, x, y, radius, node.color, beat, this.classicGlow.get(node.id) ?? 0);
 		}
+		ctx.globalAlpha = (dimmed ? 0.25 : 1) * appear;
 		if (node.isSeed) {
 			ctx.beginPath();
 			ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
 			ctx.lineWidth = 1.6;
 			ctx.strokeStyle = rgba(this.accent, 1);
 			ctx.stroke();
-		} else if (node.id === this.selectedId) {
+		}
+		if (node.id === this.selectedId && (!node.isSeed || this.night) || this.night && node.id === this.hoverId) {
 			ctx.beginPath();
-			ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
-			ctx.lineWidth = 2.4;
+			ctx.arc(x, y, radius + (node.isSeed ? 7 : 4), 0, Math.PI * 2);
+			ctx.lineWidth = node.id === this.selectedId ? 2.4 : 1.2;
 			ctx.strokeStyle = rgba(this.accent, 1);
 			ctx.stroke();
 		}
@@ -1129,7 +1364,7 @@ export class SimilarityMap {
 		if (resetView) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
 			this.hoverId = null;
-			this.refreshFocus();
+			this.setEngaged(false);
 			this.adjusted = false;
 			this.hideTooltip();
 			this.resize();
@@ -1144,13 +1379,75 @@ export class SimilarityMap {
 	}
 
 	private colorOf(node: PaperNode): string {
-		if (this.colorMode === "community") return communityColor(this.communities.get(node.id) ?? 0);
+		if (this.colorMode === "community") {
+			const community = this.communities.get(node.id) ?? 0;
+			return community === 0 ? this.communityPrimary : communityColor(community);
+		}
 		if (this.colorMode === "year") return yearColor(node.year, this.minYear, this.maxYear);
 		if (this.colorMode === "topic") {
 			const seed = this.nodes.find((candidate) => candidate.isSeed);
 			return topicSimilarityColor(topicSimilarity(node.topicTags, seed?.topicTags));
 		}
 		return this.graphNode;
+	}
+
+	private armIntro(): void {
+		if (this.introQueued || !this.introHold) return;
+		this.introQueued = true;
+		queueMicrotask(() => {
+			this.introQueued = false;
+			this.startIntro();
+		});
+	}
+
+	private startIntro(): void {
+		if (!this.introHold) return;
+		if (this.cssWidth < 2 || this.cssHeight < 2) return;
+		this.introHold = false;
+		if (this.reducedMotion || this.nodes.length < 2) {
+			this.draw();
+			return;
+		}
+		const visible = this.nodes.reduce((count, node) => count + (node.shown ? 1 : 0), 0);
+		const timing = introTiming(visible);
+		this.introSpread = timing.spread;
+		this.introFade = timing.fade;
+		this.introAt = performance.now();
+		this.draw();
+		this.requestDraw();
+	}
+
+	private syncIntro(): void {
+		if (!this.introAt) return;
+		const elapsed = performance.now() - this.introAt;
+		if (this.reducedMotion || elapsed >= this.introSpread + this.introFade) {
+			this.introAt = 0;
+			this.frameRevealed();
+			return;
+		}
+		const seed = this.nodes.find((node) => node.isSeed);
+		if (!seed) {
+			this.introAt = 0;
+			return;
+		}
+		this.introSeedX = seed.x;
+		this.introSeedY = seed.y;
+		let span = 0;
+		for (const node of this.nodes) {
+			if (!node.shown) continue;
+			span = Math.max(span, Math.hypot(node.x - seed.x, node.y - seed.y));
+		}
+		this.introSpan = span;
+		this.frameRevealed();
+	}
+
+	private introOf(node: DrawNode): number {
+		if (this.reducedMotion || !this.nodes.includes(node)) return 1;
+		if (this.introHold) return node.isSeed ? 1 : 0;
+		if (!this.introAt) return 1;
+		const elapsed = performance.now() - this.introAt;
+		if (elapsed < 0) return 1;
+		return introAlpha(elapsed, Math.hypot(node.x - this.introSeedX, node.y - this.introSeedY), this.introSpan, this.introSpread, this.introFade);
 	}
 
 	private isShown(node: PaperNode): boolean {
@@ -1167,43 +1464,69 @@ export class SimilarityMap {
 	private drawLabels(ctx: CanvasRenderingContext2D): void {
 		const ranked = [...this.nodes].sort((a, b) => b.citedByCount - a.citedByCount || a.id.localeCompare(b.id));
 		const rankOf = new Map(ranked.map((node, index) => [node.id, index]));
-
+		const priority = (node: DrawNode): number => node.id === this.hoverId ? 5 : node.id === this.selectedId ? 4 : node.isSeed ? 3 : this.classicGlow.has(node.id) ? 2 : 1;
+		const ordered = [...ranked].sort((a, b) => priority(b) - priority(a));
+		const now = performance.now();
+		const obstacles = this.nodes.filter(node => node.shown).map(node => ({ x: node.x * this.k + this.tx - node.radius - 4, y: node.y * this.k + this.ty - node.radius - 4, w: (node.radius + 4) * 2, h: (node.radius + 4) * 2 }));
+		const byId = new Map(this.nodes.map(node => [node.id, node]));
+		for (const edge of this.edges) {
+			if (relationKind(edge) !== "direct" || !this.edgeShown(edge)) continue;
+			const a = byId.get(edge.source), b = byId.get(edge.target);
+			if (!a?.shown || !b?.shown) continue;
+			const reserveArrow = (from: DrawNode, to: DrawNode): void => {
+				const angle = Math.atan2(to.y - from.y, to.x - from.x);
+				const offset = to.radius * (this.night ? 1 : this.k) + 5;
+				obstacles.push({ x: to.x * this.k + this.tx - Math.cos(angle) * offset - 5, y: to.y * this.k + this.ty - Math.sin(angle) * offset - 5, w: 10, h: 10 });
+			};
+			if (edge.direct === "source-cites-target" || edge.direct === "mutual") reserveArrow(a, b);
+			if (edge.direct === "target-cites-source" || edge.direct === "mutual") reserveArrow(b, a);
+		}
 		ctx.textBaseline = "middle";
 		ctx.font = `11.5px ${this.fontFamily}`;
 		ctx.textAlign = "left";
 		const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-		const place = (node: DrawNode, text: string, maxWidth: number, alpha: number, line: number): void => {
-			const cx = node.x * this.k + this.tx;
-			const cy = node.y * this.k + this.ty + line * 14;
-			const fitted = fitText(ctx, text, maxWidth);
-			const width = ctx.measureText(fitted).width;
+		for (const node of ordered) {
+			if (!node.shown) { this.labelOpacity.delete(node.id); continue; }
+			const appear = this.introOf(node);
+			if (appear <= 0) continue;
 			const strong = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
-			const rightX = cx + node.radius + 8;
-			const leftX = cx - node.radius - 8 - width;
-			const x = rightX + width <= this.cssWidth - 4 || leftX < 4 ? rightX : leftX;
-			const box = { x, y: cy - 8, w: width, h: 16 };
-			if (!strong && overlaps(box, boxes)) return;
+			const target = strong ? 1 : citationLabelAlpha(rankOf.get(node.id) ?? 99, this.k);
+			const previous = this.labelOpacity.get(node.id);
+			const alpha = !this.night || this.reducedMotion || strong ? target : previous
+				? previous.value + (target - previous.value) * clamp((now - previous.at) / 140, 0, 1)
+				: Math.min(0.15, target);
+			this.labelOpacity.set(node.id, { value: alpha, at: now });
+			if (alpha <= 0.02) continue;
+			const maxWidth = Math.min(strong || (rankOf.get(node.id) ?? 99) <= 7 ? 168 : 140, this.cssWidth - 16);
+			if (maxWidth < 20) continue;
+			const lines = nodeLabel(node, this.labelMode).split("\n").filter(Boolean).map(text => fitText(ctx, text, maxWidth));
+			if (!lines.length) continue;
+			const cx = node.x * this.k + this.tx;
+			const cy = node.y * this.k + this.ty;
+			const w = Math.max(...lines.map(text => ctx.measureText(text).width)) + 6;
+			const h = lines.length * 14 + 4;
+			const gap = node.radius + (node.id === this.selectedId || node.id === this.hoverId ? 12 : 8);
+			const candidates = [
+				{ x: cx + gap, y: cy - 9, w, h },
+				{ x: cx - gap - w, y: cy - 9, w, h },
+				{ x: cx - w / 2, y: cy - gap - h, w, h },
+				{ x: cx - w / 2, y: cy + gap, w, h },
+			];
+			const box = candidates.find(box => box.x >= 4 && box.y >= 4 && box.x + w <= this.cssWidth - 4 && box.y + h <= this.cssHeight - 4 && !overlaps(box, boxes) && !overlaps(box, obstacles));
+			if (!box) { this.labelOpacity.delete(node.id); continue; }
 			boxes.push(box);
 			const dimmed = this.focus !== null && !this.focus.has(node.id);
-			ctx.globalAlpha = dimmed ? 0.35 * alpha : alpha;
+			ctx.globalAlpha = (dimmed ? 0.35 * alpha : alpha) * appear;
 			ctx.lineWidth = 3;
 			ctx.strokeStyle = this.night ? "#0b1018" : this.bgEnd;
-			ctx.strokeText(fitted, x, cy);
 			ctx.fillStyle = strong ? rgba(this.ink, 1) : this.labelMuted;
-			ctx.fillText(fitted, x, cy);
+			lines.forEach((text, index) => {
+				ctx.strokeText(text, box.x + 3, box.y + 9 + index * 14);
+				ctx.fillText(text, box.x + 3, box.y + 9 + index * 14);
+			});
 			ctx.globalAlpha = 1;
-		};
-
-		for (const node of this.nodes) {
-			if (!node.shown) continue;
-			const lines = nodeLabel(node, this.labelMode).split("\n").filter(Boolean);
-			if (lines.length === 0) continue;
-			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
-			const alpha = must ? 1 : citationLabelAlpha(rankOf.get(node.id) ?? 99, this.k);
-			if (alpha <= 0.02) continue;
-			const width = must || (rankOf.get(node.id) ?? 99) <= 7 ? 168 : 140;
-			lines.forEach((line, index) => place(node, line, width, alpha, index));
 		}
+		for (const id of this.labelOpacity.keys()) if (!byId.has(id)) this.labelOpacity.delete(id);
 	}
 }
 
@@ -1297,15 +1620,27 @@ function strokeArrow(
 	x2: number,
 	y2: number,
 	nodeRadius: number,
+	open = false,
+	focused = false,
 ): void {
 	const angle = Math.atan2(y2 - y1, x2 - x1);
 	const tipX = x2 - Math.cos(angle) * (nodeRadius + 2);
 	const tipY = y2 - Math.sin(angle) * (nodeRadius + 2);
-	const length = 7;
+	const length = open ? 5 : 7;
 	ctx.beginPath();
 	ctx.moveTo(tipX, tipY);
 	ctx.lineTo(tipX - length * Math.cos(angle - 0.4), tipY - length * Math.sin(angle - 0.4));
+	if (open) ctx.moveTo(tipX, tipY);
 	ctx.lineTo(tipX - length * Math.cos(angle + 0.4), tipY - length * Math.sin(angle + 0.4));
+	if (open) {
+		ctx.save();
+		ctx.strokeStyle = ctx.fillStyle;
+		ctx.lineWidth = focused ? 1.1 : 0.7;
+		ctx.globalAlpha = focused ? 1 : 0.6;
+		ctx.stroke();
+		ctx.restore();
+		return;
+	}
 	ctx.closePath();
 	ctx.fill();
 }

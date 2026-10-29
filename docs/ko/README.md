@@ -4,29 +4,36 @@
 
 <p align="center"><img src="https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/logo.svg" width="96" height="96" alt="Research Connected 로고"></p>
 
-<p align="center">관련 논문을 지도로 그리고, 연결마다 근거를 확인한 뒤, 읽은 내용을 Obsidian의 서로 연결된 노트로 남깁니다.</p>
+<p align="center"><strong>논문 한 편에서, 연결된 연구 읽기로.</strong><br>관련 문헌을 찾고 연결의 근거를 확인하며, Obsidian에 문헌 노트를 쌓아 갑니다.</p>
 
 <p align="center"><a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/ko/README.md#빠른-시작">빠른 시작</a> · <a href="https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md">사용 안내</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml">문제 보고</a> · <a href="https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml">기능 제안</a></p>
 
 <p align="center"><img src="https://img.shields.io/github/v/release/Abe-Junwei/research-connected?sort=semver" alt="GitHub 릴리스"> <img src="https://img.shields.io/badge/Obsidian-1.14.4%2B%20desktop-7c3aed" alt="Obsidian 1.14.4 이상 데스크톱"> <img src="https://img.shields.io/github/license/Abe-Junwei/research-connected" alt="라이선스"></p>
 
-## 지도
+## 논문의 연구 이웃 살펴보기
 
-![“Deep learning”을 중심으로 한 그래프. 왼쪽은 관련 논문, 오른쪽은 선택한 논문의 관계 근거](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/graph-pane.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="개발 미리보기: Deep learning 기준 논문 50편의 지도와 오른쪽의 여러 표시 문헌이 인용한 작품">
+</picture>
 
-노드나 간선을 선택하면 공통 참고문헌, 동시 인용, 직접 인용 근거를 볼 수 있습니다.
+[밝은 원본](../images/graph-pane.png) · [어두운 원본](../images/graph-pane-dark.png)
 
-## 할 수 있는 일
+*모든 이미지는 현재 로컬 개발 미리보기입니다. 촬영일: 2026-10-29, 해상도: 3200 × 2000(2×). 실제 Obsidian 화면이나 최신 배포 버전의 기능 보장이 아닙니다. 예시는 “Deep learning”(2015)이며 공개 메타데이터는 바뀔 수 있습니다. 이미지의 UI는 영어이고, 지원 언어는 중국어 간체와 영어입니다.*
 
-- **관련 연구를 찾습니다.** 제목, DOI 또는 OpenAlex ID를 입력해 표본으로 뽑은 유사도 지도를 만듭니다. Planar, Timeline, Radial 레이아웃을 바꿀 수 있습니다.
-- **연결을 확인합니다.** 관계 뒤의 참고문헌과 인용 근거를 읽습니다. Semantic Scholar, Crossref, OpenCitations가 빈틈을 메우고, 맞지 않는 기록을 표시합니다.
-- **읽기를 정리합니다.** 논문을 잠시 두고, 읽을 예정이나 읽음으로 표시하고, 불필요한 항목을 빼고, 이름 있는 보기를 저장합니다. 문헌 노트를 쓰거나, 그래프를 넣거나, BibTeX, YAML, Markdown으로 내보낼 수 있습니다.
+노드나 간선을 선택하면 공통 참고문헌, 동시 인용, 직접 인용 근거를 확인할 수 있습니다. 오른쪽 패널 아래 탭의 ‘그래프에서 자주 인용된 문헌’은 현재 보이는 문헌 두 편 이상이 인용한 작품이고, ‘이 그래프를 인용한 문헌’은 현재 보이는 문헌을 두 편 이상 인용한 작품입니다. 출판 연도의 선후나 사상적 영향을 뜻하지 않습니다.
+
+## 발견·확인·축적의 세 가지 작업 흐름
+
+- **관련 연구를 찾습니다.** 제목, DOI 또는 OpenAlex ID를 입력해 시드 논문을 지정하고 표본으로 뽑은 유사도 지도를 만듭니다. **Planar**, **Year**, **Radial** 레이아웃을 바꿀 수 있습니다.
+- **연결을 확인합니다.** 참고문헌과 인용 근거를 읽습니다. 플러그인은 OpenAlex, Semantic Scholar 또는 Crossref에서 초록과 참고문헌 데이터를 가져오려고 시도하고, OpenCitations에서 인용 근거를 추가할 수 있습니다. 요청 실패가 데이터베이스에 기록이 없다는 뜻은 아닙니다.
+- **읽기를 정리합니다.** **Save paper**는 개별 논문을 프로젝트의 저장 목록에 추가하고, **Save project**는 프로젝트를 저장합니다. 논문의 **Reading status**를 설정하고, 불필요한 항목을 제외하고, 문헌 노트를 작성하거나 그래프를 삽입하고 BibTeX, YAML, Markdown으로 내보낼 수 있습니다.
 
 ## 빠른 시작
 
 1. **설치하고 켭니다.** Obsidian에서 **설정 → 커뮤니티 플러그인 → 탐색**을 열고 **Research Connected**를 검색한 다음 설치하고 활성화합니다.
-2. **첫 지도를 만듭니다.** 명령어 팔레트에서 **Open Research Connected**를 실행합니다. 아래 DOI를 붙여 넣거나 논문 제목을 입력한 뒤 **Build**를 선택합니다.
-3. **연결을 확인합니다.** 논문이나 간선을 선택해 지도에 있는 이유를 봅니다. **Save view**로 그 배치로 돌아갑니다.
+2. **첫 지도를 만듭니다.** 명령어 팔레트에서 **Open Research Connected**를 실행합니다. 아래 DOI를 붙여 넣거나 논문 제목으로 시드 논문을 선택한 뒤 **Build**를 선택합니다.
+3. **연결을 확인합니다.** 논문이나 간선을 선택해 지도에 있는 이유를 봅니다. **Save project**로 프로젝트를 저장하고 **Save paper**로 개별 논문을 저장 목록에 추가합니다.
 
 ```text
 10.1038/nature14539
@@ -38,13 +45,23 @@
 
 ## 시간 순으로 보기
 
-![발표 연도별로 늘어선 Timeline. 레이아웃 조작과 연도 슬라이더가 있다](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/timeline.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="개발 미리보기: 발표 연도별 시간축 지도와 하단 연도 표시">
+</picture>
 
-**Timeline**으로 바꿉니다. 연도 슬라이더로 보이는 범위를 좁히고, 저장한 보기로 유용했던 선택으로 돌아갑니다.
+[밝은 원본](../images/timeline.png) · [어두운 원본](../images/timeline-dark.png)
+
+**Year** 레이아웃으로 바꿉니다. 그래프 아래 연도 막대에서 출판 연도에 따라 표시 범위를 좁힐 수 있습니다.
 
 ## 노트 옆에 그래프 두기
 
-![문단 사이에 Research Connected 그래프가 들어간 읽기 노트](https://raw.githubusercontent.com/Abe-Junwei/research-connected/main/docs/images/note-embed.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="개발 미리보기: 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
+</picture>
+
+[밝은 원본](../images/note-embed.png) · [어두운 원본](../images/note-embed-dark.png)
 
 아래 블록을 노트에 넣습니다. 읽기 화면과 실시간 미리보기에서 나타납니다.
 
@@ -56,34 +73,48 @@ layout: temporal
 ```
 ````
 
-논문을 선택한 뒤 **Export → Write to note**를 고르면 문헌 노트가 만들어집니다. 플러그인은 DOI 또는 OpenAlex ID로 기존 노트를 알아보고, 읽기 상태가 바뀌면 `rc-status`를 맞춥니다. 폴더, 파일 이름, 본문 템플릿, DOI 속성은 설정에서 지정합니다.
+논문을 선택한 뒤 **Export → Write to note**를 고르면 문헌 노트가 만들어집니다. 플러그인은 DOI 또는 OpenAlex ID로 기존 노트를 알아봅니다. Reading status는 연결된 노트와 동기화할 수 있으며, 상태가 충돌하면 확인이 필요합니다. 폴더, 파일 이름, 본문 템플릿, DOI 속성은 설정에서 지정합니다.
 
-임베드 옵션, 프론트매터, 표본 추출, 알고리즘은 [사용 안내](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)에 있습니다. 예전 임베드 이름 `connected-papers`도 동작합니다.
+임베드 옵션, 노트 속성(YAML frontmatter), 표본 추출, 알고리즘은 [사용 안내](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)에 있습니다. 예전 임베드 이름 `connected-papers`도 동작합니다.
+
+## 개발 상태
+
+<details>
+<summary>미출시 기능과 검증 범위</summary>
+
+현재 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 개발은 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10)에서 추적합니다. 실제 Obsidian 환경의 전체 검증은 아직 끝나지 않았습니다. 배포판 기능은 공식 릴리스를 참고하세요.
+
+- 동일 논문과 확인된 버전 그룹의 읽기 상태를 공유하고, 저장과 제외는 프로젝트별로 관리합니다. 충돌과 외부 편집은 명시적으로 해결하거나 동기화를 재시도·중단합니다.
+- 출처로 확인된 관계나 수동 결정으로 버전을 묶으며 제목만으로 추측하지 않습니다. 내보내기에 버전 출처가 남습니다.
+- 후보 진단과 인용 경로는 증거 누락과 관측값 0을 구분합니다. MMR은 관련성과 다양성을 조절하고 의미 신호는 구조적 근거를 보완합니다.
+- 노드 크기는 인용 수의 로그에 따릅니다. 고인용 표시는 설명이 있는 휴리스틱이지 권위 있는 평가가 아닙니다. 동작은 모션 감소 설정을 따릅니다.
+
+</details>
 
 ## 시작하기 전에
 
 - **데스크톱.** Obsidian 1.14.4 이상. 모바일은 기기 확인을 기다립니다.
-- **네트워크.** 지도를 만들면 외부 학술 서비스에 질의합니다. 프로젝트와 읽기 상태는 보관함에 남습니다.
+- **네트워크.** 지도를 만들면 외부 학술 서비스에 질의합니다. 프로젝트와 읽기 상태는 보관함에 남습니다. 전송 정보는 아래 개인정보 안내를 확인하세요.
 - **서비스 키.** OpenAlex API 키는 선택 사항이며, 설정을 권합니다. [OpenAlex 설정](https://openalex.org/settings/api)에서 만들 수 있습니다. 방법은 [안내](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)에 있습니다.
-- **표본.** 지도는 인용 이웃의 표본이며, 기준 논문을 인용한 모든 논문이 아닙니다.
-- **노트.** 문헌 노트를 알아보려고 프론트매터를 읽습니다. 노트 파일은 노트를 쓰거나 읽기 상태를 바꿀 때만 바뀝니다.
+- **표본.** 지도는 인용 이웃의 표본이며, 시드 논문을 인용한 모든 논문이 아닙니다.
+- **노트.** 문헌 노트를 알아보려고 노트 속성(YAML frontmatter)을 읽습니다. 노트 파일은 노트를 쓰거나 읽기 상태를 바꿀 때만 바뀝니다.
 - **AI.** 연구 서사는 기본적으로 꺼져 있습니다. 지도를 보는 데 언어 모델은 필요 없습니다.
 - **인터페이스 언어.** 중국어 환경에서는 간체, 그 밖(한국어 포함)에서는 영어입니다. 위의 명령과 버튼 이름이 영어인 이유입니다.
 
 ## 네트워크 사용과 개인정보
 
-- **OpenAlex**는 입력한 DOI, OpenAlex ID, 검색 텍스트와 설정한 API 키를 받습니다.
+- **OpenAlex**는 입력한 DOI, OpenAlex ID, 검색 텍스트와 설정한 API 키 및 선택 입력한 연락 이메일을 받습니다. 이메일은 Crossref에도 연락처 정보로 전달되며 요청 한도 증가를 보장하지 않습니다.
 - **Semantic Scholar**, **Crossref**, **OpenCitations**는 논문 식별자를 받습니다. 키나 토큰은 해당 서비스에만 보냅니다.
 - **언어 모델 엔드포인트**는 연구 서사를 켜고 **Generate research narrative**를 누른 뒤에만 선택한 논문과 인용 근거를 받습니다. 초록은 그 옵션이 켜져 있을 때만 포함됩니다.
 
-기존 문헌 노트를 맞추려고 플러그인은 Markdown 경로를 나열하고 캐시된 프론트매터를 읽습니다. 복사와 내보내기는 시스템 클립보드에 씁니다. 플러그인은 클립보드를 읽지 않습니다. 문헌 노트를 쓰거나 읽기 상태를 바꾸면 그 보관함 파일이 갱신됩니다.
+기존 문헌 노트를 맞추려고 플러그인은 Markdown 경로를 나열하고 노트 속성(YAML frontmatter)을 읽습니다. 복사와 내보내기는 시스템 클립보드에 씁니다. 플러그인은 클립보드를 읽지 않습니다. 문헌 노트를 쓰거나 읽기 상태를 바꾸면 그 보관함 파일이 갱신됩니다.
 
-프로젝트, 읽기 상태, 저장한 보기, 서비스 자격 증명은 이 보관함 플러그인의 `data.json`에 저장됩니다. 자격 증명은 **암호화되지 않습니다**. 플러그인은 원격 측정을 보내지 않으며, 문헌 노트 프론트매터 밖의 노트는 읽지 않습니다.
+프로젝트, 읽기 상태, 저장한 논문, 서비스 자격 증명은 이 보관함 플러그인의 `data.json`에 저장됩니다. 자격 증명은 **암호화되지 않습니다**. 보관함 동기화나 백업 도구가 이 파일을 복사할 수 있습니다. 플러그인은 원격 측정을 보내지 않으며, 문헌 노트 속성 밖의 노트 내용은 읽지 않습니다.
 
 ## 한계
 
 - 지도는 **표본**이며 완전한 인용 색인이 아닙니다. 인용이 많은 논문은, 그 논문을 인용한 문헌 가운데 인용 수가 많은 것만 들어가며 전부가 아닙니다.
-- 유사도와 커뮤니티 색은 탐색용입니다. 중요한 주장은 원논문과 대조하세요.
+- 의미 유사도에는 호환되는 벡터뿐 아니라 로컬 텍스트와 주제 신호도 쓰일 수 있습니다. 연구의 질을 나타내지는 않습니다. 중요한 주장은 원논문과 대조하세요.
 - OpenAlex에는 알려진 빈틈이 있습니다. 초록 누락, 참고문헌 목록 불완전, 저자 식별 오류입니다. [사용 안내](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md#data-quality-known-openalex-issues)에 각 빈틈과 플러그인의 처리가 있습니다.
 
 ## 도움과 피드백

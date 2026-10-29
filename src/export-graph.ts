@@ -1,22 +1,30 @@
+import { availableCitations, citationCountText } from "./visual";
 import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
 import { normalizeDoi } from "./paper";
-import { paperDois, paperRecords, workIndex } from "./work-identity";
-import type { ReadingStatus } from "./project-state";
+import { paperDois, paperRecords } from "./work-identity";
+import { projectVersionState, selectExportVersions, type ReadingStatus, type ResearchProject } from "./project-state";
+import { nodeMatchesFilter, type GraphFilter } from "./graph-filter";
 import type { PaperNode } from "./types";
+
+export function graphExportVersions(nodes: readonly PaperNode[], project: ResearchProject | undefined, filter: GraphFilter, mode: "one" | "all", includeSeedException: boolean): PaperNode[] {
+	const versions = nodes.flatMap(node => paperRecords(node).map(paper => ({ ...paper, researchId: node.id, seed: paper.isSeed, excluded: projectVersionState(project, paper).excluded, passesFilter: nodeMatchesFilter(paper, filter) })));
+	return selectExportVersions(versions, mode, includeSeedException).map(version => ({ ...versions.find(paper => paper.id === version.id)! }));
+}
 
 export function toBibTeX(nodes: readonly PaperNode[]): string {
 	const used = new Set<string>();
-	return workIndex(nodes, nodes.map((paper) => paper.id)).papers.map((paper) => bibEntry(paper, used)).join("\n\n");
+	return nodes.map((paper) => bibEntry(paper, used)).join("\n\n");
 }
 
 export function toYamlList(nodes: readonly PaperNode[]): string {
+	if (nodes.length === 0) return "papers: []";
 	const lines = ["papers:"];
-	for (const paper of workIndex(nodes, nodes.map((paper) => paper.id)).papers) {
+	for (const paper of nodes) {
 		lines.push(`  - title: ${yamlString(paper.title)}`);
 		lines.push(`    authors: ${yamlString(paper.authors)}`);
 		lines.push(`    year: ${paper.year ?? "null"}`);
-		lines.push(`    citations: ${paper.citedByCount}`);
+		lines.push(`    citations: ${availableCitations(paper) ?? "null"}`);
 		const doi = doiOf(paper);
 		if (doi) lines.push(`    doi: ${yamlString(doi)}`);
 		if (paper.records?.length) lines.push(`    doi_aliases: ${JSON.stringify(paperDois(paper))}`, `    openalex_aliases: ${JSON.stringify(paperRecords(paper).map((record) => record.id))}`);
@@ -28,10 +36,10 @@ export function toYamlList(nodes: readonly PaperNode[]): string {
 export function toMarkdownTable(nodes: readonly PaperNode[]): string {
 	const header = tr("| 题名 | 作者 | 年份 | 被引 | DOI | OpenAlex |", "| Title | Authors | Year | Citations | DOI | OpenAlex |");
 	const rule = "| --- | --- | --- | --- | --- | --- |";
-	const rows = workIndex(nodes, nodes.map((paper) => paper.id)).papers.map((paper) => {
+	const rows = nodes.map((paper) => {
 		const year = paper.year === null ? "" : String(paper.year);
 		const doi = doiOf(paper) ?? "";
-		return `| ${cell(paper.title)} | ${cell(paper.authors)} | ${year} | ${paper.citedByCount} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
+		return `| ${cell(paper.title)} | ${cell(paper.authors)} | ${year} | ${citationCountText(paper)} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
 	});
 	return [header, rule, ...rows].join("\n");
 }
@@ -51,6 +59,11 @@ function bibEntry(paper: PaperNode, used: Set<string>): string {
 		`  author = {${(paper.authorList?.length ? paper.authorList : [paper.authors]).map(bibText).join(" and ")}}`,
 		`  year = {${paper.year ?? ""}}`,
 	];
+	if (paper.venue && (type === "article" || type === "incollection")) fields.push(`  ${type === "article" ? "journal" : "booktitle"} = {${bibText(paper.venue)}}`);
+	const bibliography = paper.bibliography;
+	if (bibliography?.volume) fields.push(`  volume = {${bibText(bibliography.volume)}}`);
+	if (bibliography?.issue) fields.push(`  number = {${bibText(bibliography.issue)}}`);
+	if (bibliography?.firstPage) fields.push(`  pages = {${bibText(bibliography.firstPage)}${bibliography.lastPage && bibliography.lastPage !== bibliography.firstPage ? `--${bibText(bibliography.lastPage)}` : ""}}`);
 	const doi = doiOf(paper);
 	if (doi) fields.push(`  doi = {${bibText(doi)}}`);
 	fields.push(`  url = {${bibText(paper.openAlexUrl)}}`);
@@ -81,7 +94,8 @@ function citeKey(paper: PaperNode, used: Set<string>): string {
 }
 
 function bibText(value: string): string {
-	return value.replace(/[{}\\]/g, "");
+	const escapes: Record<string, string> = { "\\": "\\textbackslash{}", "~": "\\textasciitilde{}", "^": "\\textasciicircum{}" };
+	return value.replace(/[{}\\&%$#_~^]/g, character => escapes[character] ?? `\\${character}`);
 }
 
 function yamlString(value: string): string {
@@ -89,7 +103,7 @@ function yamlString(value: string): string {
 }
 
 function cell(value: string): string {
-	return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+	return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 
 export function doiOf(paper: Pick<PaperNode, "doiUrl">): string | null {

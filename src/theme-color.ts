@@ -44,8 +44,16 @@ function resolveChannels(trimmed: string, fallback: Rgb): Rgb {
 	document.documentElement.append(probe);
 	const computed = getComputedStyle(probe).color;
 	probe.remove();
-	if (!computed || computed === trimmed) return fallback;
+	if (!computed) return fallback;
 	const parsed = computed.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
-	if (!parsed) return fallback;
-	return { r: Number(parsed[1]), g: Number(parsed[2]), b: Number(parsed[3]) };
+	if (parsed) return { r: Number(parsed[1]), g: Number(parsed[2]), b: Number(parsed[3]) };
+	// Modern computed colors can remain OKLCH; rasterization resolves their sRGB channels.
+	const canvas = createEl("canvas");
+	canvas.width = canvas.height = 1;
+	const context = canvas.getContext("2d", { willReadFrequently: true });
+	if (!context) return fallback;
+	context.fillStyle = computed;
+	context.fillRect(0, 0, 1, 1);
+	const pixel = context.getImageData(0, 0, 1, 1).data;
+	return { r: pixel[0]!, g: pixel[1]!, b: pixel[2]! };
 }

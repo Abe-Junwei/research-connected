@@ -1,0 +1,146 @@
+import assert from "node:assert/strict";
+import { build } from "esbuild";
+
+const bundle = await build({ stdin: { contents: 'export * from "./src/reading-workflow"; export { bindLanguage } from "./src/i18n";', resolveDir: process.cwd(), loader: "ts" }, bundle: true, platform: "node", format: "cjs", write: false, logLevel: "silent" });
+const loaded = { exports: {} };
+new Function("module", "exports", bundle.outputFiles[0].text)(loaded, loaded.exports);
+const { createReadingWorkflow, normalizeReadingWorkflow, bindLanguage } = loaded.exports;
+const paper = { id: "W10", title: "Paper", authors: "A", authorList: ["A"], year: 2020, citedByCount: 1, abstract: "", doiUrl: "https://doi.org/10.1234/test", openAlexUrl: "https://openalex.org/W10", isSeed: false, origin: "related", language: null, workType: null, venue: null, retracted: false, concepts: [] };
+const state = reading => ({ paper, reading, staged: false, excluded: true, source: "OpenAlex", updatedAt: 1 });
+const settings = { researchProjects: { W1: { version: 1, seedId: "W1", name: "One", updatedAt: 1, views: [], paperStates: { W10: state("read") } }, W2: { version: 1, seedId: "W2", name: "Two", updatedAt: 1, views: [], paperStates: { W10: state("unread") } } } };
+let failSave = false, failNote = false, writes = 0;
+const notes = [{ path: "a.md", raw: "unread", revision: "1" }, { path: "b.md", raw: "unread", revision: "1" }];
+let persisted;
+const workflow = createReadingWorkflow({
+	getSettings: () => settings,
+	persist: async () => { if (failSave) throw new Error("disk full"); persisted = structuredClone(settings); },
+	listNotes: () => structuredClone(notes),
+	writeNote: async (path, expected, reading) => {
+		const note = notes.find(item => item.path === path);
+		assert.equal(note.revision, expected.revision);
+		assert.equal(note.raw, expected.raw);
+		writes++;
+		if (failNote && path === "b.md") throw new Error("read only");
+		note.raw = reading;
+		note.revision = String(Number(note.revision) + 1);
+		return note.revision;
+	},
+});
+assert.equal(workflow.getReadingState(paper).confirmed, false);
+await workflow.commitWorkflow(paper, "W1", { staged: true });
+assert.equal(workflow.getReadingState(paper).reading, null, "save-only must not resolve legacy conflicts");
+assert.equal(writes, 0);
+assert.equal(workflow.getReadingIssues()[0].projects.length, 2);
+failSave = true;
+await assert.rejects(workflow.commitWorkflow(paper, "W1", { staged: false, reading: "read" }), /disk full/);
+assert.equal(settings.researchProjects.W1.paperStates.W10.staged, true);
+assert.equal(workflow.getReadingState(paper).confirmed, false);
+assert.equal(writes, 0, "failed project save must not touch notes");
+failSave = false; failNote = true;
+await workflow.commitWorkflow(paper, "W1", { staged: true, reading: "read" });
+assert.equal(persisted.readingWorkflow.records.W10.reading, "read");
+assert.equal(settings.researchProjects.W1.paperStates.W10.excluded, true);
+assert.equal(workflow.getReadingIssues()[0].notes[0].path, "b.md");
+notes[1].raw = "to-read"; notes[1].revision = "3";
+const before = writes;
+await workflow.retryReading(paper);
+assert.equal(writes, before, "new manual edit must pause retry");
+assert.equal(workflow.getReadingIssues()[0].notes[0].issue, "edited");
+failNote = false;
+await workflow.resolveReading(paper, "to-read");
+assert.equal(notes[0].raw, "to-read");
+assert.equal(workflow.getReadingState({ ...paper, id: "W11" }).reading, "to-read", "DOI aliases share progress");
+notes[0].raw = undefined; notes[0].revision = "9";
+notes[1].raw = "bad-status"; notes[1].revision = "9";
+await workflow.retryReading(paper);
+assert.equal(workflow.getReadingState(paper).reading, "to-read");
+await workflow.resolveReading(paper, "read");
+assert.equal(notes[0].raw, undefined, "removed status opts out");
+assert.equal(notes[1].raw, "bad-status", "invalid raw must not be overwritten");
+notes[1].raw = "read"; notes[1].revision = "10";
+await workflow.retryReading(paper);
+assert.equal(workflow.getReadingIssues().length, 0);
+await workflow.commitWorkflow(paper, "W1", { staged: false });
+assert.equal(settings.researchProjects.W1.paperStates.W10.excluded, true);
+assert.equal(workflow.getReadingState(paper).reading, "read");
+assert.throws(() => normalizeReadingWorkflow({ version: 99, records: {} }));
+assert.equal(normalizeReadingWorkflow(settings.readingWorkflow).version, 1);
+const retrySettings = { researchProjects: {} };
+let attempts = 0;
+const bounded = createReadingWorkflow({ getSettings: () => retrySettings, persist() {}, listNotes: () => [{ path: "blocked.md", raw: "unread", revision: "1" }], writeNote: async () => { attempts++; throw new Error("locked"); } });
+await bounded.commitWorkflow(paper, null, { reading: "read" });
+for (let index = 0; index < 8; index++) await bounded.readingOpened(paper);
+assert.equal(attempts, 3, "automatic retries must stop after three failures");
+await bounded.retryReading(paper);
+assert.equal(attempts, 3, "manual and automatic retries share the current session budget");
+const reopenedBounded = createReadingWorkflow({ getSettings: () => retrySettings, persist() {}, listNotes: () => [{ path: "blocked.md", raw: "unread", revision: "1" }], writeNote: async () => { attempts++; throw new Error("locked"); } });
+for (let index = 0; index < 5; index++) await reopenedBounded.retryReading(paper);
+assert.equal(attempts, 6, "reopening grants three attempts without discarding failure evidence");
+const version = { ...paper, id: "W11", doiUrl: "10.1234/other" };
+const mergedPaper = { ...paper, records: [paper, version] };
+const mergeSettings = { researchProjects: {} };
+const merging = createReadingWorkflow({ getSettings: () => mergeSettings, persist() {} });
+await merging.commitWorkflow(paper, null, { reading: "unread" });
+await merging.commitWorkflow(version, null, { reading: "read" });
+assert.equal(merging.getReadingState(mergedPaper).reading, "read", "the first confirmed merge keeps the further progress and original sources");
+await merging.commitWorkflow(mergedPaper, null, { reading: "unread" });
+assert.equal(merging.getReadingState(mergedPaper).reading, "unread", "explicit downgrade replaces the shared status");
+const laterVersion = { ...paper, id: "W12", doiUrl: "10.1234/later" };
+await merging.commitWorkflow(laterVersion, null, { reading: "read" });
+assert.equal(merging.getReadingState({ ...paper, records: [paper, version, laterVersion] }).reading, null, "a later joining version with conflicting old progress waits for confirmation");
+mergeSettings.workIdentityDecisions = [{ ids: [paper.id, version.id], kind: "separate", source: "manual", updatedAt: 1 }];
+await merging.commitWorkflow(paper, null, { reading: "to-read" });
+assert.equal(merging.getReadingState(version).reading, "unread", "editing a split child retains its sibling's inherited reading");
+assert.equal(merging.getReadingState(paper).reading, "to-read");
+mergeSettings.workIdentityDecisions = [{ ids: [paper.id, version.id], kind: "merge", source: "manual", updatedAt: 2 }];
+await merging.commitWorkflow(version, null, { reading: "read" });
+assert.equal(merging.getReadingState(paper).reading, "read", "a raw-version edit follows the confirmed global merge");
+const outside = createReadingWorkflow({ getSettings: () => ({ researchProjects: {} }), persist() {}, listPapers: () => [paper], listNotes: () => [{ path: "one.md", raw: "read", revision: "1" }, { path: "two.md", raw: "unread", revision: "1" }] });
+assert.equal(outside.getReadingIssues().length, 1, "unprojected, unsaved note conflicts must appear globally");
+const concurrentSettings = structuredClone(settings);
+concurrentSettings.researchProjects.W1.paperStates.W10.excluded = false;
+const concurrent = createReadingWorkflow({ getSettings: () => concurrentSettings, persist() { concurrentSettings.researchProjects.W1.paperStates.W10.excluded = true; throw new Error("save failed"); } });
+await assert.rejects(concurrent.commitWorkflow(paper, "W1", { staged: true }), /save failed/);
+assert.equal(concurrentSettings.researchProjects.W1.paperStates.W10.staged, false);
+assert.equal(concurrentSettings.researchProjects.W1.paperStates.W10.excluded, true, "save rollback must preserve independent exclusion edits");
+let lifecycleSettings = { researchProjects: {} }, lifecycleDisk;
+let lifecycleNotes = [{ path: "before.md", raw: "read", revision: "1" }];
+const lifecycleWrites = [];
+const lifecycleOptions = {
+	getSettings: () => lifecycleSettings,
+	persist: async () => { lifecycleDisk = structuredClone(lifecycleSettings); },
+	listNotes: () => structuredClone(lifecycleNotes),
+	writeNote: async (path, expected, reading) => {
+		const note = lifecycleNotes.find(note => note.path === path);
+		assert.ok(note, "only the currently existing note may be written");
+		assert.equal(note.revision, expected.revision);
+		lifecycleWrites.push(path);
+		note.raw = reading; note.revision = String(Number(note.revision) + 1);
+		return note.revision;
+	},
+};
+let lifecycle = createReadingWorkflow(lifecycleOptions);
+await lifecycle.commitWorkflow(paper, null, { reading: "read" });
+lifecycleNotes = [{ path: "after.md", raw: "unread", revision: "2" }];
+await lifecycle.refreshReading();
+assert.deepEqual(Object.keys(lifecycleDisk.readingWorkflow.records.W10.notes), ["after.md"], "the obsolete path is removed from persisted state");
+lifecycleSettings = structuredClone(lifecycleDisk);
+lifecycle = createReadingWorkflow(lifecycleOptions);
+await lifecycle.readingOpened(paper);
+assert.equal(lifecycle.getReadingIssues()[0].notes[0].issue, "edited", "reopening retains the external-edit hold");
+assert.deepEqual(lifecycleWrites, [], "reopening must not overwrite an external edit");
+await lifecycle.resolveReading(paper, "read");
+assert.deepEqual(lifecycleWrites, ["after.md"], "confirmation writes the renamed note once");
+lifecycleSettings = structuredClone(lifecycleDisk);
+lifecycle = createReadingWorkflow(lifecycleOptions);
+await lifecycle.refreshReading();
+await lifecycle.readingOpened(paper);
+assert.equal(lifecycle.getReadingIssues().length, 0);
+assert.deepEqual(lifecycleWrites, ["after.md"], "a second reopen and refresh do not repeat the confirmed write");
+console.log("shared reading atomic save, conflicts, note edits, opt-out and partial sync checks passed");
+
+for (const [language, message] of [["en", "Invalid saved reading workflow; original data retained"], ["zh-CN", "保存的阅读流程无效，已保留原数据"]]) {
+	bindLanguage(() => language);
+	assert.throws(() => normalizeReadingWorkflow({}), error => error.message === message);
+}
+console.log("reading workflow errors follow the host language");

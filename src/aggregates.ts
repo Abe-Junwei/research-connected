@@ -4,10 +4,10 @@ import type { GraphEdge, PaperNode } from "./types";
 
 /** List views. They do not add edge types. */
 export const PRIOR_DEFINITION =
-	tr("被图内至少 2 篇论文共同引用的文献；引用列表可能不完整。", "Works cited by at least two papers in this graph; reference lists may be incomplete.");
+	tr("被至少 2 篇可见文献引用的作品；引用列表可能不完整。", "Works cited by at least two visible papers; reference lists may be incomplete.");
 
 export const DERIVATIVE_DEFINITION =
-	tr("引用了至少 2 篇图内论文的后续工作；引用列表可能不完整。", "Later works that cite at least two papers in this graph; reference lists may be incomplete.");
+	tr("引用了至少 2 篇可见文献的作品；不表示时间先后或思想继承，引用列表可能不完整。", "Works citing at least two visible papers; this implies neither chronology nor intellectual influence. Reference lists may be incomplete.");
 
 export const AGGREGATE_EMPTY_TEXT = tr("当前子图里没有命中至少 2 次的文献。", "No papers appear at least twice in this subgraph.");
 
@@ -18,8 +18,7 @@ export interface RankedWork {
 
 const LIST_LIMIT = 15;
 const OFTEN = 2;
-const CLASSIC_AGE = 8;
-const CLASSIC_CAP = 8;
+const CLASSIC_AGE = 3;
 
 /**
  * Works cited by many papers in the visible subgraph.
@@ -82,50 +81,62 @@ function graphSeedId(graph: SimilarityGraph): string {
 	return graph.nodes.find((node) => node.isSeed)?.id ?? "";
 }
 
-/** In-graph citation hubs that have had time to become canonical. Seed excluded. */
-export function classicNodeIds(
-	nodes: readonly { id: string; year: number | null; isSeed?: boolean }[],
-	edges: readonly GraphEdge[],
-	nowYear = new Date().getFullYear(),
-): Set<string> {
-	const incoming = new Map<string, number>();
-	const bump = (id: string): void => {
-		incoming.set(id, (incoming.get(id) ?? 0) + 1);
-	};
-	for (const edge of edges) {
-		if (edge.direct === "source-cites-target" || edge.direct === "mutual") bump(edge.target);
-		if (edge.direct === "target-cites-source" || edge.direct === "mutual") bump(edge.source);
-	}
-	return new Set(
-		nodes
-			.filter((node) => !node.isSeed && (incoming.get(node.id) ?? 0) >= OFTEN && node.year !== null && nowYear - node.year >= CLASSIC_AGE)
-			.sort((a, b) => (incoming.get(b.id) ?? 0) - (incoming.get(a.id) ?? 0) || (a.year ?? 0) - (b.year ?? 0) || a.id.localeCompare(b.id))
-			.slice(0, CLASSIC_CAP)
-			.map((node) => node.id),
-	);
+export interface ClassicEvidence {
+	citations: number;
+	age: number;
+	channel: "short-term" | "long-term";
 }
 
-/** 0–1 influence among classics: √ of year-normalized citations on this graph. */
-export function classicInfluence(
-	nodes: readonly { id: string; year: number | null; citedByCount: number; isSeed?: boolean }[],
+/** Classics qualify through short-term citation intensity or long-term accumulation. */
+export function classicCandidates(
+	nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
+	_edges: readonly GraphEdge[],
+	nowYear = new Date().getFullYear(),
+	_referenceLists?: ReadonlyMap<string, readonly string[]>,
+): Map<string, ClassicEvidence> {
+	const candidates = new Map<string, ClassicEvidence>();
+	for (const node of nodes) {
+		if (node.isSeed || node.retracted || node.year === null) continue;
+		const age = nowYear - node.year;
+		const citations = node.citedByCount ?? 0;
+		if (!Number.isFinite(age) || age < CLASSIC_AGE || !Number.isFinite(citations)) continue;
+		const longTerm = age >= 8;
+		if (citations < (longTerm ? 1000 : age * 100)) continue;
+		candidates.set(node.id, { citations, age, channel: longTerm ? "long-term" : "short-term" });
+	}
+	return candidates;
+}
+
+export function classicNodeIds(
+	nodes: readonly { id: string; year: number | null; citedByCount?: number; isSeed?: boolean; retracted?: boolean }[],
 	edges: readonly GraphEdge[],
 	nowYear = new Date().getFullYear(),
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
+): Set<string> {
+	return new Set(classicCandidates(nodes, edges, nowYear, referenceLists).keys());
+}
+
+/** 0–1 cumulative influence among the selected classics. */
+export function classicInfluence(
+	nodes: readonly { id: string; year: number | null; citedByCount: number; isSeed?: boolean; retracted?: boolean }[],
+	edges: readonly GraphEdge[],
+	nowYear = new Date().getFullYear(),
+	referenceLists?: ReadonlyMap<string, readonly string[]>,
 ): Map<string, number> {
-	const ids = classicNodeIds(nodes, edges, nowYear);
+	const ids = classicNodeIds(nodes, edges, nowYear, referenceLists);
 	const out = new Map<string, number>();
 	if (ids.size === 0) return out;
 	const byId = new Map(nodes.map((node) => [node.id, node]));
 	const score = (id: string): number => {
 		const node = byId.get(id);
 		if (!node) return 0;
-		const age = node.year === null ? 1 : Math.max(1, nowYear - node.year);
-		return Math.max(0, node.citedByCount) / age;
+		return Math.max(0, node.citedByCount);
 	};
 	const values = [...ids].map(score);
 	const lo = Math.sqrt(Math.min(...values));
 	const hi = Math.sqrt(Math.max(...values));
 	for (const id of ids) {
-		const t = hi - lo < 1e-9 ? 1 : (Math.sqrt(score(id)) - lo) / (hi - lo);
+		const t = hi === 0 ? 0 : hi - lo < 1e-9 ? 0.5 : (Math.sqrt(score(id)) - lo) / (hi - lo);
 		out.set(id, t);
 	}
 	return out;

@@ -2,14 +2,14 @@ import {
 	createElement, LayoutGrid, Clock, Network, Play, Pause, Pencil, Trash2,
 	Save, Folder, Layers, RotateCw, Maximize, Search, ExternalLink,
 	Bookmark, BookmarkCheck, BookOpen, CircleMinus, Copy, Table, FileText,
-	Download, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, Minus, ListFilter, Sun, Moon,
+	Download, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Plus, Minus, ListFilter, Sun, Moon, Star,
 } from "lucide";
 
 const previewIcons = {
 	LayoutGrid, Clock, Network, Play, Pause, Pencil, Trash2, Save, Folder,
 	Layers, RotateCw, Maximize, Search, ExternalLink, Bookmark, BookmarkCheck,
 	BookOpen, CircleMinus, Copy, Table, FileText, Download, ChevronDown, ChevronUp,
-	ChevronRight, ChevronLeft, Plus, Minus, ListFilter, Sun, Moon,
+	ChevronRight, ChevronLeft, Plus, Minus, ListFilter, Sun, Moon, Star,
 };
 
 export function getIcon(name: string): SVGSVGElement | null {

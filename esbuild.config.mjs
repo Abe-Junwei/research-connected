@@ -11,6 +11,16 @@ if you want to view the source, please visit the repository of this plugin.
 
 const mode = process.argv[2] ?? "dev";
 
+if (mode === "node-limits") {
+	await esbuild.build({
+		entryPoints: ["scripts/evaluate-node-limits.ts"],
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
+		bundle: true, platform: "node", format: "cjs",
+		outfile: "scripts/evaluate-node-limits.cjs", logLevel: "info",
+	});
+	process.exit(0);
+}
+
 if (mode === "verify") {
 	await esbuild.build({
 		entryPoints: ["scripts/verify.ts"],

@@ -4,15 +4,19 @@ if (typeof window === "undefined") Object.assign(globalThis, { window: { setTime
 import "../src/host-language";
 import assert from "node:assert/strict";
 import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
+import { verifyAdmission } from "./verify-admission";
+import { verifyS2Pipeline } from "./verify-s2-pipeline";
+import { verifySliceIntegration } from "./verify-slice-integration";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
+import { verifyExport } from "./verify-export";
 import { surfaceBand } from "../src/responsive";
 import { sidebarWidthLimit } from "../src/sidebar-resize";
 import { mountWorkspaceFrame } from "../src/workspace-frame";
 import { yearHistogram } from "../src/year-histogram";
 import { abstractCaption } from "../src/detail-cards";
 import { createGraphSession } from "../src/graph-session";
-import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
+import { classicCandidates, classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
 import { detectCommunities } from "../src/communities";
 import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../src/community-regions";
 import { embedViewStateKey, parseEmbed } from "../src/embed-syntax";
@@ -26,8 +30,10 @@ import {
 	type GraphFilter,
 } from "../src/graph-filter";
 import { authorYear, citationLabelAlpha, shortAuthor } from "../src/labels";
+import { introAlpha, introTiming, introZoom } from "../src/map-canvas";
+import { previewStorageJson, writePreviewSettings } from "../preview/storage";
 import { placeLayout } from "../src/layout-modes";
-import { citationRadius, classicBreath, CLASSIC_BREATH_MS, fitViewScale, yearNormalizedCitations } from "../src/visual";
+import { availableCitations, citationRadii, citationCountText, citationRadius, classicBreath, CLASSIC_BREATH_MS, fitViewScale, yearNormalizedCitations } from "../src/visual";
 import type { SimilarityGraph } from "../src/neighborhood";
 import { explainRelation, relationKind } from "../src/relation";
 import type { GraphEdge } from "../src/types";
@@ -38,7 +44,8 @@ import { classifyQuery, normalizeDoi, reconstructAbstract } from "../src/paper";
 import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
-import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject } from "../src/project-state";
+import type { ConnectedPapersSettings } from "../src/settings-model";
+import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
 import { buildPairSimilarity } from "../src/diversity";
@@ -136,6 +143,7 @@ function unit(): void {
 	assert.notEqual(topicSimilarityColor(1), topicSimilarityColor(0));
 	assert.match(topicSimilarityColor(1), /^rgb\(/, "embed WebGL parser only accepts rgb()");
 	assert.match(topicSimilarityColor(null), /^rgb\(/);
+	assert.equal(topicSimilarityColor(1), "rgb(151, 123, 221)");
 	const topicGroups = communityTopicLabels([
 		{ id: "a", title: "Language contact in Amazonia" },
 		{ id: "b", title: "Language typology of classifiers" },
@@ -321,6 +329,17 @@ function unit(): void {
 	assert.ok(citedEdge);
 	assert.equal(citedEdge.direct, citedEdge.source === "S" ? "source-cites-target" : "target-cites-source");
 	assert.equal(relationKind(citedEdge), "direct");
+	assert.deepEqual(citedEdge.structuralCoverage, { references: true, coCitation: false });
+	const missingCoverage = buildSimilarity({ ids: ["S", "P"], seedId: "S", references: new Map([["S", new Set(["P"])]]), contexts: [new Set(["C", "D"])] }).edges[0]!;
+	assert.deepEqual(missingCoverage.structuralCoverage, { references: false, coCitation: false });
+	assert.equal(missingCoverage.structuralSimilarity, null, "无关上下文不能使结构相似度变成已知零");
+	assert.equal(missingCoverage.weight, 0.1, "证据显示状态不改变直接引用的排序权重");
+	assert.match(evidenceText(missingCoverage, { authors: "A", year: 2000 }, { authors: "B", year: 2000 }), /共享参考文献 证据不足/);
+	assert.match(evidenceText(missingCoverage, { authors: "A", year: 2000 }, { authors: "B", year: 2000 }), /共被引 证据不足/);
+	const observedZero = buildSimilarity({ ids: ["S", "P"], seedId: "S", references: new Map([["S", new Set(["P", "A"])], ["P", new Set(["B"])]]), contexts: [new Set(["S"]), new Set(["P"])] }).edges[0]!;
+	assert.deepEqual(observedZero.structuralCoverage, { references: true, coCitation: true });
+	assert.match(evidenceText(observedZero, { authors: "A", year: 2000 }, { authors: "B", year: 2000 }), /共享参考文献 0 篇/);
+	assert.match(evidenceText(weighted("S", "P", 0.2), { authors: "A", year: 2000 }, { authors: "B", year: 2000 }), /证据不足/, "旧边没有可比较状态时不把零当作已确认");
 	assert.match(
 		explainRelation(citedEdge, { authors: "Yann LeCun", year: 2015 }, { authors: "David Rumelhart", year: 1986 }),
 		/引用了/,
@@ -360,7 +379,7 @@ function unit(): void {
 	const focus = focusNodes("A", [weighted("A", "B", 0.2), weighted("B", "S", 0.2)], () => true);
 	assert.equal(focus?.has("S"), false);
 	assert.equal(focus?.has("B"), true);
-	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共享参考文献 0 篇/);
+	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共享参考文献 证据不足/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /共被引 2 次/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /OpenAlex/);
 	assert.match(evidenceText(midCite, { authors: "Ada Lovelace", year: 2015 }, { authors: "Grace Hopper", year: 1990 }), /不完整/);
@@ -391,11 +410,117 @@ function unit(): void {
 	assert.equal(forceSeed?.y, 0);
 	assert.ok(fitViewScale(400, 300, 4000, 3000) < 0.2, "大平面图能缩小进视口");
 	assert.ok(fitViewScale(400, 300, 460, 300) > 0.5, "时间布局填满视口而不溢出");
-	assert.equal(fitViewScale(400, 300, 40, 30) <= 8, true);
+	assert.equal(fitViewScale(400, 300, 40, 30) <= 32, true);
+	assert.equal(introAlpha(0, 0, 200), 1, "种子在展开开始时就完全可见");
+	assert.equal(introAlpha(0, 200, 200), 0, "最远的节点在展开开始时还不可见");
+	assert.equal(introAlpha(3000, 200, 200), 1, "默认五十篇在三秒后整张图都可见");
+	const fifty = introTiming(50);
+	assert.equal(fifty.spread + fifty.fade, 3000, "默认五十篇仍是三秒");
+	assert.ok(introTiming(100).spread > fifty.spread, "节点更多时展开更久");
+	assert.ok(introTiming(12).spread < fifty.spread, "节点更少时展开更短");
+	assert.equal(introTiming(8).spread, introTiming(2).spread, "很少的图不再继续缩短");
+	assert.equal(introTiming(400).spread, introTiming(200).spread, "很大的图有时长上限");
+	const hundred = introTiming(100);
+	assert.ok(introAlpha(3000, 200, 200, hundred.spread, hundred.fade) < 1, "一百篇在三秒时最远的节点还没完全出现");
+	assert.equal(introAlpha(hundred.spread + hundred.fade, 200, 200, hundred.spread, hundred.fade), 1, "一百篇在自己的时长结束时完全可见");
+	assert.equal(introZoom(0, 8, 1), 8, "展开开始时用种子的缩放");
+	assert.equal(introZoom(1, 8, 1), 1, "展开结束时用整张图的缩放");
+	assert.ok(introZoom(0.2, 8, 1) > introZoom(0.5, 8, 1) && introZoom(0.5, 8, 1) > introZoom(0.8, 8, 1), "缩放单调拉开");
+	const earlyDrop = introZoom(0, 8, 1) - introZoom(0.05, 8, 1);
+	const lateDrop = introZoom(0.95, 8, 1) - introZoom(1, 8, 1);
+	assert.ok(lateDrop < earlyDrop, "缩放在结束时放缓");
+	const previewSnapshot: SavedGraphSnapshot = {
+		version: 1, savedAt: 1, seedId: "A",
+		nodes: [{ ...paper("A", "seed", 1), abstract: "old-text" }],
+		edges: [], seedScore: [["A", 1]], warnings: [],
+		strategies: { references: true, citations: true, related: true },
+		referenceLists: [["A", ["B"]]], catalog: [],
+		citationEvidence: [], skippedNonResearch: 0,
+	};
+	const previewStored: ConnectedPapersSettings = {
+		...DEFAULT_SETTINGS,
+		researchProjects: {
+			old: { version: 1, seedId: "A", name: "old", updatedAt: 1, views: [], snapshot: previewSnapshot },
+			now: {
+				version: 1, seedId: "B", name: "now", updatedAt: 2, views: [],
+				snapshot: {
+					...previewSnapshot, savedAt: 2, seedId: "B", seedScore: [["B", 1]],
+					referenceLists: [["B", ["A"]]],
+					nodes: [{ ...paper("B", "seed", 1), abstract: "now-text" }],
+					catalog: [{ ...paper("A", "reference", 1), abstract: "cat-text" }],
+				},
+			},
+		},
+	};
+	const newestStored = JSON.parse(previewStorageJson(previewStored, "newest"));
+	assert.equal(newestStored.researchProjects.old.snapshot, undefined);
+	assert.equal(newestStored.researchProjects.now.snapshot.nodes[0].abstract, "now-text");
+	const slimStored = JSON.parse(previewStorageJson(previewStored, "slim"));
+	assert.deepEqual(slimStored.researchProjects.now.snapshot.referenceLists, []);
+	assert.equal(slimStored.researchProjects.now.snapshot.nodes[0].abstract, "");
+	assert.equal(slimStored.researchProjects.now.snapshot.catalog[0].abstract, "");
+	assert.equal(previewStored.researchProjects.now?.snapshot?.nodes[0]?.abstract, "now-text", "storage reduction must not mutate the in-memory graph");
+	const storageDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+	try {
+		for (const name of ["QuotaExceededError", "NS_ERROR_DOM_QUOTA_REACHED"]) {
+			const writes: Array<[string, string]> = [];
+			const removals: string[] = [];
+			Object.defineProperty(window, "localStorage", {
+				configurable: true,
+				value: {
+					setItem(key: string, value: string) {
+						writes.push([key, value]);
+						if (writes.length < 4) throw new DOMException("Storage full", name);
+					},
+					removeItem(key: string) { removals.push(key); },
+				},
+			});
+			writePreviewSettings("settings", previewStored, "legacy-projects");
+			assert.deepEqual(writes.map(([, value]) => value), (["full", "newest", "slim", "none"] as const).map(mode => previewStorageJson(previewStored, mode)), `${name} progressively reduces stored snapshots`);
+			assert.deepEqual(removals, ["legacy-projects"], "legacy storage is removed only once");
+		}
+		const denied = new DOMException("Storage denied", "SecurityError");
+		let attempts = 0;
+		Object.defineProperty(window, "localStorage", {
+			configurable: true,
+			value: { setItem() { attempts++; throw denied; } },
+		});
+		assert.throws(() => writePreviewSettings("settings", previewStored), error => error === denied, "non-quota errors must propagate without destructive fallback");
+		assert.equal(attempts, 1);
+		const full = new DOMException("Storage full", "QuotaExceededError");
+		attempts = 0;
+		Object.defineProperty(window, "localStorage", {
+			configurable: true,
+			value: { setItem() { attempts++; throw full; } },
+		});
+		assert.throws(() => writePreviewSettings("settings", previewStored), error => error === full, "exhausted fallback must surface the quota error");
+		assert.equal(attempts, 4);
+	} finally {
+		if (storageDescriptor) Object.defineProperty(window, "localStorage", storageDescriptor);
+		else Reflect.deleteProperty(window, "localStorage");
+	}
 	const rLow = citationRadius(300, 300, 4000, false);
 	const rHigh = citationRadius(4000, 300, 4000, false);
-	assert.ok(rHigh / rLow > 2, "本页高低引用平方根拉开面积");
+	assert.ok(rHigh / rLow > 2, "本页高低引用对数拉开尺寸");
 	assert.equal(citationRadius(100, 100, 100, false), citationRadius(200, 200, 200, false), "极差为 0 则同级");
+	assert.equal(citationRadius(0, 0, 0, false), 4, "无引用证据不放大普通节点");
+	assert.equal(citationRadius(0, 0, 0, true), 11, "种子保留可辨认的尺寸");
+	const unknown = { ...paper("U", "reference", 0) };
+	const zero = { ...unknown, citationCountStatus: "known" as const };
+	assert.equal(availableCitations(unknown), null);
+	assert.equal(availableCitations(zero), 0);
+	assert.notEqual(citationCountText(unknown), citationCountText(zero));
+	for (const count of [-1, NaN, Infinity, 1.5]) assert.equal(availableCitations({ citedByCount: count, citationCountStatus: "known" }), null);
+	assert.equal(availableCitations({ citedByCount: 900, citationCountStatus: "missing" }), null);
+	const sizeNodes = [paper("S", "seed", 1e9), paper("A", "reference", 3500), paper("B", "citation", 400), unknown, zero];
+	assert.deepEqual(citationRadii(sizeNodes), citationRadii(sizeNodes.map(n => ({ ...n, year: null }))));
+	assert.deepEqual(citationRadii(sizeNodes).slice(1), citationRadii(sizeNodes.slice(1)));
+	assert.deepEqual(citationRadii([unknown, zero]), [4, 4]);
+	assert.deepEqual(citationRadii([paper("S", "seed", 0)]), [11]);
+	for (const count of [undefined, -1, NaN, Infinity, 1.5, 0, 100]) {
+		const converted = toPaper({ id: "https://openalex.org/W123", display_name: "Count test", cited_by_count: count }, "related")!;
+		assert.equal(converted.citationCountStatus, Number.isSafeInteger(count) && count! >= 0 ? "known" : "missing");
+	}
 	const breathA = classicBreath("paper-a", 0);
 	const breathB = classicBreath("paper-b", 0);
 	assert.ok(breathA >= 0 && breathA <= 1 && breathB >= 0 && breathB <= 1);
@@ -409,7 +534,7 @@ function unit(): void {
 		{ ...paper("A", "reference", 3500), year: 1991 },
 		{ ...paper("B", "citation", 400), year: 2023 },
 	], [], new Map([["S", 1]]), 2026);
-	assert.ok((yearSized.find((node) => node.id === "B")?.radius ?? 0) > (yearSized.find((node) => node.id === "A")?.radius ?? 0), "近年高被引年率比老文更大");
+	assert.ok((yearSized.find((node) => node.id === "A")?.radius ?? 0) > (yearSized.find((node) => node.id === "B")?.radius ?? 0), "累计高被引不被年份倒置");
 
 	const communities = detectCommunities(
 		["A", "B", "C", "D", "E", "F"],
@@ -469,40 +594,49 @@ function unit(): void {
 	const derivatives = derivativeWorks(rankedGraph, visible);
 	assert.equal(derivatives.find((item) => item.paper.id === "C")?.count, 3);
 	assert.equal(derivatives.some((item) => item.paper.id === "B"), true);
+	for (const metric of [undefined, null, { value: -1, is_in_top_1_percent: true }, { value: NaN, is_in_top_1_percent: true }, { value: 1.01, is_in_top_1_percent: true }, { value: 0.999 }]) {
+		assert.equal(toPaper({ id: "W123", display_name: "Metric", citation_normalized_percentile: metric }, "related")?.normalizedCitation, null);
+	}
+	const normalizedPaper = toPaper({ id: "W123", display_name: "Metric", citation_normalized_percentile: { value: 0.995, is_in_top_1_percent: true } }, "related")!;
+	assert.deepEqual(normalizedPaper.normalizedCitation, { percentile: 0.995, top1Percent: true });
+	const metricGraph = { ...auditGraph, nodes: [...auditGraph.nodes, normalizedPaper], catalog: [...auditGraph.catalog, normalizedPaper] };
+	assert.deepEqual(restoreGraphSnapshot(JSON.parse(JSON.stringify(saveGraphSnapshot(metricGraph))))?.nodes.find(node => node.id === "W123")?.normalizedCitation, normalizedPaper.normalizedCitation, "标准化指标随项目保存恢复");
 	const classicNodes = [
-		{ ...paper("S", "seed", 10), year: 2015 },
-		{ ...paper("A", "reference", 100), year: 1991 },
-		{ ...paper("B", "citation", 10), year: 2010 },
-		{ ...paper("C", "citation", 10), year: 2024 },
+		{ ...paper("S", "seed", 10000), year: 2000, normalizedCitation: { percentile: 1, top1Percent: true } },
+		{ ...paper("A", "reference", 300), year: 2023, normalizedCitation: { percentile: 0.99, top1Percent: true } },
+		{ ...paper("B", "reference", 299), year: 2023, normalizedCitation: { percentile: 0.989, top1Percent: false } },
+		{ ...paper("C", "citation", 10000), year: 2024, normalizedCitation: { percentile: 1, top1Percent: true } },
+		{ ...paper("Old", "reference", 11), year: 1965 },
 	];
 	const classicEdges = [
-		{ ...weighted("B", "A", 0.8), direct: "source-cites-target" as const },
-		{ ...weighted("C", "A", 0.8), direct: "source-cites-target" as const },
-		{ ...weighted("S", "A", 0.8), direct: "source-cites-target" as const },
-		{ ...weighted("S", "C", 0.5), direct: "source-cites-target" as const },
-		{ ...weighted("B", "C", 0.5), direct: "source-cites-target" as const },
+		{ ...weighted("S", "Old", 0.8), direct: "source-cites-target" as const },
+		{ ...weighted("A", "Old", 0.8), direct: "source-cites-target" as const },
 	];
-	const classics = classicNodeIds(classicNodes, classicEdges, 2026);
-	assert.equal(classics.has("A"), true, "图内多次被引的老文是经典");
-	assert.equal(classics.has("C"), false, "近年文即使被引也不标经典");
-	assert.equal(classics.has("S"), false, "种子不标经典辉光");
-	const glow = classicInfluence(
-		[
-			{ ...paper("S", "seed", 10), year: 2015 },
-			{ ...paper("A", "reference", 3500), year: 1991 },
-			{ ...paper("B", "reference", 80), year: 1990 },
-			{ ...paper("C", "citation", 10), year: 2024 },
-		],
-		[
-			{ ...weighted("S", "A", 0.8), direct: "source-cites-target" as const },
-			{ ...weighted("B", "A", 0.8), direct: "source-cites-target" as const },
-			{ ...weighted("S", "B", 0.8), direct: "source-cites-target" as const },
-			{ ...weighted("A", "B", 0.5), direct: "source-cites-target" as const },
-		],
-		2026,
-	);
-	assert.ok((glow.get("A") ?? 0) > (glow.get("B") ?? 1), "年归一被引更高则辉光范围更大");
-	assert.equal(glow.has("C"), false);
+	assert.deepEqual([...classicNodeIds(classicNodes, classicEdges, 2026)], ["A"], "满三年且年均被引100次才入选，图内引用不能绕过门槛");
+	assert.equal(classicCandidates(classicNodes, [], 2026).get("A")?.channel, "short-term");
+	assert.deepEqual([...classicNodeIds(classicNodes, [], 2026, new Map([["S", ["Old"]], ["A", ["Old"]]]))], ["A"]);
+	for (const override of [{ year: null }, { year: 2027 }, { retracted: true }, { citedByCount: 299 }, { citedByCount: -1 }, { citedByCount: NaN }, { citedByCount: Infinity }]) {
+		assert.equal(classicNodeIds([{ ...classicNodes[1]!, ...override }], [], 2026).size, 0);
+	}
+	for (const [age, count, expected] of [[2, 10000, false], [3, 299, false], [3, 300, true], [7, 699, false], [7, 700, true], [8, 999, false], [8, 1000, true], [40, 1000, true], [61, 11, false]] as const) {
+		assert.equal(classicNodeIds([{ ...paper("Boundary", "reference", count), year: 2026 - age }], [], 2026).has("Boundary"), expected, `经典边界：${age}年、${count}次`);
+	}
+	for (const normalizedCitation of [undefined, null, { percentile: 0.5, top1Percent: false }]) {
+		const candidate: PaperNode = { ...classicNodes[1]!, normalizedCitation };
+		assert.equal(classicNodeIds([candidate], [], 2026).size, 1, "不依赖标准化引用指标");
+	}
+
+	const books = [
+		{ ...paper("Comrie", "related", 1390), year: 1981 },
+		{ ...paper("Nichols", "related", 1664), year: 1992 },
+		{ ...paper("Chomsky", "related", 8245), year: 2014 },
+	];
+	assert.deepEqual([...classicNodeIds(books, [], 2026)], ["Comrie", "Nichols", "Chomsky"], "长期累计影响不依赖标准化指标");
+	const many = Array.from({ length: 12 }, (_, i) => ({ ...paper(`Classic${i}`, "reference", 300), year: 2023, normalizedCitation: { percentile: 0.995, top1Percent: true } }));
+	assert.equal(classicNodeIds(many, [], 2026).size, 12, "合格经典无数量截断");
+	assert.equal(classicInfluence(classicNodes, [], 2026).get("A"), 0.5);
+	const glow = classicInfluence([...many, { ...paper("High", "reference", 600), year: 2023, normalizedCitation: { percentile: 1, top1Percent: true } }], [], 2026);
+	assert.ok(glow.get("High")! > glow.get("Classic0")!, "辉光仍按累计影响排序");
 
 	const picked = selectNeighbors(
 		{ ...DEFAULT_SETTINGS, maxNodes: 20, includeRelated: false },
@@ -815,7 +949,7 @@ function diversityChecks(): void {
 		"相似度全 null 时等同无 MMR",
 	);
 
-	// 跨池去重与 related 配额不受 MMR 影响。
+	// 跨池去重与 related 最终上限不受 MMR 影响。
 	const dupRef = { ...paper("X1", "reference", 80), doiUrl: "https://doi.org/10.9/dup", title: "alpha topic" };
 	const dupCite = { ...paper("X2", "citation", 70), doiUrl: "https://doi.org/10.9/dup", title: "alpha topic" };
 	const deduped = selectNeighbors(
@@ -842,8 +976,8 @@ function diversityChecks(): void {
 		rel,
 		mmr,
 	);
-	assert.equal(quota.length, 19, "名额填满");
-	assert.ok(quota.filter((p) => p.origin === "related").length <= 6, "related 配额上限不变");
+	assert.equal(quota.length, 19, "合格候选充足时名额填满");
+	assert.ok(quota.filter((p) => p.origin === "related").length <= 4, "related 最终占比不超过 22%");
 }
 
 function verifyWorkspaceFrame(): void {
@@ -918,7 +1052,7 @@ function verifyWorkspaceFrame(): void {
 	assert.equal(dive.beginDive("s"), false);
 	const caption = abstractCaption({ id: "a", abstract: "Hello" } as unknown as PaperNode, { s2: new Set(["a"]), crossref: new Set(), missing: new Set() });
 	assert.match(caption, /Semantic Scholar/);
-	assert.match(abstractCaption({ id: "b", abstract: null } as unknown as PaperNode, { s2: new Set(), crossref: new Set(), missing: new Set(["b"]) }), /没有这篇的摘要|No abstract is available/);
+	assert.match(abstractCaption({ id: "b", abstract: null } as unknown as PaperNode, { s2: new Set(), crossref: new Set(), missing: new Set(["b"]) }), /暂未获取到摘要|No abstract retrieved/);
 	const empty = yearHistogram([]);
 	assert.equal(empty.dated, 0);
 	assert.equal(empty.bins.length, 0);
@@ -935,12 +1069,35 @@ function verifyWorkspaceFrame(): void {
 }
 
 async function main(): Promise<void> {
+	if (process.argv.includes("--s2-only")) {
+		await verifyS2Pipeline();
+		await reconcileOffline();
+		semanticChecks();
+		diversityChecks();
+		await cursorPaging();
+		return;
+	}
+	await verifyAdmission();
+	if (process.argv.includes("--admission-only")) return;
 	unit();
+	await verifyS2Pipeline();
+	const selectedFields: string[][] = [];
+	const metricClient = new OpenAlexClient(async url => {
+		const request = new URL(url);
+		selectedFields.push((request.searchParams.get("select") ?? "").split(","));
+		return request.pathname === "/works" ? { results: [] } : { id: "W1", display_name: "Metric" };
+	}, { apiKey: "", contactEmail: "" });
+	await metricClient.workById("W1");
+	await metricClient.searchWorks("metric");
+	await metricClient.sampleWorks("cites:W1", 1, 1, undefined, 1, () => true);
+	assert.ok(selectedFields.length === 3 && selectedFields.every(fields => fields.includes("citation_normalized_percentile")), "单篇、搜索和采样请求均获取标准化引用指标");
 	await verifyWorkIdentityPipeline();
+	await verifySliceIntegration();
 	semanticChecks();
 	diversityChecks();
 	await verifyEvidence();
 	verifyUi();
+	verifyExport();
 	verifyWorkspaceFrame();
 	await cursorPaging();
 	await reconcileOffline();
@@ -1079,8 +1236,8 @@ async function reconcileOffline(): Promise<void> {
 		embeddingModel: "specter2",
 		bulkCounts: async (_dois, opts) =>
 			new Map([
-				["10.1/seed", { citationCount: 100, referenceCount: 10, ...(opts?.embedding ? { embedding: [1, 0, 0] } : {}) }],
-				["10.1/neighbor", { citationCount: 500, referenceCount: 30, ...(opts?.embedding ? { embedding: [0.9, 0.1, 0] } : {}) }],
+				["10.1/seed", { citationCount: 100, referenceCount: 10, ...(opts?.embedding ? { embedding: [1, 0, 0], embeddingModel: "specter2" } : {}) }],
+				["10.1/neighbor", { citationCount: 500, referenceCount: 30, ...(opts?.embedding ? { embedding: [0.9, 0.1, 0], embeddingModel: "specter2" } : {}) }],
 			]),
 		referenceDois: async () => [],
 	};
@@ -1110,7 +1267,7 @@ async function reconcileOffline(): Promise<void> {
 	const s2 = new SemanticScholarClient(async () => ({}), "", async (url) => {
 		const fields = new URL(url).searchParams.get("fields") ?? "";
 		requestedFields.push(fields);
-		if (fields.includes("embedding")) throw new Error("400 unknown field");
+		if (fields.includes("embedding")) throw new OpenAlexError("400 unknown field", 400);
 		return [{ externalIds: { DOI: "10.1/x" }, citationCount: 7, referenceCount: 3 }];
 	});
 	const counts = await s2.bulkCounts(["10.1/x"], { embedding: true });

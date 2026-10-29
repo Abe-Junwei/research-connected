@@ -28,7 +28,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("OpenAlex API 密钥", "OpenAlex API key"),
-			desc: tr("在 openalex.org/settings/api 免费创建。不填也能查询，但匿名每日额度很小，用尽后会返回 429。免费密钥大约是匿名额度的 10 倍。密钥只保存在本机插件数据里，请求通过 Authorization 头发送。", "Create a free key at openalex.org/settings/api. Searches can run without one, but the anonymous daily limit is small and returns HTTP 429 when exhausted. A free key offers roughly ten times the anonymous allowance. It is stored only in local plugin data and sent in the Authorization header."),
+			desc: tr("在 openalex.org/settings/api 创建。匿名请求可能受限，具体额度以服务方为准。密钥未加密保存在库内插件数据中，可能随库同步或备份；仅向 OpenAlex 请求发送 Authorization 头。", "Create a key at openalex.org/settings/api. Anonymous requests may be limited; allowances are set by the provider. The key is stored unencrypted in vault plugin data, which may be synced or backed up. Its Authorization header is sent only to OpenAlex."),
 			render: (setting) => {
 				setting.addText((text) => {
 					text.inputEl.type = "password";
@@ -45,7 +45,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("联系邮箱（mailto）", "Contact email (mailto)"),
-			desc: tr("2026 年 2 月起 OpenAlex 已取消 polite pool，mailto 会被忽略，不能提高额度。如果填写，仍会附在请求上，只为兼容旧网关。", "OpenAlex retired the polite pool in February 2026. The mailto parameter is ignored and does not increase limits. If supplied, it is still sent for compatibility with older gateways."),
+			desc: tr("可选。填写后随 OpenAlex 请求发送；格式有效时也随 Crossref 请求发送，供服务方联系。填写邮箱不保证提高请求额度。", "Optional. Sent with OpenAlex requests and, when valid, Crossref requests so providers can contact you. An email does not guarantee a higher request allowance."),
 			render: (setting) => {
 				setting.addText((text) => {
 					text
@@ -61,7 +61,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("最大节点数", "Maximum nodes"),
-			desc: tr("含种子论文。默认 50，标准采样建议 40–60；配合扩展或深度采样可到 300。下次构建图谱时生效。", "Includes the seed paper. Default: 50. Use 40–60 for standard sampling; extended or deep sampling can use up to 300. Applies to the next graph build."),
+			desc: tr("含种子文献，默认 50，可设 20–300。默认值是性能与可读性的工程折中，不是相关性最优值。下次建图生效；候选不足时实际数量较少。", "Includes the seed paper. Default: 50; range: 20–300. This is an engineering trade-off for performance and readability, not a relevance optimum. Applies to the next build; fewer candidates may yield fewer nodes."),
 			render: (setting) => {
 				setting.addSlider((slider) => {
 					slider
@@ -77,7 +77,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("采样深度", "Sampling depth"),
-			desc: tr("标准：80 参考文献 + 40 施引 + 20 相关，约 5 次请求。扩展：参考文献和施引各最多 200，每页 100 条并自动翻页。深度：各检查最多 1000 条；没有 OpenAlex API 密钥时只取第一页，状态栏会说明。下次构建图谱时生效。", "Standard: 80 references, 40 citing papers, and 20 related works in about five requests. Extended: up to 200 references and citing papers, 100 per page. Deep: examines up to 1,000 each; without an OpenAlex API key it stops after the first page and the status bar says so. Applies to the next graph build."),
+			desc: tr("候选目标：标准为参考 80、施引 40、相关 20；扩展为 200、200、50；深度为 200、200、100。深度对参考与施引各检查最多 1000 条原始记录，无 OpenAlex 密钥时仅第一页。候选目标不是最终节点数；实际请求见采样详情。下次建图生效。", "Candidate targets (references/citing/related): standard 80/40/20; extended 200/200/50; deep 200/200/100. Deep examines up to 1,000 raw records per reference or citing list, but only page 1 without an OpenAlex key. Targets are not final node counts. See sampling details for actual requests. Applies to the next build."),
 			render: (setting) => {
 				setting.addDropdown((dropdown) => {
 					dropdown
@@ -127,7 +127,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("文献笔记正文", "Literature note body"),
-			desc: tr("留空则只写题名标题。插件总会写入 doi、openalex、rc-project、rc-status。打开论文时，笔记里的 rc-status 覆盖项目中的阅读状态；在面板里改阅读状态会写回笔记。", "Empty writes a title heading only. The plugin always adds doi, openalex, rc-project, and rc-status. Opening a paper copies rc-status into the project; changing reading status in the panel writes it back."),
+			desc: tr("留空则只写题名标题。笔记属性包含 openalex、rc-project、rc-status，有 DOI 时才写 doi。打开文献时读取关联笔记的阅读状态；来源冲突需确认，面板中的修改会同步到参与的笔记。", "Empty writes a title heading only. Note properties include openalex, rc-project, and rc-status; doi is added when available. Opening a paper reads linked notes' reading status. Conflicts require confirmation; panel changes sync to participating notes."),
 			render: (setting) => {
 				setting.addTextArea((text) => {
 					text
@@ -186,7 +186,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("OpenCitations 访问令牌", "OpenCitations access token"),
-			desc: tr("可选。用于补充 OpenAlex 缺失的引用关系。令牌只保存在本机。", "Optional. Adds citation links missing from OpenAlex. The token is stored locally only."),
+			desc: tr("可选。尝试补充引用关系。令牌未加密保存在库内插件数据中，可能被同步或备份，仅发送给 OpenCitations。", "Optional. Attempts to add citation links. Stored unencrypted in vault plugin data, which may be synced or backed up; sent only to OpenCitations."),
 			render: (setting) => {
 				setting.addText((text) => {
 					text.inputEl.type = "password";
@@ -200,7 +200,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("Semantic Scholar API 密钥", "Semantic Scholar API key"),
-			desc: tr("可选。点击引用边时读取引用意图和 Influential 标记。", "Optional. Fetches citation intent and the Influential flag when a citation edge is selected."),
+			desc: tr("可选。用于候选摘要、计数与可选向量增强，以及引用边的意图和 Influential 标记。密钥未加密保存在库内插件数据中，可能被同步或备份，仅发送给 Semantic Scholar。", "Optional. Used for candidate abstracts, counts, optional vectors, and citation intent/Influential flags. Stored unencrypted in vault plugin data, which may be synced or backed up; sent only to Semantic Scholar."),
 			render: (setting) => {
 				setting.addText((text) => {
 					text.inputEl.type = "password";
@@ -214,7 +214,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("Semantic Scholar 交叉比对", "Semantic Scholar cross-check"),
-			desc: tr("建图时用 Semantic Scholar 批量核对每篇的被引数与参考文献数：差异悬殊的节点（通常是记录错配，如书评继承了原书引用）会在详情里标注；OpenAlex 缺失的参考文献列表会从 Semantic Scholar 回填并参与连线。失败不影响建图。", "During graph building, compare citation and reference counts against Semantic Scholar. Large discrepancies, often caused by mismatched records such as a review inheriting a book citations, are flagged in the details. Missing OpenAlex reference lists are backfilled from Semantic Scholar and used for links. Failures do not stop graph building."),
+			desc: tr("最终选文前，尝试在预算内补候选摘要并核对计数；缺失参考文献可回填参与连线。来源差异不等于记录错配。匹配、缓存与失败信息见采样详情；失败时使用已有证据继续建图。", "Before selection, attempts bounded abstract and count enrichment; missing references may be backfilled for links. Source discrepancies do not prove mismatches. See sampling details for matches, cache hits, and failures. Construction continues with available evidence on failure."),
 			render: (setting) => {
 				setting.addToggle((toggle) => {
 					toggle.setValue(this.store.settings.s2Reconcile).onChange(async (value) => {
@@ -226,8 +226,8 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 		});
 
 		items.push({
-			name: tr("语义向量（SPECTER2）", "Semantic embeddings (SPECTER2)"),
-			desc: tr("随上面的批量核对一同取回 Semantic Scholar 的 SPECTER2 语义向量，用于文本相似度打分（不增加请求数，向量只存内存）。接口不可用或某篇缺向量时自动退回本地文本相似度。需先开启交叉比对。", "Fetch Semantic Scholar SPECTER2 embeddings during the cross-check for text similarity scoring. This adds no requests; embeddings stay in memory. If unavailable, scoring falls back to local text similarity. Requires the cross-check above."),
+			name: tr("语义向量（Semantic Scholar）", "Semantic embeddings (Semantic Scholar)"),
+			desc: tr("请求向量参与最终选文前的排序；只比较同模型、同维度的有效向量，实际模型见详情。缺失或限流时使用本地文本与主题。需开启交叉比对。", "Request vectors for ranking before final selection. Only valid vectors with matching models and dimensions are compared; details show the actual model. Missing data or rate limits use local text/topics. Requires cross-check."),
 			render: (setting) => {
 				setting.addToggle((toggle) => {
 					toggle.setValue(this.store.settings.semanticEmbedding).onChange(async (value) => {
@@ -268,7 +268,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 			items.push({
 				name: tr("LLM API 密钥", "LLM API key"),
-				desc: tr("只保存在本机；生成总结时才发送。", "Stored locally; sent only when generating a summary."),
+				desc: tr("未加密保存在库内插件数据中，可能被同步或备份；生成总结时仅发送给所配置的模型服务。", "Stored unencrypted in vault plugin data, which may be synced or backed up; sent only to the configured model service when generating a summary."),
 				render: (setting) => {
 					setting.addText((text) => {
 						text.inputEl.type = "password";

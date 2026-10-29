@@ -10,15 +10,30 @@ import { classifyQuery, normalizeDoi, reconstructAbstract, referenceIds, shortId
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
 import { buildPairSimilarity } from "./diversity";
+import { admissionText, assessAdmission } from "./admission";
+import { embeddingCosine } from "./text-similarity";
+import type { S2BatchStats } from "./s2-batch";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
-import { chooseExpand, couplingFill, EXPAND_CAP, graftNodes, normalizeWorkGraph, omitNode, refreshDerived, type EditableGraph } from "./graph-edit";
+import { applyWorkIdentityDecisions, chooseExpand, couplingFill, EXPAND_CAP, graftNodes, refreshDerived, type EditableGraph } from "./graph-edit";
 import { paperHasId, paperRecords, resolveWorkQuery, sameWork, workIndex, type WorkIdentity } from "./work-identity";
 import type { ConnectedPapersSettings, SampleDepth } from "./settings-model";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 
 export type LoadStage = "resolving" | "fetching" | "scoring";
 export type LoadWarning = "references" | "citations" | "related" | "details" | "crosscheck";
+
+export const WARNING_TEXT: Record<LoadWarning, string> = {
+	references: tr("参考文献未获取", "References could not be loaded"),
+	citations: tr("施引文献未获取", "Citing papers could not be loaded"),
+	related: tr("相关作品未获取", "Related works could not be loaded"),
+	details: tr("部分文献详情或参考文献列表未获取；仅使用已有证据", "Some paper details or reference lists could not be loaded; available evidence is used"),
+	crosscheck: tr("Semantic Scholar 增强未完成；缺失处使用已有证据", "Semantic Scholar enrichment is incomplete; available evidence is used where data is missing"),
+};
+
+export function samplingText(stats: { accepted: number; requests: number; pages: number; filtered: number; duplicates: number; partial: boolean }, label: string): string {
+	return tr(`${label}：保留 ${stats.accepted} 篇 · ${stats.pages} 页 · ${stats.requests} 次请求${stats.filtered ? ` · 过滤 ${stats.filtered} 条` : ""}${stats.duplicates ? ` · 去重 ${stats.duplicates} 条` : ""}${stats.partial ? " · 未达目标" : ""}`, `${label}: ${stats.accepted} accepted · ${stats.pages} ${stats.pages === 1 ? "page" : "pages"} · ${stats.requests} ${stats.requests === 1 ? "request" : "requests"}${stats.filtered ? ` · ${stats.filtered} filtered` : ""}${stats.duplicates ? ` · ${stats.duplicates} duplicates` : ""}${stats.partial ? " · below target" : ""}`);
+}
 
 export interface CandidateAudit {
 	id: string;
@@ -47,6 +62,7 @@ export const SAMPLE_TIERS: Record<
 const MAX_CONTEXT_CITERS = 400;
 
 export interface SimilarityGraph {
+	researchProjection?: import("./graph-edit").ResearchProjection;
 	workIdentity?: WorkIdentity;
 	nodes: PaperNode[];
 	edges: GraphEdge[];
@@ -82,11 +98,20 @@ export interface SimilarityGraph {
 	crossCheck?: ReadonlyMap<string, CrossCheck>;
 	/** 语义相似度（BM25+主题余弦，本地计算），键为节点 id；null = 信号缺失。 */
 	semanticScores?: ReadonlyMap<string, number | null>;
-	/** 语义通道来源：embedding = SPECTER2 向量参与，local = 纯本地 BM25+主题。 */
+	/** 语义通道来源：embedding = 已验证模型向量参与，local = 纯本地 BM25+主题。 */
 	semanticMode?: "embedding" | "local";
 	/** 向量模型名（随批量请求返回），用于识别向量空间漂移。 */
 	semanticModel?: string | null;
-	/** 入选时的真实决策依据（仅 picked 节点，仅内存，不持久化）。 */
+	semanticVectorIds?: readonly string[];
+	enhancement?: {
+		candidates: number;
+		openAlexRequested: number;
+		openAlexAbstracts: number;
+		abstractsAdded: number;
+		compatibleVectors: number;
+		s2: S2BatchStats;
+	};
+	/** 入选时的真实决策依据，随项目快照保存。 */
 	selectionRank?: ReadonlyMap<string, SelectionRank>;
 }
 
@@ -95,6 +120,8 @@ export interface SelectionRank {
 	authority: number;
 	semantic: number | null;
 	relevance: number;
+	semanticChannel?: "embedding" | "local";
+	semanticModel?: string;
 }
 
 /** MMR 多样性选项：sim 为对称可空的候选两两相似度，lambda 为相关性权重。 */
@@ -105,6 +132,36 @@ export interface MmrOptions {
 
 /** 标准 MMR 的相关性权重。合成邻域 sweep 在 0.6–0.8 几乎平坦，取区间中值。 */
 export const MMR_LAMBDA = 0.7;
+
+function enhancementCandidates(seed: PaperNode, papers: readonly PaperNode[], limit: number): PaperNode[] {
+	const uniquePapers = [...new Map(papers.map(paper => [paper.id, paper])).values()];
+	const scorer = buildSemanticScorer(seed, uniquePapers);
+	const ranked = uniquePapers.sort((a, b) => (scorer.score(b) ?? 0) - (scorer.score(a) ?? 0) || a.id.localeCompare(b.id));
+	const uncertain = ranked.filter(paper => !paper.abstract && assessAdmission(seed, paper).status !== "matched");
+	const chosen = new Map<string, PaperNode>();
+	for (let i = 0; chosen.size < limit && i < ranked.length; i++) {
+		for (const paper of [uncertain[i], ranked[i]]) {
+			if (paper && chosen.size < limit) chosen.set(paper.id, paper);
+		}
+	}
+	return [...chosen.values()];
+}
+
+export function enhancementText(graph: Pick<SimilarityGraph, "enhancement" | "semanticModel">): string {
+	const value = graph.enhancement;
+	if (!value) return "";
+	const stats = value.s2;
+	const coverage = tr(
+		`S2 匹配 ${stats.found}/${stats.requested} · 请求 ${stats.requests} · 缓存 ${stats.cacheHits} · 未匹配 ${stats.notFound} · 未完成 ${stats.unresolved} · 补摘要 ${value.abstractsAdded} · 候选同模型向量 ${value.compatibleVectors}${graph.semanticModel ? ` (${graph.semanticModel})` : ""}`,
+		`S2 matched ${stats.found}/${stats.requested} · requests ${stats.requests} · cached ${stats.cacheHits} · not matched ${stats.notFound} · unresolved ${stats.unresolved} · abstracts added ${value.abstractsAdded} · compatible candidate vectors ${value.compatibleVectors}${graph.semanticModel ? ` (${graph.semanticModel})` : ""}`,
+	);
+	return `${coverage}${stats.rateLimited ? tr(" · 发生限流", " · rate limited") : ""}${stats.embeddingFallback ? tr(" · 向量字段不可用，改取元数据", " · embeddings unavailable; metadata only") : ""}${stats.error ? tr(` · 部分增强未完成，缺失处使用本地证据：${stats.error}`, ` · enhancement incomplete; local evidence used where missing: ${stats.error}`) : ""}`;
+}
+
+export function graphStatusSummary(graph: Pick<SimilarityGraph, "nodes" | "edges" | "warnings" | "pagingLimited" | "enhancement">, incomplete = false): string {
+	const partial = incomplete || graph.warnings.length > 0 || graph.pagingLimited || Boolean(graph.enhancement?.s2.error);
+	return tr(`${graph.nodes.length} 篇文献 · ${graph.edges.length} 条连线`, `${graph.nodes.length} papers · ${graph.edges.length} links`) + (partial ? tr(" · 部分数据未获取", " · Some data could not be retrieved") : "");
+}
 
 export interface ExternalReference {
 	source: "openalex" | "semantic-scholar" | "crossref";
@@ -141,6 +198,7 @@ export interface ReconcileSource {
 	referenceDois(doi: string): Promise<string[]>;
 	/** Model name of the embeddings from the last bulkCounts call, when provided. */
 	readonly embeddingModel?: string | null;
+	readonly batchStats?: S2BatchStats;
 }
 
 export interface CrossrefReferenceSource {
@@ -169,6 +227,10 @@ const ORIGIN_RANK: Record<Origin, number> = {
  * Resolve a seed, sample its OpenAlex neighborhood, then score pairs.
  * Reference lists for coupling and co-citation come from a second batched fetch.
  */
+export class RetractedSeedError extends Error {
+	constructor(readonly paper: PaperNode) { super(tr("已保存起点现已撤稿，重建已暂停；原图保持可用。", "The saved seed is now retracted. Rebuild paused; the previous graph remains available.")); }
+}
+
 export async function loadNeighborhood(
 	client: OpenAlexClient,
 	target: { kind: "doi" | "openalex"; value: string },
@@ -176,6 +238,7 @@ export async function loadNeighborhood(
 	onStage?: (stage: LoadStage) => void,
 	reconcile?: ReconcileSource | null,
 	crossref?: CrossrefReferenceSource | null,
+	options?: { savedSeed?: PaperNode; allowRetractedSeed?: boolean },
 ): Promise<SimilarityGraph> {
 	if (!settings.includeReferences && !settings.includeCitations && !settings.includeRelated) {
 		throw new OpenAlexError(tr("请至少开启一种邻居策略（参考文献、施引或相关作品）。", "Enable at least one neighbor source: references, citing papers, or related works."));
@@ -186,6 +249,7 @@ export async function loadNeighborhood(
 		target.kind === "doi" ? await client.workByDoi(target.value) : await client.workById(target.value);
 	let seed = toPaper(seedRaw, "seed");
 	if (!seed) throw new OpenAlexError(tr("OpenAlex 返回的种子作品缺少标题或 ID。", "The seed work from OpenAlex has no title or ID."));
+	if (seed.retracted && options?.savedSeed && !options.allowRetractedSeed) throw new RetractedSeedError(seed);
 	const exactProject = settings.researchProjects?.[seed.id];
 	const matchingProjects = Object.values(settings.researchProjects ?? {}).filter((project) => project.snapshot?.nodes.some((paper) => paper.isSeed && paperRecords(paper).every((record) => sameWork(record, seed!))));
 	const existingProject = exactProject ?? (matchingProjects.length === 1 ? matchingProjects[0] : undefined);
@@ -203,7 +267,7 @@ export async function loadNeighborhood(
 	const pagingLimited = settings.sampleDepth === "deep" && settings.apiKey.trim() === "";
 	const listPages = pagingLimited ? 1 : tier.pages;
 	const acceptsResearch = (work: RawWork): boolean => {
-		return candidateExclusion(work, seed.id, settings.excludeRetracted) === null;
+		return candidateExclusion(work, seed, settings.excludeRetracted, false) === null;
 	};
 	const [references, citations, related] = await Promise.all([
 		loadGroup(settings.includeReferences, () => client.sampleWorks(`cited_by:${seed.id}`, tier.references, tier.references, "cited_by_count:desc", listPages, acceptsResearch)),
@@ -225,6 +289,7 @@ export async function loadNeighborhood(
 	const refAll = asPapers(references.works, "reference", seed.id);
 	const citeAll = asPapers(citations.works, "citation", seed.id);
 	const relatedAll = asPapers(related.works, "related", seed.id);
+	for (const paper of [...refAll, ...citeAll, ...relatedAll]) paper.admission = assessAdmission(seed, paper);
 	// Reviews and editorials are dropped as nodes and as co-citation context:
 	// their reference lists and citation counts belong to the reviewed work,
 	// so keeping them bends the map toward the wrong record.
@@ -248,12 +313,84 @@ export async function loadNeighborhood(
 		["reference", references], ["citation", citations], ["related", related],
 	] as const).flatMap(([source, group]) => [
 		...group.works.map((work) => auditCandidate(work, source)),
-		...group.sample.rejected.map((work) => auditCandidate(work, source, candidateExclusion(work, seed.id, settings.excludeRetracted) ?? tr("已过滤", "Filtered"))),
+		...group.sample.rejected.map((work) => auditCandidate(work, source, candidateExclusion(work, seed, settings.excludeRetracted) ?? tr("已过滤", "Filtered"))),
 	]).filter((item) => item.id || item.doi);
-	// 候选排序：权威分（log 被引 × 新近度，3.7c）与语义分（标题/concepts/主题，
-	// 摘要此刻尚未补取）各占一半；语义缺失时退回纯权威分。
-	const rankPool = [...refPapers, ...citePapers, ...relatedPapers];
-	const preSemantic = buildSemanticScorer(seed, rankPool);
+	const allCandidates = [...new Map([...refPapers, ...citePapers, ...relatedPapers].map(paper => [paper.id, paper])).values()];
+	const shortlist = enhancementCandidates(seed, allCandidates, Math.min(160, Math.max(80, settings.maxNodes * 2)));
+	const refLists = new Map<string, string[]>();
+	const rawReferenceLists = new Map<string, ExternalReference[]>();
+	const seedReferenceIds = referenceIds(seedRaw.referenced_works);
+	refLists.set(seed.id, seedReferenceIds);
+	rawReferenceLists.set(seed.id, seedReferenceIds.map(id => ({ source: "openalex", externalId: id })));
+	const openAlexLinks = new Set(seedReferenceIds.map(id => `${seed.id}\0${id}`));
+	const byId = new Map([seed, ...allCandidates].map(paper => [paper.id, paper]));
+	const readDetails = async (ids: string[]): Promise<number> => {
+		let abstracts = 0;
+		try {
+			for (const raw of await client.worksByIds(ids)) {
+				const id = raw.id ? shortId(raw.id) : "";
+				if (!id) continue;
+				const refs = referenceIds(raw.referenced_works);
+				rawReferenceLists.set(id, refs.map(refId => ({ source: "openalex", externalId: refId })));
+				if (!refLists.has(id) || refs.length) refLists.set(id, refs);
+				for (const ref of refs) openAlexLinks.add(`${id}\0${ref}`);
+				const paper = byId.get(id);
+				const abstract = reconstructAbstract(raw.abstract_inverted_index);
+				if (paper && abstract && !paper.abstract) { paper.abstract = abstract; paper.abstractSource = "openalex"; abstracts += 1; }
+			}
+		} catch {
+			if (!warnings.includes("details")) warnings.push("details");
+		}
+		return abstracts;
+	};
+	onStage?.("scoring");
+	const preDetailIds = unique([seed.id, ...shortlist.map(paper => paper.id)]);
+	const openAlexAbstracts = await readDetails(preDetailIds);
+	const s2Candidates = enhancementCandidates(seed, shortlist.filter(paper => doiFromPaper(paper) !== null), 120);
+	const s2Papers = [seed, ...s2Candidates];
+	const doiToCandidates = new Map<string, PaperNode[]>();
+	for (const paper of s2Papers) {
+		const doi = doiFromPaper(paper);
+		if (doi) doiToCandidates.set(doi, [...(doiToCandidates.get(doi) ?? []), paper]);
+	}
+	let counts = new Map<string, S2Counts>();
+	let s2: S2BatchStats = {
+		requested: settings.s2Reconcile ? doiToCandidates.size : 0, cacheHits: 0, requests: 0, found: 0, notFound: 0,
+		unresolved: settings.s2Reconcile ? doiToCandidates.size : 0, rateLimited: false, embeddingFallback: false,
+	};
+	if (settings.s2Reconcile && doiToCandidates.size > 0) {
+		if (reconcile) {
+			try {
+				counts = await reconcile.bulkCounts([...doiToCandidates.keys()], { embedding: settings.semanticEmbedding });
+				s2 = reconcile.batchStats ? { ...reconcile.batchStats } : { ...s2, found: counts.size, unresolved: Math.max(0, doiToCandidates.size - counts.size) };
+			} catch (error) {
+				s2.error = error instanceof Error ? error.message : tr("Semantic Scholar 候选增强失败", "Semantic Scholar candidate enhancement failed");
+				console.warn("[research-connected] Semantic Scholar:", s2.error);
+			}
+		} else s2.error = tr("Semantic Scholar 批量传输不可用", "Semantic Scholar batch transport unavailable");
+		if (s2.error) warnings.push("crosscheck");
+	}
+	let abstractsAdded = 0;
+	for (const [doi, count] of counts) for (const paper of doiToCandidates.get(doi) ?? []) {
+		if (!paper.abstract && count.abstract) { paper.abstract = count.abstract; paper.abstractSource = "s2"; abstractsAdded += 1; }
+	}
+	const embeddings = new Map<string, number[]>();
+	const seedData = counts.get(doiFromPaper(seed) ?? "");
+	const semanticModel = settings.semanticEmbedding ? seedData?.embeddingModel?.trim() || null : null;
+	if (semanticModel && seedData?.embedding && embeddingCosine(seedData.embedding, seedData.embedding) !== null) {
+		embeddings.set(seed.id, seedData.embedding);
+		for (const [doi, count] of counts) {
+			if (count.embeddingModel !== semanticModel || !count.embedding || embeddingCosine(seedData.embedding, count.embedding) === null) continue;
+			for (const paper of doiToCandidates.get(doi) ?? []) embeddings.set(paper.id, count.embedding);
+		}
+	}
+	for (const paper of allCandidates) paper.admission = assessAdmission(seed, paper);
+	const eligible = new Set(allCandidates.filter(paper => paper.admission?.status !== "excluded").map(paper => paper.id));
+	for (const item of candidateAudit) {
+		if (!item.rejection && !eligible.has(candidates.ids.get(item.id) ?? item.id)) item.rejection = admissionText({ status: "excluded", reason: "discipline-mismatch" });
+	}
+	const rankPool = allCandidates.filter(paper => eligible.has(paper.id));
+	const preSemantic = buildSemanticScorer(seed, rankPool, embeddings);
 	const maxImpact = Math.max(1e-9, ...rankPool.map((paper) => impactScore(paper)));
 	const rankCandidate = (paper: PaperNode): number => {
 		const authority = impactScore(paper) / maxImpact;
@@ -266,9 +403,9 @@ export async function loadNeighborhood(
 	const picked = selectNeighbors(
 		settings,
 		{
-			reference: withoutSeedDuplicate(refPapers, seed),
-			citation: withoutSeedDuplicate(citePapers, seed),
-			related: withoutSeedDuplicate(relatedPapers, seed),
+			reference: withoutSeedDuplicate(refPapers, seed).filter(paper => eligible.has(paper.id)),
+			citation: withoutSeedDuplicate(citePapers, seed).filter(paper => eligible.has(paper.id)),
+			related: withoutSeedDuplicate(relatedPapers, seed).filter(paper => eligible.has(paper.id)),
 		},
 		seed.id,
 		rankCandidate,
@@ -281,46 +418,20 @@ export async function loadNeighborhood(
 			authority: impactScore(paper) / maxImpact,
 			semantic: preSemantic.score(paper),
 			relevance: rankCandidate(paper),
+			semanticChannel: embeddings.has(paper.id) ? "embedding" : "local",
+			semanticModel: embeddings.has(paper.id) && semanticModel ? semanticModel : undefined,
 		});
 	}
-
-	const refLists = new Map<string, string[]>();
-	const rawReferenceLists = new Map<string, ExternalReference[]>();
-	const seedReferenceIds = referenceIds(seedRaw.referenced_works);
-	refLists.set(seed.id, seedReferenceIds);
-	rawReferenceLists.set(seed.id, seedReferenceIds.map((id) => ({ source: "openalex", externalId: id })));
-	const openAlexLinks = new Set(refLists.get(seed.id)!.map((id) => `${seed.id}\0${id}`));
 
 	// Citing papers arrive most-cited first; the context cap bounds the batched
 	// reference-list fetch when deep sampling returned hundreds of citers.
 	const contextIds = citePapers.slice(0, MAX_CONTEXT_CITERS).map((paper) => paper.id);
 	const allDetailIds = unique([seed.id, ...picked.map((paper) => paper.id), ...[seed, ...picked].flatMap((paper) => paperRecords(paper).map((record) => record.id)), ...contextIds]);
-	const batchIds = allDetailIds.slice(0, settings.maxNodes + MAX_CONTEXT_CITERS);
-	if (batchIds.length < allDetailIds.length) warnings.push("details");
-	if (batchIds.length > 1 || !seed.abstract) {
+	const batchIds = allDetailIds.filter(id => !refLists.has(id)).slice(0, settings.maxNodes + MAX_CONTEXT_CITERS);
+	if (allDetailIds.filter(id => !refLists.has(id)).length > batchIds.length) warnings.push("details");
+	if (batchIds.length > 0) {
 		onStage?.("scoring");
-		try {
-			const detailed = await client.worksByIds(batchIds);
-			const byId = new Map<string, PaperNode>([
-				...citePapers.map((paper) => [paper.id, paper] as const),
-				[seed.id, seed],
-				...picked.map((paper) => [paper.id, paper] as const),
-			]);
-			for (const raw of detailed) {
-				const id = raw.id ? shortId(raw.id) : "";
-				if (!id) continue;
-				const ids = referenceIds(raw.referenced_works);
-				rawReferenceLists.set(id, ids.map((refId) => ({ source: "openalex", externalId: refId })));
-				const previous = refLists.get(id);
-				if (!previous || ids.length > 0) refLists.set(id, ids);
-				for (const refId of ids) openAlexLinks.add(`${id}\0${refId}`);
-				const paper = byId.get(id);
-				const abstract = reconstructAbstract(raw.abstract_inverted_index);
-				if (paper && abstract) paper.abstract = abstract;
-			}
-		} catch {
-			warnings.push("details");
-		}
+		await readDetails(batchIds);
 	}
 
 	// Cross-check against Semantic Scholar: one bulk POST compares citation and
@@ -328,8 +439,6 @@ export async function loadNeighborhood(
 	// backfilled from S2 (only links into this graph matter for scoring).
 	const crossCheck = new Map<string, CrossCheck>();
 	const s2Links = new Set<string>();
-	// SPECTER2 vectors from the same bulk request (Phase B), keyed by node id.
-	const embeddings = new Map<string, number[]>();
 	if (reconcile && settings.s2Reconcile) {
 		try {
 			const doiToId = new Map<string, string>();
@@ -338,13 +447,11 @@ export async function loadNeighborhood(
 				if (doi) doiToId.set(doi.toLowerCase(), paper.id);
 			}
 			if (doiToId.size > 0) {
-				const counts = await reconcile.bulkCounts([...doiToId.keys()], { embedding: settings.semanticEmbedding });
 				const byId = new Map([seed, ...picked].map((paper) => [paper.id, paper] as const));
 				for (const [doi, count] of counts) {
 					const id = doiToId.get(doi);
 					const paper = id ? byId.get(id) : undefined;
 					if (!id || !paper) continue;
-					if (Array.isArray(count.embedding) && count.embedding.length > 0) embeddings.set(id, count.embedding);
 					crossCheck.set(id, {
 						s2Citations: count.citationCount,
 						s2References: count.referenceCount,
@@ -442,8 +549,8 @@ export async function loadNeighborhood(
 
 	// 展示用完整语义分（摘要已就位）：图谱综合分 = 0.55 结构 + 0.45 语义；
 	// 语义缺失的节点保持原结构分。放射布局的距离编码跟着 seedScore 走。
-	// seed 有 SPECTER2 向量时打分器自动对双侧有向量的节点启用向量通道。
-	const semanticMode: "embedding" | "local" = embeddings.has(seed.id) ? "embedding" : "local";
+	const semanticVectorIds = picked.filter(paper => embeddings.has(paper.id)).map(paper => paper.id);
+	const semanticMode: "embedding" | "local" = semanticVectorIds.length > 0 ? "embedding" : "local";
 	const semanticScorer = buildSemanticScorer(seed, picked, embeddings.size > 0 ? embeddings : undefined);
 	const semanticScores = new Map<string, number | null>();
 	for (const paper of picked) semanticScores.set(paper.id, semanticScorer.score(paper));
@@ -478,8 +585,8 @@ export async function loadNeighborhood(
 		}
 	}
 
-	return normalizeWorkGraph({
-		workIdentity: separatedIds.length ? { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], separatedIds } : undefined,
+	return applyWorkIdentityDecisions({
+		workIdentity: { version: 1, records: [], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [], separatedIds },
 		nodes: [seed, ...picked],
 		edges,
 		seedScore,
@@ -506,9 +613,14 @@ export async function loadNeighborhood(
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 		semanticScores,
 		semanticMode,
-		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
+		semanticModel: semanticMode === "embedding" ? semanticModel : null,
+		semanticVectorIds,
+		enhancement: settings.s2Reconcile ? {
+			candidates: allCandidates.length, openAlexRequested: preDetailIds.length, openAlexAbstracts,
+			abstractsAdded, compatibleVectors: [...embeddings.keys()].filter(id => id !== seed.id).length, s2,
+		} : undefined,
 		selectionRank,
-	});
+	}, settings.workIdentityDecisions, settings.sourceVersionRelations);
 }
 
 /** Fetch up to EXPAND_CAP new neighbors of `from`, skipping graph members and hidden ids. */
@@ -572,6 +684,13 @@ export async function expandAround(
 	const papers = picked.length < cap
 		? [...picked, ...couplingFill(graph, from.id, have, blocked, cap - picked.length)]
 		: picked;
+	const seed = graph.nodes.find((paper) => paper.isSeed) ?? from;
+	for (const paper of papers) {
+		const decision = assessAdmission(seed, paper);
+		paper.admission = decision.status === "excluded" ? { ...decision, status: "manual" } : decision;
+	}
+	const crossDisciplinary = papers.filter((paper) => paper.admission?.status === "manual" || paper.admission?.status === "cross-disciplinary").length;
+	if (crossDisciplinary) warnings.push(tr(`主动扩展保留了 ${crossDisciplinary} 篇跨学科候选，请在详情中核对相关性。`, `Explicit expansion retained ${crossDisciplinary} cross-disciplinary candidates. Review relevance in their details.`));
 	const lists = new Map<string, readonly string[]>();
 	const noMore = (!settings.includeReferences || references.sample.exhausted) && (!settings.includeCitations || citations.sample.exhausted);
 	const citationIds = new Set(citations.works.map((work) => work.id));
@@ -616,14 +735,19 @@ export async function expandSecondLayer(
 	const room = cap - graph.nodes.length;
 	if (room <= 0) return { graph, note: tr("已到节点上限", "Node limit reached") };
 	const extra: PaperNode[] = [];
+	const seed = graph.nodes.find((node) => node.isSeed);
+	if (!seed) throw new OpenAlexError(tr("研究项目缺少种子文献", "Research project has no seed paper"));
 	const seen = new Set(graph.nodes.flatMap((paper) => paperRecords(paper).map((record) => record.id)));
 	let failed = false;
 	let added = 0;
+	let filtered = 0;
 	for (const hub of hubs) {
 		try {
 			for (const raw of await client.referencedBySeed(hub.id, 12)) {
 				const paper = toPaper(raw, "reference");
 				if (!paper || seen.has(paper.id) || nonResearchLabel(paper) || (excludeRetracted && paper.retracted)) continue;
+				paper.admission = assessAdmission(seed, paper);
+				if (paper.admission.status === "excluded") { filtered += 1; continue; }
 				const index = workIndex([...graph.nodes, ...extra, paper], graph.nodes.map((node) => node.id), graph.workIdentity?.separatedIds);
 				const nextAdded = index.papers.length - graph.nodes.length;
 				if (nextAdded > room) continue;
@@ -631,7 +755,8 @@ export async function expandSecondLayer(
 			}
 		} catch { failed = true; }
 	}
-	if (!extra.length) return { graph, note: failed ? tr("第二层没有读到", "The second layer could not be loaded") : "" };
+	const filterNote = filtered ? tr(`按起点学科准入规则过滤了 ${filtered} 篇第二层候选`, `${filtered} second-layer candidates filtered by seed-discipline eligibility`) : "";
+	if (!extra.length) return { graph, note: [failed ? tr("第二层没有读到", "The second layer could not be loaded") : "", filterNote].filter(Boolean).join(tr("；", "; ")) };
 	const lists = new Map<string, readonly string[]>();
 	try {
 		for (const raw of await client.worksByIds(extra.flatMap((paper) => paperRecords(paper).map((record) => record.id)))) {
@@ -641,7 +766,7 @@ export async function expandSecondLayer(
 	} catch { failed = true; }
 	return {
 		graph: graftNodes(graph, extra, lists),
-		note: tr(`含第二层 ${added} 篇${failed ? "；部分来源未读取" : ""}`, `Includes ${added} second-layer papers${failed ? "; some source data could not be loaded" : ""}`),
+		note: [tr(`含第二层 ${added} 篇${failed ? "；部分来源未读取" : ""}`, `Includes ${added} second-layer papers${failed ? "; some source data could not be loaded" : ""}`), filterNote].filter(Boolean).join(tr("；", "; ")),
 	};
 }
 
@@ -656,19 +781,23 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 ): Promise<{ graph: T; added: number; displaced: number; omitted: number; failed: number }> {
 	const identityIds = new Map(graph.workIdentity?.canonicalIds ?? []);
 	const requested = [...new Set(ids.filter((id) => /^W\d+$/i.test(id)).map((id) => identityIds.get(id.toUpperCase()) ?? id.toUpperCase()))].filter((id) => !hidden.has(id));
-	const capacity = Math.max(0, settings.maxNodes - 1);
-	const pinned = requested.slice(0, capacity);
-	const omitted = requested.length - pinned.length;
+	const pinned = requested;
+	const omitted = 0;
 	const present = new Set(graph.nodes.map((node) => node.id));
 	const want = pinned.filter((id) => !present.has(id));
 	if (want.length === 0) return { graph, added: 0, displaced: 0, omitted, failed: 0 };
 	const papers: PaperNode[] = [];
 	const lists = new Map<string, readonly string[]>();
+	const seed = graph.nodes.find((paper) => paper.isSeed);
 	try {
 		const detailed = await client.papersByIds(want);
 		for (const raw of detailed) {
 			const paper = toPaper(raw, origins.get(shortId(raw.id ?? "")) ?? "related");
 			if (!paper || present.has(paper.id) || paper.isSeed || nonResearchLabel(paper) || (settings.excludeRetracted && paper.retracted)) continue;
+			if (seed) {
+				const decision = assessAdmission(seed, paper);
+				paper.admission = decision.status === "excluded" ? { ...decision, status: "manual" } : decision;
+			}
 			papers.push(paper);
 			lists.set(paper.id, referenceIds(raw.referenced_works));
 			present.add(paper.id);
@@ -677,16 +806,9 @@ export async function restoreGraftedMembers<T extends EditableGraph>(
 		return { graph, added: 0, displaced: 0, omitted, failed: want.length };
 	}
 	if (papers.length === 0) return { graph, added: 0, displaced: 0, omitted, failed: want.length };
-	const pinnedSet = new Set(pinned);
-	let next = refreshDerived(graftNodes(graph, papers, lists));
+	const next = refreshDerived(graftNodes(graph, papers, lists));
 	const added = next.nodes.length - graph.nodes.length;
-	const excess = Math.max(0, next.nodes.length - settings.maxNodes);
-	const removable = graph.nodes.filter((node) => !node.isSeed && !pinnedSet.has(node.id))
-		.sort((a, b) => (graph.seedScore.get(a.id) ?? 0) - (graph.seedScore.get(b.id) ?? 0) || a.id.localeCompare(b.id))
-		.slice(0, excess);
-	for (const node of removable) next = omitNode(next, node.id) ?? next;
-	if (removable.length) next = refreshDerived(next);
-	return { graph: next, added, displaced: removable.length, omitted, failed: want.length - papers.length };
+	return { graph: next, added, displaced: 0, omitted, failed: want.length - papers.length };
 }
 
 export function selectNeighbors(
@@ -711,6 +833,9 @@ export function selectNeighbors(
 	const chosen = new Map<string, PaperNode>();
 	// MMR 已选序列：多样性惩罚对所有已选节点取最大值，与池无关。
 	const chosenList: PaperNode[] = [];
+	const structuralEnabled = settings.includeReferences || settings.includeCitations;
+	const relatedCap = structuralEnabled ? Math.floor(slots * 0.22) : slots;
+	let relatedChosen = 0;
 
 	// MMR 惩罚增量缓存：每个候选只与「新增」的已选节点补算相似度，
 	// 摊还后每次挑选是 O(剩余候选)，deep 档 500 池 × 300 名额也可承受。
@@ -734,6 +859,10 @@ export function selectNeighbors(
 		let got = 0;
 		const remaining = [...list];
 		while (got < count && chosen.size < slots && remaining.length > 0) {
+			for (let i = remaining.length - 1; i >= 0; i--) {
+				if (remaining[i]!.origin === "related" && relatedChosen >= relatedCap) remaining.splice(i, 1);
+			}
+			if (remaining.length === 0) break;
 			let bestIndex = 0;
 			let bestScore = -Infinity;
 			let bestRelevance = -Infinity;
@@ -764,34 +893,12 @@ export function selectNeighbors(
 			}
 			chosen.set(key, next);
 			chosenList.push(next);
+			if (next.origin === "related") relatedChosen += 1;
 			got += 1;
 		}
 	};
 
-	if (settings.includeRelated) {
-		const cap = Math.min(pools.related.length, slots, Math.max(6, Math.round(slots * 0.22)));
-		take(pools.related, cap);
-	}
-
-	const structural: Array<"reference" | "citation"> = [];
-	if (settings.includeReferences) structural.push("reference");
-	if (settings.includeCitations) structural.push("citation");
-	const remaining = slots - chosen.size;
-	if (structural.length === 0) {
-		take(pools.related, slots - chosen.size);
-	} else {
-		const base = Math.floor(remaining / structural.length);
-		let extra = remaining - base * structural.length;
-		for (const key of structural) {
-			const count = base + (extra > 0 ? 1 : 0);
-			if (extra > 0) extra -= 1;
-			take(pools[key], count);
-		}
-		if (chosen.size < slots) {
-			const rest = [...pools.reference, ...pools.citation, ...pools.related].sort(byRank);
-			take(rest, slots - chosen.size);
-		}
-	}
+	take(dedupe([...pools.reference, ...pools.citation, ...pools.related], seedId, byRank), slots);
 
 	return [...chosen.values()].sort(byRank);
 }
@@ -826,13 +933,15 @@ function statsFor(
 	};
 }
 
-function candidateExclusion(work: RawWork, seedId: string, excludeRetracted: boolean): string | null {
+function candidateExclusion(work: RawWork, seed: PaperNode, excludeRetracted: boolean, admission = true): string | null {
 	const paper = toPaper(work, "related");
 	if (!paper) return tr("记录缺少有效标题或 OpenAlex ID", "Record lacks a valid title or OpenAlex ID");
-	if (paper.id === seedId) return tr("这篇是种子论文", "This is the seed paper");
+	if (paper.id === seed.id) return tr("这篇是种子文献", "This is the seed paper");
 	const kind = nonResearchLabel(paper);
 	if (kind) return tr(`OpenAlex 将其归为「${kind}」`, `OpenAlex classifies it as “${kind}”`);
 	if (excludeRetracted && paper.retracted) return tr("构建时开启了排除已撤稿作品", "Retracted works were excluded during graph building");
+	const decision = assessAdmission(seed, paper);
+	if (admission && decision.status === "excluded") return admissionText(decision);
 	return null;
 }
 
@@ -856,7 +965,7 @@ export function diagnoseCandidate(
 		if (!found.isSeed && scrubYear !== null && (found.year === null || found.year > scrubYear)) {
 			return { title: tr("已在图谱中，当前年份范围将其隐藏", "Already in graph, hidden by the current year range"), detail: tr(`论文 ${found.id} · 调整时间视图的年份范围即可看到。`, `Paper ${found.id} · adjust the timeline year range to show it.`), paperId: found.id };
 		}
-		return { title: found.isSeed ? tr("当前种子论文", "Current seed paper") : tr("已在当前图谱中", "Already in current graph"), detail: `${found.title} · ${found.id}`, paperId: found.id };
+		return { title: found.isSeed ? tr("当前种子文献", "Current seed paper") : tr("已在当前图谱中", "Already in current graph"), detail: `${found.title} · ${found.id}`, paperId: found.id };
 	}
 	const resolved = resolveWorkQuery(graph.catalog, query);
 	const removed = [...excludedIds].find((id) => id === resolved || matches(id, graph.candidateAudit?.find((item) => item.id === id)?.doi ?? normalizeDoi(graph.catalog.find((paper) => paper.id === id)?.doiUrl)));
@@ -866,9 +975,9 @@ export function diagnoseCandidate(
 	const sources = [...new Set(retained.map((item) => ({ reference: tr("参考文献", "References"), citation: tr("施引", "Citing"), related: tr("相关作品", "Related works") })[item.source]))].join(tr("、", ", "));
 	if (retained.length) return {
 		title: tr("已采样，未入选图谱节点", "Sampled but not selected as a graph node"),
-		detail: tr(`进入了${sources}候选池；有限节点配额和多样性选择后未入选。现有记录不能确定单一落选因素。`, `Entered the ${sources} candidate pool but was not selected under the node limit and diversity criteria. The records do not identify a single reason.`),
+		detail: tr(`进入了${sources}候选池；节点上限、来源上限和多样性选择后未入选。现有记录不能确定单一落选因素。`, `Entered the ${sources} candidate pool but was not selected under the node limit, source cap, and diversity criteria. The records do not identify a single reason.`),
 	};
-	if (records.length) return { title: tr("采样时被过滤", "Filtered during sampling"), detail: [...new Set(records.map((item) => displayCandidateReason(item.rejection)))].join(tr("；", "; ")) };
+	if (records.length) return { title: tr("候选筛选时被过滤", "Filtered during candidate screening"), detail: [...new Set(records.map((item) => displayCandidateReason(item.rejection)))].join(tr("；", "; ")) };
 	const contextId = resolveWorkQuery(graph.catalog, query);
 	const context = graph.catalog.find((paper) => paper.id === contextId);
 	if (context) return { title: tr("已抓取为引用上下文，未入选节点", "Fetched as citation context but not selected as a node"), detail: `${context.title} · ${context.id}` };
@@ -888,8 +997,9 @@ function displayCandidateReason(reason: string | undefined): string {
 	if (!reason) return "";
 	const known: Array<[string, string]> = [
 		["记录缺少有效标题或 OpenAlex ID", "Record lacks a valid title or OpenAlex ID"],
-		["这篇是种子论文", "This is the seed paper"],
+		["这篇是种子文献", "This is the seed paper"],
 		["构建时开启了排除已撤稿作品", "Retracted works were excluded during graph building"],
+		["与起点学科不同，且没有共同主题、子领域或具体词组证据", "Different seed discipline without a shared topic, subfield, or specific phrase"],
 	];
 	const match = known.find(([zh, en]) => reason === zh || reason === en);
 	if (match) return tr(match[0], match[1]);

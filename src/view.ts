@@ -6,11 +6,13 @@ import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
-import type { ResearchProject } from "./project-state";
+import { projectWriteKey, writeProject, type ResearchProject } from "./project-state";
+import type { createReadingWorkflow } from "./reading-workflow";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
+	readingWorkflow: ReturnType<typeof createReadingWorkflow>;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -54,6 +56,7 @@ export class ConnectedPapersView extends ItemView {
 
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.appHandle = mountGraphApp(this.contentEl, {
+			...this.host.readingWorkflow,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,
@@ -66,9 +69,21 @@ export class ConnectedPapersView extends ItemView {
 			rememberLiteratureNote,
 			stagePaper: async () => { await this.host.saveSettings(false); },
 			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
-		saveProject: async (project: ResearchProject) => {
-			this.host.getSettings().researchProjects[project.seedId] = project;
-			await this.host.saveSettings(false);
+		saveProject: async (project: ResearchProject, projectKey?: string) => {
+			const projects = this.host.getSettings().researchProjects;
+			const key = projectKey ?? projectWriteKey(projects, project.seedId);
+			const previous = projects[key];
+			if (projectKey) projects[key] = project;
+			else writeProject(projects, project);
+			try { await this.host.saveSettings(false); }
+			catch (error) {
+				const live = this.host.getSettings().researchProjects;
+				if (live[key]?.snapshot === project.snapshot) {
+					if (previous) live[key] = { ...live[key]!, name: previous.name, updatedAt: previous.updatedAt, snapshot: previous.snapshot, seedId: previous.seedId, currentView: previous.currentView, deepDives: previous.deepDives, sampleIds: previous.sampleIds };
+					else delete live[key];
+				}
+				throw error;
+			}
 		},
 			initialTarget,
 		});

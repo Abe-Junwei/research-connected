@@ -7,7 +7,7 @@ import type { PaperNode } from "./types";
  * 与 seed 导向的 BM25 打分器不同：这里必须对称、落在 [0,1]、特征缺失时
  * 可空，并且与 query/corpus 无关——词项余弦（标题 + concepts + 摘要）
  * 与 OpenAlex 主题余弦按 0.6/0.4 合成，单侧缺失重归一，全缺返回 null。
- * 不请求任何外部服务（SPECTER2 不提前取回）。
+ * 本模块不请求任何外部服务。
  */
 
 const LEXICAL_WEIGHT = 0.6;

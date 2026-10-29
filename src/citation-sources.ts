@@ -1,6 +1,9 @@
 import { tr } from "./i18n";
 import type { GetJson } from "./openalex";
 import { cleanAbstractText, normalizeDoi } from "./paper";
+import type { SourceVersionRelation } from "./work-identity";
+import type { PaperNode } from "./types";
+import { fetchS2Batch, type S2BatchStats } from "./s2-batch";
 
 export interface OpenCitationRow {
 	oci?: string;
@@ -13,20 +16,28 @@ export interface CrossrefWork {
 	DOI?: string;
 	abstract?: string;
 	reference?: Array<{ DOI?: string; unstructured?: string }>;
+	relation?: Record<string, Array<{ id?: unknown; "id-type"?: unknown }>>;
 }
 
 /** Public Crossref DOI metadata, used only as a bounded fallback. */
 export class CrossrefClient {
 	constructor(private readonly getJson: GetJson, private readonly contactEmail: string) {}
 
-	async work(doi: string): Promise<CrossrefWork | null> {
+	async work(doi: string, fresh = false): Promise<CrossrefWork | null> {
 		const encodedDoi = encodeURIComponent(doi).replace(/%2F/gi, "/");
 		const url = new URL(`https://api.crossref.org/works/${encodedDoi}`);
 		if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.contactEmail)) url.searchParams.set("mailto", this.contactEmail);
+		if (fresh) dropCachedGet(url.toString(), { Accept: "application/json" });
 		const json = await cachedGet(this.getJson, url.toString(), { headers: { Accept: "application/json" } });
-		if (!json || typeof json !== "object") throw new CitationSourceError(tr("Crossref 返回格式错误。", "Crossref returned an invalid response."));
+		if (!json || typeof json !== "object") {
+			dropCachedGet(url.toString(), { Accept: "application/json" });
+			throw new CitationSourceError(tr("Crossref 返回格式错误。", "Crossref returned an invalid response."));
+		}
 		const message = (json as { message?: unknown }).message;
-		if (!message || typeof message !== "object") throw new CitationSourceError(tr("Crossref 未返回作品元数据。", "Crossref returned no work metadata."));
+		if (!message || typeof message !== "object") {
+			dropCachedGet(url.toString(), { Accept: "application/json" });
+			throw new CitationSourceError(tr("Crossref 未返回作品元数据。", "Crossref returned no work metadata."));
+		}
 		return message;
 	}
 
@@ -47,6 +58,51 @@ export class CrossrefClient {
 			.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
 			.replace(/\s+/g, " ").trim();
 		return cleanAbstractText(text) || null;
+	}
+
+	/** Crossref's explicit intra-work types only; inter-work review/comment claims conflict with a version link. */
+	async versionRelations(papers: readonly PaperNode[], previous: readonly SourceVersionRelation[] = []): Promise<SourceVersionRelation[]> {
+		const byDoi = new Map<string, string[]>();
+		for (const paper of papers) {
+			const doi = normalizeDoi(paper.doiUrl);
+			if (doi) byDoi.set(doi, [...new Set([...(byDoi.get(doi) ?? []), paper.id])]);
+		}
+		const claims = new Map<string, { ids: string[]; positive: string[]; contrary: string[] }>();
+		const checked = new Set<string>();
+		// shortcut: inspect 20 DOI records per graph load; expand only if measured coverage requires it.
+		for (const [doi, ids] of [...byDoi].slice(0, 20)) {
+			let work: CrossrefWork | null;
+			try { work = await this.work(doi, true); } catch { continue; }
+			if (!work || normalizeDoi(work.DOI) !== doi) continue;
+			for (const id of ids) checked.add(id);
+			for (const [type, rows] of Object.entries(work.relation ?? {})) {
+				const positive = ["is-identical-to", "is-preprint-of", "has-preprint", "is-manuscript-of", "has-manuscript", "is-version-of", "has-version"].includes(type);
+				const contrary = ["is-review-of", "has-review", "is-comment-on", "has-comment", "is-reply-to", "has-reply"].includes(type);
+				if ((!positive && !contrary) || !Array.isArray(rows)) continue;
+				for (const row of rows) {
+					if (!row || row["id-type"] !== "doi" || typeof row.id !== "string") continue;
+					const target = normalizeDoi(row.id);
+					for (const a of ids) for (const b of target ? byDoi.get(target) ?? [] : []) {
+						if (a === b) continue;
+						const pair = [a, b].sort(), key = pair.join("|");
+						const claim = claims.get(key) ?? { ids: pair, positive: [], contrary: [] };
+						(positive ? claim.positive : claim.contrary).push(`crossref:${doi}:${type}:${target}`);
+						claims.set(key, claim);
+					}
+				}
+			}
+		}
+		const reports: SourceVersionRelation[] = [];
+		const keys = new Set([...claims.keys(), ...previous.filter(relation => relation.ids.some(id => checked.has(id))).map(relation => relation.ids.slice().sort().join("|"))]);
+		for (const key of keys) {
+			const claim = claims.get(key), prior = previous.find(relation => relation.ids.slice().sort().join("|") === key);
+			if (!claim?.positive.length && !prior) continue;
+			const status = claim?.contrary.length ? "conflict" : claim?.positive.length ? "confirmed" : "missing";
+			const evidence = [...new Set([...(claim?.positive ?? []), ...(claim?.contrary ?? [])])].sort();
+			if (prior?.status === status && JSON.stringify(prior.evidence) === JSON.stringify(evidence)) continue;
+			reports.push({ ids: key.split("|"), source: "crossref", status, linked: status === "confirmed" || Boolean(prior?.linked), evidence, previousEvidence: [...new Set([...(prior?.previousEvidence ?? []), ...(prior?.evidence ?? [])])], updatedAt: Date.now() });
+		}
+		return reports;
 	}
 }
 
@@ -110,8 +166,10 @@ export type PostJson = (
 export interface S2Counts {
 	citationCount: number | null;
 	referenceCount: number | null;
-	/** SPECTER2 vector, present only when the request asked for embeddings. */
+	/** Vector and its actual model, present only when the request asked for embeddings. */
 	embedding?: number[] | null;
+	embeddingModel?: string | null;
+	abstract?: string | null;
 }
 
 export interface SemanticCitation {
@@ -136,73 +194,21 @@ export class SemanticScholarClient {
 
 	/** Model name of the embeddings returned by the last bulkCounts call (null when none). */
 	embeddingModel: string | null = null;
+	batchStats?: S2BatchStats;
 
 	/**
 	 * One batched lookup (POST /paper/batch, up to 500 ids) that cross-checks
 	 * OpenAlex numbers. Keys of the returned map are the lowercased DOIs that
 	 * Semantic Scholar recognized. With `opts.embedding` the same request also
-	 * asks for SPECTER2 vectors; a chunk that fails with embeddings is retried
-	 * without them so semantic scoring can never endanger the cross-check.
+	 * also requests abstracts and optionally model-labeled vectors before selection.
 	 */
 	async bulkCounts(dois: string[], opts?: { embedding?: boolean }): Promise<Map<string, S2Counts>> {
-		if (!this.postJson || dois.length === 0) return new Map();
-		const base = "https://api.semanticscholar.org/graph/v1/paper/batch";
-		const fields = opts?.embedding
-			? "citationCount,referenceCount,externalIds,embedding"
-			: "citationCount,referenceCount,externalIds";
-		const out = new Map<string, S2Counts>();
-		this.embeddingModel = null;
-		for (let i = 0; i < dois.length; i += 500) {
-			const chunk = dois.slice(i, i + 500);
-			const body = JSON.stringify({ ids: chunk.map((doi) => `DOI:${doi}`) });
-			let json: unknown = null;
-			let ok = false;
-			let lastError: unknown = new CitationSourceError(tr("Semantic Scholar 批量接口返回格式错误。", "Semantic Scholar bulk API returned an invalid response."));
-			const attempt = async (fieldSet: string): Promise<boolean> => {
-				const url = new URL(base);
-				url.searchParams.set("fields", fieldSet);
-				try {
-					json = await this.postJson!(url.toString(), {
-						headers: {
-							Accept: "application/json",
-							"Content-Type": "application/json",
-							...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
-						},
-						body,
-					});
-					if (Array.isArray(json)) return true;
-					lastError = s2FormatError(tr("批量接口", "bulk API"), json);
-				} catch (error) {
-					lastError = error;
-				}
-				return false;
-			};
-			if (await attempt(fields)) ok = true;
-			else {
-				await pause(1200);
-				if (await attempt(fields)) ok = true;
-				// Embedding field rejected outright (e.g. endpoint change): drop to counts-only.
-				else if (opts?.embedding && (await attempt("citationCount,referenceCount,externalIds"))) ok = true;
-			}
-			if (!ok) throw lastError;
-			for (const item of json as Array<{
-				citationCount?: number | null;
-				referenceCount?: number | null;
-				externalIds?: Record<string, string | null> | null;
-				embedding?: { model?: string | null; vector?: number[] | null } | null;
-			} | null>) {
-				const doi = item?.externalIds?.DOI?.toLowerCase();
-				if (!item || !doi) continue;
-				const vector = Array.isArray(item.embedding?.vector) ? item.embedding.vector : null;
-				if (vector && item.embedding?.model && !this.embeddingModel) this.embeddingModel = item.embedding.model;
-				out.set(doi, {
-					citationCount: typeof item.citationCount === "number" ? item.citationCount : null,
-					referenceCount: typeof item.referenceCount === "number" ? item.referenceCount : null,
-					...(opts?.embedding ? { embedding: vector } : {}),
-				});
-			}
-		}
-		return out;
+		const result = await fetchS2Batch(this.postJson, this.apiKey, dois, opts?.embedding === true);
+		this.batchStats = result.stats;
+		const models = new Set([...result.data.values()].map(item => item.embeddingModel).filter((model): model is string => Boolean(model)));
+		this.embeddingModel = models.size === 1 ? [...models][0]! : null;
+		if (result.stats.error) console.warn("[research-connected] Semantic Scholar:", result.stats.error);
+		return result.data;
 	}
 
 	/**
@@ -244,6 +250,10 @@ export class SemanticScholarClient {
 		const url = new URL(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}`);
 		url.searchParams.set("fields", "abstract");
 		const result = (await this.get(url.toString())) as { abstract?: string | null };
+		if (!("abstract" in result) || (result.abstract !== null && typeof result.abstract !== "string")) {
+			dropCachedGet(url.toString(), this.headers());
+			throw s2FormatError(tr("摘要接口", "abstract API"), result);
+		}
 		const text = typeof result.abstract === "string" ? cleanAbstractText(result.abstract) : "";
 		return text || null;
 	}
@@ -298,10 +308,7 @@ export function doiFromPaper(paper: { doiUrl: string | null }): string | null {
 	return normalizeDoi(paper.doiUrl);
 }
 
-/**
- * OpenAlex has no abstract for many papers (Nature and friends deposit
- * none). Ask Semantic Scholar for one; null means "don't bother again".
- */
+/** A missing abstract returns null; failed requests remain errors. */
 export async function semanticAbstract(
 	getJson: GetJson,
 	apiKey: string,
@@ -309,22 +316,34 @@ export async function semanticAbstract(
 ): Promise<string | null> {
 	const doi = doiFromPaper(paper);
 	if (!doi) return null;
-	try {
-		return await new SemanticScholarClient(getJson, apiKey).abstract(doi);
-	} catch {
-		return null;
-	}
+	return new SemanticScholarClient(getJson, apiKey).abstract(doi);
 }
+
+export type AbstractLookupResult =
+	| { status: "found"; text: string; source: "s2" | "crossref" }
+	| { status: "unavailable" | "no-doi" }
+	| { status: "error"; error: string };
 
 export async function fallbackAbstract(
 	getJson: GetJson,
 	paper: { doiUrl: string | null },
 	options: { semanticScholarApiKey: string; contactEmail: string },
-): Promise<{ text: string; source: "s2" | "crossref" } | null> {
-	const s2Text = await semanticAbstract(getJson, options.semanticScholarApiKey, paper);
-	if (s2Text) return { text: s2Text, source: "s2" };
-	const crossrefText = await crossrefAbstract(getJson, options.contactEmail, paper);
-	return crossrefText ? { text: crossrefText, source: "crossref" } : null;
+): Promise<AbstractLookupResult> {
+	if (!doiFromPaper(paper)) return { status: "no-doi" };
+	const failures: string[] = [];
+	for (const source of ["s2", "crossref"] as const) {
+		try {
+			const text = source === "s2"
+				? await semanticAbstract(getJson, options.semanticScholarApiKey, paper)
+				: await crossrefAbstract(getJson, options.contactEmail, paper);
+			if (text) return { status: "found", text, source };
+		} catch (error) {
+			const message = `${source === "s2" ? "Semantic Scholar" : "Crossref"}: ${error instanceof Error ? error.message : String(error)}`;
+			console.warn("[research-connected] Abstract lookup:", message);
+			failures.push(message);
+		}
+	}
+	return failures.length ? { status: "error", error: failures.join("; ") } : { status: "unavailable" };
 }
 
 export async function crossrefAbstract(
@@ -334,8 +353,7 @@ export async function crossrefAbstract(
 ): Promise<string | null> {
 	const doi = doiFromPaper(paper);
 	if (!doi) return null;
-	try { return await new CrossrefClient(getJson, contactEmail).abstract(doi); }
-	catch { return null; }
+	return new CrossrefClient(getJson, contactEmail).abstract(doi);
 }
 
 function pids(value: string | undefined): string[] {
