@@ -18,4 +18,5 @@ scripts/mmr-sweep.cjs
 scripts/evaluate-node-limits.cjs
 preview/preview.js
 preview/embed.js
+site/
 .superdesign/tmp
