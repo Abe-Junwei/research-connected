@@ -117,4 +117,4 @@ layout: temporal
 
 变更见[发布说明](https://github.com/Abe-Junwei/research-connected/releases)，计划中的工作见[路线图](https://github.com/Abe-Junwei/research-connected/blob/main/ROADMAP.md)。代码和文档贡献见[贡献指南](https://github.com/Abe-Junwei/research-connected/blob/main/CONTRIBUTING.md)。
 
-[MIT](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE)。Research Connected 是独立项目，与 Connected Papers 没有隶属关系。
+[AGPL-3.0](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE)。Research Connected 是独立项目，与 Connected Papers 没有隶属关系。

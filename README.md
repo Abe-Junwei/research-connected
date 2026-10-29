@@ -116,4 +116,4 @@ English or Chinese is welcome. Submitting requires a GitHub account, and reports
 
 Changes are in the [release notes](https://github.com/Abe-Junwei/research-connected/releases). Planned work is on the [roadmap](https://github.com/Abe-Junwei/research-connected/blob/main/ROADMAP.md). Code and documentation contributions follow the [contributing guide](https://github.com/Abe-Junwei/research-connected/blob/main/CONTRIBUTING.md).
 
-[MIT](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE). Research Connected is an independent project and is not affiliated with Connected Papers.
+[AGPL-3.0](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE). Research Connected is an independent project and is not affiliated with Connected Papers.

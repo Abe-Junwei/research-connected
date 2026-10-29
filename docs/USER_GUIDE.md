@@ -37,7 +37,7 @@ Building a graph or searching for a paper sends its DOI, OpenAlex ID, or search 
 
 The optional research narrative is off by default. Only when you click Generate does it send the selected papers and available citation evidence to your configured language-model endpoint; abstracts are included only if that option is enabled. Projects, reading status, saved papers, exclusions, and service credentials are stored in this vault’s plugin `data.json`. Credentials are **not encrypted**; vault sync or backup tools may copy the file. The plugin sends no usage telemetry and reads note properties (YAML frontmatter) to recognize literature notes. See [Settings](#settings) for service behavior.
 
-The source code is available under the [MIT License](../LICENSE).
+The source code is available under the [GNU Affero General Public License v3.0](../LICENSE).
 
 ## Interface language
 
