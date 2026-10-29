@@ -97,6 +97,7 @@
 			};
 			themeToggle.setAttribute("aria-label", previewChinese ? "切换为深色" : "Switch to dark theme");
 			themeToggle.addEventListener("click", () => applyPreviewTheme(previewTheme === "paper" ? "night" : "paper"));
+			if (new URLSearchParams(location.search).get("theme") === "night") applyPreviewTheme("night");
 		</script>
 		<script type="module">
 			// Keep the development preview fresh after each rebuild.
