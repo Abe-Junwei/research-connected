@@ -12,10 +12,14 @@
 
 ## 看清一篇论文的研究邻域
 
-<p><img src="../images/graph-pane.gif" width="100%" alt="开发版预览（浅色）：图谱从种子展开，选中论文并切换布局"></p>
-<p><img src="../images/graph-pane-dark.gif" width="100%" alt="开发版预览（暗色）：图谱从种子展开，选中论文并切换布局"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="开发版预览：以 Deep learning 为种子文献的 50 篇文献图谱，右侧显示被多篇当前可见文献引用的作品">
+</picture>
 
-*动态演示与静态图均来自当前本地开发版预览，录于 2026-10-29。不是 Obsidian 宿主画面，也不代表最新发布版已包含所示功能。示例为 “Deep learning”（2015）；实时公共元数据可能变化。界面为英文，插件同时支持简体中文。*
+[浅色原图](../images/graph-pane.png) · [暗色原图](../images/graph-pane-dark.png)
+
+*本页截图摄于 2026-10-29，分辨率 3200 × 2000（2×），不是在 Obsidian 窗口内截取的。示例为 “Deep learning”（2015）；实时公共元数据可能变化。截图界面为英文，插件同时支持简体中文。*
 
 选中节点或边可查看共同参考文献、共被引和直接引用证据。右侧内容标签中，**图内常引文献**指被至少两篇当前可见文献引用的作品；**引用本图的文献**指引用至少两篇当前可见文献的作品。这些名称不表示发表先后或思想继承。
 
@@ -41,15 +45,23 @@
 
 ## 按时间查看研究
 
-<p><img src="../images/timeline.gif" width="100%" alt="开发版预览（浅色）：年份布局下年份带按发表年份播放"></p>
-<p><img src="../images/timeline-dark.gif" width="100%" alt="开发版预览（暗色）：年份布局下年份带按发表年份播放"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="开发版预览：按发表年份排列的时间图谱，下方显示年份带">
+</picture>
+
+[浅色原图](../images/timeline.png) · [暗色原图](../images/timeline-dark.png)
 
 切换到**年份**布局。图谱下方的年份带可按发表年份缩小可见范围。
 
 ## 把图谱放在笔记旁边
 
-<p><img src="../images/note-embed.png" width="100%" alt="开发版预览（浅色）：在阅读笔记页面中嵌入可交互的时间图谱"></p>
-<p><img src="../images/note-embed-dark.png" width="100%" alt="开发版预览（暗色）：在阅读笔记页面中嵌入可交互的时间图谱"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="开发版预览：在阅读笔记页面中嵌入可交互的时间图谱">
+</picture>
+
+[浅色原图](../images/note-embed.png) · [暗色原图](../images/note-embed-dark.png)
 
 把下面的代码块放进笔记。它会在阅读视图和实时预览中显示。
 
@@ -65,12 +77,10 @@ layout: temporal
 
 嵌入选项、笔记属性（YAML frontmatter）、采样和算法见[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。旧的 `connected-papers` 嵌入名称仍然可用。
 
-## 开发状态
+## 行为说明
 
 <details>
-<summary>尚未发布的功能与验证边界</summary>
-
-当前 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 的工作由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 跟踪。真实 Obsidian 宿主的完整验收尚未完成；发布版能力以正式版本为准。
+<summary>阅读状态、版本与图谱边界</summary>
 
 - 同一论文和已确认版本组跨项目共享阅读状态，收藏文献与排除仍按项目独立管理。状态冲突或外部编辑需明确解决、重试或停止同步。
 - 按来源证实或手动决定的关系归组版本，不按标题猜测；导出保留版本来源。

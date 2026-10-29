@@ -12,10 +12,14 @@
 
 ## 看清一篇論文的研究鄰域
 
-<p><img src="../images/graph-pane.gif" width="100%" alt="開發版預覽（淺色）：圖譜從種子展開，選取論文並切換佈局"></p>
-<p><img src="../images/graph-pane-dark.gif" width="100%" alt="開發版預覽（暗色）：圖譜從種子展開，選取論文並切換佈局"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="開發版預覽：以 Deep learning 為種子文獻的 50 篇文獻圖譜，右側顯示被多篇目前可見文獻引用的作品">
+</picture>
 
-*動態演示與靜態圖均為目前本機開發版預覽，錄於 2026-10-29。不是 Obsidian 宿主畫面，也不代表最新發行版功能。範例為 “Deep learning”（2015）；即時公共中繼資料可能變動。介面為英文；外掛目前支援簡體中文與英文。*
+[淺色原圖](../images/graph-pane.png) · [暗色原圖](../images/graph-pane-dark.png)
+
+*本頁截圖攝於 2026-10-29，解析度 3200 × 2000（2×），不是在 Obsidian 視窗內截取的。範例為 “Deep learning”（2015）；即時公共中繼資料可能變動。截圖介面為英文；外掛目前支援簡體中文與英文。*
 
 選取節點或邊即可查看共同參考文獻、共被引和直接引用證據。右側底部的內容分頁中，**圖內常引文獻**指至少被兩篇目前可見文獻引用的作品；**引用本圖的文獻**指引用至少兩篇目前可見文獻的作品。這些名稱不表示發表先後或思想承襲。
 
@@ -41,15 +45,23 @@
 
 ## 按時間查看研究
 
-<p><img src="../images/timeline.gif" width="100%" alt="開發版預覽（淺色）：年份佈局下年份帶依發表年份播放"></p>
-<p><img src="../images/timeline-dark.gif" width="100%" alt="開發版預覽（暗色）：年份佈局下年份帶依發表年份播放"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="開發版預覽：按發表年份排列的時間圖譜，下方顯示年份帶">
+</picture>
+
+[淺色原圖](../images/timeline.png) · [暗色原圖](../images/timeline-dark.png)
 
 切換到**年份**佈局。圖譜下方的年份帶可依發表年份縮小可見範圍。
 
 ## 把圖譜放在筆記旁邊
 
-<p><img src="../images/note-embed.png" width="100%" alt="開發版預覽（淺色）：在閱讀筆記頁面中嵌入可互動的時間圖譜"></p>
-<p><img src="../images/note-embed-dark.png" width="100%" alt="開發版預覽（暗色）：在閱讀筆記頁面中嵌入可互動的時間圖譜"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="開發版預覽：在閱讀筆記頁面中嵌入可互動的時間圖譜">
+</picture>
+
+[淺色原圖](../images/note-embed.png) · [暗色原圖](../images/note-embed-dark.png)
 
 把下面的程式碼區塊放進筆記。它會在閱讀視圖和即時預覽中顯示。
 
@@ -65,12 +77,10 @@ layout: temporal
 
 嵌入選項、筆記屬性（YAML frontmatter）、取樣和演算法見[使用指南](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)。舊的 `connected-papers` 嵌入名稱仍然可用。
 
-## 開發狀態
+## 行為說明
 
 <details>
-<summary>尚未發布的功能與驗證邊界</summary>
-
-目前 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 的工作由 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) 追蹤。真實 Obsidian 宿主的完整驗收尚待完成；發行版功能以正式版本為準。
+<summary>閱讀狀態、版本與圖譜邊界</summary>
 
 - 同一論文及已確認版本組跨專案共用閱讀狀態，收藏文獻與排除仍按專案管理。狀態衝突與外部編輯需明確解決、重試或停止同步。
 - 依來源確認或手動決定的關係整合版本，不按標題猜測；匯出保留版本來源。

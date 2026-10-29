@@ -923,7 +923,7 @@ export class SimilarityMap {
 				const dx = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : 0;
 				const dy = key === "ArrowUp" ? -1 : key === "ArrowDown" ? 1 : 0;
 				const next = this.nodes
-					.filter((node) => node.shown && this.introOf(node) > 0 && node.id !== current.id)
+					.filter((node) => node.shown && node.id !== current.id)
 					.map((node) => {
 						const vx = node.x - current.x;
 						const vy = node.y - current.y;
@@ -1180,7 +1180,18 @@ export class SimilarityMap {
 
 		const bottom = labelY - 19;
 		const top = 24;
-		const ticks = [...new Set([this.minYear, Math.round((this.minYear + this.maxYear) / 2), this.maxYear])];
+		const onScreen = (year: number): boolean => {
+			const worldX = yearSpan === 0 ? 0 : ((year - this.minYear) / span - 0.5) * width;
+			const x = worldX * this.k + this.tx;
+			return x >= -20 && x <= this.cssWidth + 20;
+		};
+		const visible: number[] = [];
+		for (let year = this.minYear; year <= this.maxYear; year += 1) {
+			if (onScreen(year)) visible.push(year);
+		}
+		const ticks = visible.length <= 3
+			? visible
+			: [visible[0]!, visible[Math.floor((visible.length - 1) / 2)]!, visible[visible.length - 1]!];
 		ctx.save();
 		ctx.font = `11px ${this.fontFamily}`;
 		ctx.textBaseline = "bottom";

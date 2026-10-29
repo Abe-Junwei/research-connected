@@ -12,10 +12,14 @@
 
 ## 論文の研究領域を見渡す
 
-<p><img src="../images/graph-pane.gif" width="100%" alt="開発版プレビュー（ライト）：シードから地図が開き、論文を選びレイアウトを切り替える"></p>
-<p><img src="../images/graph-pane-dark.gif" width="100%" alt="開発版プレビュー（ダーク）：シードから地図が開き、論文を選びレイアウトを切り替える"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="開発版プレビュー：Deep learning をシード論文とする50件の論文地図と、右側の複数の表示中論文に引用された文献">
+</picture>
 
-*動画と静止画は現在のローカル開発版プレビューです。収録日：2026-10-29。Obsidian 本体での撮影や公開済みリリースの機能保証ではありません。例は “Deep learning”（2015）。公開メタデータは変化します。UI は英語で、対応言語は簡体字中国語と英語です。*
+[ライト版の原寸画像](../images/graph-pane.png) · [ダーク版の原寸画像](../images/graph-pane-dark.png)
+
+*画像の撮影日は 2026-10-29、解像度は 3200 × 2000（2×）です。Obsidian のウィンドウ内での撮影ではありません。例は “Deep learning”（2015）。公開メタデータは変化します。画像の UI は英語で、対応言語は簡体字中国語と英語です。*
 
 ノードか辺を選ぶと、共通の参考文献、共引用、直接の引用根拠を確認できます。右側パネル下部のタブにある「グラフ内で頻繁に引用される文献」は現在表示中の文献2件以上に引用された作品、「このグラフを引用する文献」は表示中の文献を2件以上引用している作品です。発表年の前後関係や思想的影響を意味しません。
 
@@ -41,15 +45,23 @@
 
 ## 時間軸で研究を見る
 
-<p><img src="../images/timeline.gif" width="100%" alt="開発版プレビュー（ライト）：Year レイアウトで年の帯が発表年を再生する"></p>
-<p><img src="../images/timeline-dark.gif" width="100%" alt="開発版プレビュー（ダーク）：Year レイアウトで年の帯が発表年を再生する"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="開発版プレビュー：発表年で並べた時間軸の地図と下部の年の帯">
+</picture>
+
+[ライト版の原寸画像](../images/timeline.png) · [ダーク版の原寸画像](../images/timeline-dark.png)
 
 **Year** レイアウトに切り替えます。グラフ下部の年の帯で、発表年に基づいて表示範囲を絞り込めます。
 
 ## ノートのそばにグラフを置く
 
-<p><img src="../images/note-embed.png" width="100%" alt="開発版プレビュー（ライト）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ"></p>
-<p><img src="../images/note-embed-dark.png" width="100%" alt="開発版プレビュー（ダーク）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="開発版プレビュー：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
+</picture>
+
+[ライト版の原寸画像](../images/note-embed.png) · [ダーク版の原寸画像](../images/note-embed-dark.png)
 
 次のブロックをノートに追加します。リーディングビューとライブプレビューで表示されます。
 
@@ -65,12 +77,10 @@ layout: temporal
 
 埋め込みオプション、ノートのプロパティ（YAML frontmatter）、サンプリング、アルゴリズムは[利用ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)にあります。古い埋め込み名 `connected-papers` も使えます。
 
-## 開発状況
+## 動作メモ
 
 <details>
-<summary>未リリース機能と検証範囲</summary>
-
-現在の [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) の開発は [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10) で追跡しています。実際の Obsidian 環境での総合検証は未完了です。公開版の機能はリリースを参照してください。
+<summary>読書状態、版、地図の範囲</summary>
 
 - 同じ論文と確認済みの版グループで読書状態を共有し、Save paper と除外はプロジェクトごとに管理します。状態の競合や外部編集は明示的な解決、再試行、同期停止が可能です。
 - 版の統合は出典の確認または手動の判断に基づき、タイトルからは推測しません。出力に版の出典を残します。
