@@ -13,11 +13,11 @@
 ## See the research neighborhood
 
 <p align="center">
-  <img src="docs/images/graph-pane.png" width="49%" alt="Development preview, light theme: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
-  <img src="docs/images/graph-pane-dark.png" width="49%" alt="Development preview, dark theme: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
+  <img src="docs/images/graph-pane.gif" width="49%" alt="Development preview, light theme: the map opens from the seed, a paper is selected, and the layout switches">
+  <img src="docs/images/graph-pane-dark.gif" width="49%" alt="Development preview, dark theme: the map opens from the seed, a paper is selected, and the layout switches">
 </p>
 
-*All screenshots: current local development preview, captured October 29, 2026 at 3200 × 2000 (2×). These are not Obsidian-host screenshots or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
+*Motion clips and stills: current local development preview, recorded October 29, 2026. These are not Obsidian-host captures or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
 
 Select a node or an edge to inspect shared references, co-citations, and direct citation evidence. The side panel’s bottom tabs include **Frequently cited references** (cited by at least two visible papers) and **Works citing this graph** (cites at least two visible papers); neither label implies publication order or intellectual influence.
 
@@ -44,8 +44,8 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 ## Explore research over time
 
 <p align="center">
-  <img src="docs/images/timeline.png" width="49%" alt="Development preview, light theme: timeline layout with papers positioned by publication year and the year band below the map">
-  <img src="docs/images/timeline-dark.png" width="49%" alt="Development preview, dark theme: timeline layout with papers positioned by publication year and the year band below the map">
+  <img src="docs/images/timeline.gif" width="49%" alt="Development preview, light theme: year layout with the year band playing through publication years">
+  <img src="docs/images/timeline-dark.gif" width="49%" alt="Development preview, dark theme: year layout with the year band playing through publication years">
 </p>
 
 Choose the **Year** layout. The year band below the map narrows the visible papers by publication year.
