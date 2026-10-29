@@ -326,6 +326,22 @@ export function projectWriteKey(projects: Record<string, ResearchProject>, seedI
 	return id;
 }
 
+/**
+ * Where a graph seed may be saved. An active key that stores a different seed is ignored so that
+ * slot keeps its name and snapshot; the caller then writes under the seed's own key.
+ */
+export function projectPersistTarget(
+	projects: Record<string, ResearchProject>,
+	seedId: string,
+	activeKey?: string | null,
+): { writeKey: string | undefined; prior: ResearchProject | undefined } {
+	if (activeKey) {
+		const active = projects[activeKey];
+		if (active && active.seedId === seedId) return { writeKey: activeKey, prior: active };
+	}
+	return { writeKey: undefined, prior: projectForSeed(projects, seedId) };
+}
+
 export function writeProject(projects: Record<string, ResearchProject>, project: ResearchProject): void {
 	projects[projectWriteKey(projects, project.seedId)] = project;
 }
