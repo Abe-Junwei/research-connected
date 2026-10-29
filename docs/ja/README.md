@@ -12,10 +12,8 @@
 
 ## 論文の研究領域を見渡す
 
-<p align="center">
-  <img src="../images/graph-pane.gif" width="49%" alt="開発版プレビュー（ライト）：シードから地図が開き、論文を選びレイアウトを切り替える">
-  <img src="../images/graph-pane-dark.gif" width="49%" alt="開発版プレビュー（ダーク）：シードから地図が開き、論文を選びレイアウトを切り替える">
-</p>
+<p><img src="../images/graph-pane.gif" width="100%" alt="開発版プレビュー（ライト）：シードから地図が開き、論文を選びレイアウトを切り替える"></p>
+<p><img src="../images/graph-pane-dark.gif" width="100%" alt="開発版プレビュー（ダーク）：シードから地図が開き、論文を選びレイアウトを切り替える"></p>
 
 *動画と静止画は現在のローカル開発版プレビューです。収録日：2026-10-29。Obsidian 本体での撮影や公開済みリリースの機能保証ではありません。例は “Deep learning”（2015）。公開メタデータは変化します。UI は英語で、対応言語は簡体字中国語と英語です。*
 
@@ -43,19 +41,15 @@
 
 ## 時間軸で研究を見る
 
-<p align="center">
-  <img src="../images/timeline.gif" width="49%" alt="開発版プレビュー（ライト）：Year レイアウトで年の帯が発表年を再生する">
-  <img src="../images/timeline-dark.gif" width="49%" alt="開発版プレビュー（ダーク）：Year レイアウトで年の帯が発表年を再生する">
-</p>
+<p><img src="../images/timeline.gif" width="100%" alt="開発版プレビュー（ライト）：Year レイアウトで年の帯が発表年を再生する"></p>
+<p><img src="../images/timeline-dark.gif" width="100%" alt="開発版プレビュー（ダーク）：Year レイアウトで年の帯が発表年を再生する"></p>
 
 **Year** レイアウトに切り替えます。グラフ下部の年の帯で、発表年に基づいて表示範囲を絞り込めます。
 
 ## ノートのそばにグラフを置く
 
-<p align="center">
-  <img src="../images/note-embed.png" width="49%" alt="開発版プレビュー（ライト）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
-  <img src="../images/note-embed-dark.png" width="49%" alt="開発版プレビュー（ダーク）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
-</p>
+<p><img src="../images/note-embed.png" width="100%" alt="開発版プレビュー（ライト）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ"></p>
+<p><img src="../images/note-embed-dark.png" width="100%" alt="開発版プレビュー（ダーク）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ"></p>
 
 次のブロックをノートに追加します。リーディングビューとライブプレビューで表示されます。
 

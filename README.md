@@ -12,10 +12,8 @@
 
 ## See the research neighborhood
 
-<p align="center">
-  <img src="docs/images/graph-pane.gif" width="49%" alt="Development preview, light theme: the map opens from the seed, a paper is selected, and the layout switches">
-  <img src="docs/images/graph-pane-dark.gif" width="49%" alt="Development preview, dark theme: the map opens from the seed, a paper is selected, and the layout switches">
-</p>
+<p><img src="docs/images/graph-pane.gif" width="100%" alt="Development preview, light theme: the map opens from the seed, a paper is selected, and the layout switches"></p>
+<p><img src="docs/images/graph-pane-dark.gif" width="100%" alt="Development preview, dark theme: the map opens from the seed, a paper is selected, and the layout switches"></p>
 
 *Motion clips and stills: current local development preview, recorded October 29, 2026. These are not Obsidian-host captures or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
 
@@ -43,19 +41,15 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 
 ## Explore research over time
 
-<p align="center">
-  <img src="docs/images/timeline.gif" width="49%" alt="Development preview, light theme: year layout with the year band playing through publication years">
-  <img src="docs/images/timeline-dark.gif" width="49%" alt="Development preview, dark theme: year layout with the year band playing through publication years">
-</p>
+<p><img src="docs/images/timeline.gif" width="100%" alt="Development preview, light theme: year layout with the year band playing through publication years"></p>
+<p><img src="docs/images/timeline-dark.gif" width="100%" alt="Development preview, dark theme: year layout with the year band playing through publication years"></p>
 
 Choose the **Year** layout. The year band below the map narrows the visible papers by publication year.
 
 ## Keep the graph beside your notes
 
-<p align="center">
-  <img src="docs/images/note-embed.png" width="49%" alt="Development preview, light theme: an interactive timeline graph embedded in a reading-note page">
-  <img src="docs/images/note-embed-dark.png" width="49%" alt="Development preview, dark theme: an interactive timeline graph embedded in a reading-note page">
-</p>
+<p><img src="docs/images/note-embed.png" width="100%" alt="Development preview, light theme: an interactive timeline graph embedded in a reading-note page"></p>
+<p><img src="docs/images/note-embed-dark.png" width="100%" alt="Development preview, dark theme: an interactive timeline graph embedded in a reading-note page"></p>
 
 Add this block to a note. It renders in Reading view and Live Preview.
 

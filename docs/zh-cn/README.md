@@ -12,10 +12,8 @@
 
 ## 看清一篇论文的研究邻域
 
-<p align="center">
-  <img src="../images/graph-pane.gif" width="49%" alt="开发版预览（浅色）：图谱从种子展开，选中论文并切换布局">
-  <img src="../images/graph-pane-dark.gif" width="49%" alt="开发版预览（暗色）：图谱从种子展开，选中论文并切换布局">
-</p>
+<p><img src="../images/graph-pane.gif" width="100%" alt="开发版预览（浅色）：图谱从种子展开，选中论文并切换布局"></p>
+<p><img src="../images/graph-pane-dark.gif" width="100%" alt="开发版预览（暗色）：图谱从种子展开，选中论文并切换布局"></p>
 
 *动态演示与静态图均来自当前本地开发版预览，录于 2026-10-29。不是 Obsidian 宿主画面，也不代表最新发布版已包含所示功能。示例为 “Deep learning”（2015）；实时公共元数据可能变化。界面为英文，插件同时支持简体中文。*
 
@@ -43,19 +41,15 @@
 
 ## 按时间查看研究
 
-<p align="center">
-  <img src="../images/timeline.gif" width="49%" alt="开发版预览（浅色）：年份布局下年份带按发表年份播放">
-  <img src="../images/timeline-dark.gif" width="49%" alt="开发版预览（暗色）：年份布局下年份带按发表年份播放">
-</p>
+<p><img src="../images/timeline.gif" width="100%" alt="开发版预览（浅色）：年份布局下年份带按发表年份播放"></p>
+<p><img src="../images/timeline-dark.gif" width="100%" alt="开发版预览（暗色）：年份布局下年份带按发表年份播放"></p>
 
 切换到**年份**布局。图谱下方的年份带可按发表年份缩小可见范围。
 
 ## 把图谱放在笔记旁边
 
-<p align="center">
-  <img src="../images/note-embed.png" width="49%" alt="开发版预览（浅色）：在阅读笔记页面中嵌入可交互的时间图谱">
-  <img src="../images/note-embed-dark.png" width="49%" alt="开发版预览（暗色）：在阅读笔记页面中嵌入可交互的时间图谱">
-</p>
+<p><img src="../images/note-embed.png" width="100%" alt="开发版预览（浅色）：在阅读笔记页面中嵌入可交互的时间图谱"></p>
+<p><img src="../images/note-embed-dark.png" width="100%" alt="开发版预览（暗色）：在阅读笔记页面中嵌入可交互的时间图谱"></p>
 
 把下面的代码块放进笔记。它会在阅读视图和实时预览中显示。
 

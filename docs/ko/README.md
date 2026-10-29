@@ -12,10 +12,8 @@
 
 ## 논문의 연구 이웃 살펴보기
 
-<p align="center">
-  <img src="../images/graph-pane.gif" width="49%" alt="개발 미리보기(밝은 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다">
-  <img src="../images/graph-pane-dark.gif" width="49%" alt="개발 미리보기(어두운 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다">
-</p>
+<p><img src="../images/graph-pane.gif" width="100%" alt="개발 미리보기(밝은 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다"></p>
+<p><img src="../images/graph-pane-dark.gif" width="100%" alt="개발 미리보기(어두운 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다"></p>
 
 *동적 시연과 정지 이미지는 현재 로컬 개발 미리보기입니다. 녹화일: 2026-10-29. 실제 Obsidian 화면이나 최신 배포 버전의 기능 보장이 아닙니다. 예시는 “Deep learning”(2015)이며 공개 메타데이터는 바뀔 수 있습니다. UI는 영어이고, 지원 언어는 중국어 간체와 영어입니다.*
 
@@ -43,19 +41,15 @@
 
 ## 시간 순으로 보기
 
-<p align="center">
-  <img src="../images/timeline.gif" width="49%" alt="개발 미리보기(밝은 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다">
-  <img src="../images/timeline-dark.gif" width="49%" alt="개발 미리보기(어두운 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다">
-</p>
+<p><img src="../images/timeline.gif" width="100%" alt="개발 미리보기(밝은 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다"></p>
+<p><img src="../images/timeline-dark.gif" width="100%" alt="개발 미리보기(어두운 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다"></p>
 
 **Year** 레이아웃으로 바꿉니다. 그래프 아래 연도 막대에서 출판 연도에 따라 표시 범위를 좁힐 수 있습니다.
 
 ## 노트 옆에 그래프 두기
 
-<p align="center">
-  <img src="../images/note-embed.png" width="49%" alt="개발 미리보기(밝은 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
-  <img src="../images/note-embed-dark.png" width="49%" alt="개발 미리보기(어두운 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
-</p>
+<p><img src="../images/note-embed.png" width="100%" alt="개발 미리보기(밝은 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프"></p>
+<p><img src="../images/note-embed-dark.png" width="100%" alt="개발 미리보기(어두운 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프"></p>
 
 아래 블록을 노트에 넣습니다. 읽기 화면과 실시간 미리보기에서 나타납니다.
 
