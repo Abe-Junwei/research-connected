@@ -1,40 +1,40 @@
 {
-  "capturedAt": "2026-10-29T03:56:19.256Z",
+  "capturedAt": "2026-10-29T07:11:00.000Z",
   "source": "Current local development preview, not the Obsidian host or a published release",
   "sample": "Deep learning (2015), DOI 10.1038/nature14539; live public metadata, sampled graph",
   "viewport": {
-    "width": 1600,
-    "height": 1000,
-    "deviceScaleFactor": 2
+    "width": 1280,
+    "height": 800,
+    "deviceScaleFactor": 1
   },
   "captures": [
     {
-      "file": "graph-pane.png",
-      "mode": "planar",
+      "file": "graph-pane.gif",
+      "mode": "planar intro and layout switch",
       "theme": "light",
-      "width": 3200,
-      "height": 2000
+      "width": 960,
+      "height": 600
     },
     {
-      "file": "graph-pane-dark.png",
-      "mode": "planar",
+      "file": "graph-pane-dark.gif",
+      "mode": "planar intro and layout switch",
       "theme": "dark",
-      "width": 3200,
-      "height": 2000
+      "width": 960,
+      "height": 600
     },
     {
-      "file": "timeline-dark.png",
-      "mode": "timeline",
-      "theme": "dark",
-      "width": 3200,
-      "height": 2000
-    },
-    {
-      "file": "timeline.png",
-      "mode": "timeline",
+      "file": "timeline.gif",
+      "mode": "year playback",
       "theme": "light",
-      "width": 3200,
-      "height": 2000
+      "width": 960,
+      "height": 600
+    },
+    {
+      "file": "timeline-dark.gif",
+      "mode": "year playback",
+      "theme": "dark",
+      "width": 960,
+      "height": 600
     },
     {
       "file": "note-embed.png",
