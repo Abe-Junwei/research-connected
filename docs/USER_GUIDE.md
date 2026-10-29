@@ -4,13 +4,13 @@ An Obsidian plugin that draws a **similarity map** around one **Seed paper**, in
 
 See the [canonical terminology glossary](../GLOSSARY.md) for user-facing terms and their meaning.
 
-The plugin targets **Obsidian desktop 1.14.4 or newer**. The local development preview has not completed full acceptance in the actual Obsidian host. Mobile support awaits device testing.
+The plugin targets **Obsidian desktop 1.14.4 or newer**. Mobile support awaits device testing.
 
 It is not a sidebar of citation cards. Reference Map / Literature Flow–style index lists are an explicit non-goal. This project is not affiliated with Connected Papers.
 
-## Development preview (unreleased)
+## What the screenshots show
 
-This checkout contains work tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10); it is not a claim about the latest published release. The README images show a local development preview, **not the Obsidian app**, and do not establish host compatibility. Their capture date and dimensions are in [the screenshot manifest](images/screenshots.json).
+The README images are a local preview of the interface, **not a capture inside Obsidian**. Their capture date and dimensions are in [the screenshot manifest](images/screenshots.json).
 
 - **Reading status.** A paper’s reading status is shared across projects and confirmed version groups; saved papers and exclusions are project-specific. Conflicts require review.
 - **Evidence and selection.** Citation paths, structural similarity, semantic similarity, and missing evidence are distinct. Semantic similarity may use compatible vectors and local text/topic signals; it does not certify research quality.

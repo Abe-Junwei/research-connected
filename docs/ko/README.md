@@ -12,10 +12,14 @@
 
 ## 논문의 연구 이웃 살펴보기
 
-<p><img src="../images/graph-pane.gif" width="100%" alt="개발 미리보기(밝은 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다"></p>
-<p><img src="../images/graph-pane-dark.gif" width="100%" alt="개발 미리보기(어두운 테마): 시드에서 지도가 펼쳐지고 논문을 선택한 뒤 레이아웃을 바꿉니다"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
+  <img src="../images/graph-pane.png" width="1600" alt="개발 미리보기: Deep learning 기준 논문 50편의 지도와 오른쪽의 여러 표시 문헌이 인용한 작품">
+</picture>
 
-*동적 시연과 정지 이미지는 현재 로컬 개발 미리보기입니다. 녹화일: 2026-10-29. 실제 Obsidian 화면이나 최신 배포 버전의 기능 보장이 아닙니다. 예시는 “Deep learning”(2015)이며 공개 메타데이터는 바뀔 수 있습니다. UI는 영어이고, 지원 언어는 중국어 간체와 영어입니다.*
+[밝은 원본](../images/graph-pane.png) · [어두운 원본](../images/graph-pane-dark.png)
+
+*이미지 촬영일: 2026-10-29, 해상도: 3200 × 2000(2×). Obsidian 창 안에서 찍은 화면은 아닙니다. 예시는 “Deep learning”(2015)이며 공개 메타데이터는 바뀔 수 있습니다. 이미지의 UI는 영어이고, 지원 언어는 중국어 간체와 영어입니다.*
 
 노드나 간선을 선택하면 공통 참고문헌, 동시 인용, 직접 인용 근거를 확인할 수 있습니다. 오른쪽 패널 아래 탭의 ‘그래프에서 자주 인용된 문헌’은 현재 보이는 문헌 두 편 이상이 인용한 작품이고, ‘이 그래프를 인용한 문헌’은 현재 보이는 문헌을 두 편 이상 인용한 작품입니다. 출판 연도의 선후나 사상적 영향을 뜻하지 않습니다.
 
@@ -41,15 +45,23 @@
 
 ## 시간 순으로 보기
 
-<p><img src="../images/timeline.gif" width="100%" alt="개발 미리보기(밝은 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다"></p>
-<p><img src="../images/timeline-dark.gif" width="100%" alt="개발 미리보기(어두운 테마): Year 레이아웃에서 연도 막대가 발표 연도를 재생합니다"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
+  <img src="../images/timeline.png" width="1600" alt="개발 미리보기: 발표 연도별 시간축 지도와 하단 연도 표시">
+</picture>
+
+[밝은 원본](../images/timeline.png) · [어두운 원본](../images/timeline-dark.png)
 
 **Year** 레이아웃으로 바꿉니다. 그래프 아래 연도 막대에서 출판 연도에 따라 표시 범위를 좁힐 수 있습니다.
 
 ## 노트 옆에 그래프 두기
 
-<p><img src="../images/note-embed.png" width="100%" alt="개발 미리보기(밝은 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프"></p>
-<p><img src="../images/note-embed-dark.png" width="100%" alt="개발 미리보기(어두운 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
+  <img src="../images/note-embed.png" width="1600" alt="개발 미리보기: 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
+</picture>
+
+[밝은 원본](../images/note-embed.png) · [어두운 원본](../images/note-embed-dark.png)
 
 아래 블록을 노트에 넣습니다. 읽기 화면과 실시간 미리보기에서 나타납니다.
 
@@ -65,12 +77,10 @@ layout: temporal
 
 임베드 옵션, 노트 속성(YAML frontmatter), 표본 추출, 알고리즘은 [사용 안내](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md)에 있습니다. 예전 임베드 이름 `connected-papers`도 동작합니다.
 
-## 개발 상태
+## 동작 메모
 
 <details>
-<summary>미출시 기능과 검증 범위</summary>
-
-현재 [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) 개발은 [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10)에서 추적합니다. 실제 Obsidian 환경의 전체 검증은 아직 끝나지 않았습니다. 배포판 기능은 공식 릴리스를 참고하세요.
+<summary>읽기 상태, 버전, 지도 범위</summary>
 
 - 동일 논문과 확인된 버전 그룹의 읽기 상태를 공유하고, 저장과 제외는 프로젝트별로 관리합니다. 충돌과 외부 편집은 명시적으로 해결하거나 동기화를 재시도·중단합니다.
 - 출처로 확인된 관계나 수동 결정으로 버전을 묶으며 제목만으로 추측하지 않습니다. 내보내기에 버전 출처가 남습니다.

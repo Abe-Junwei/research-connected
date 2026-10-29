@@ -138,10 +138,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	returnToGraph.className = "cpo-detail-return";
 	returnToGraph.textContent = tr("返回图谱", "Back to graph");
 	let detailReturn: { zoom: number; centerX: number; centerY: number; selectedId: string | null } | null = null;
+	let detailReturnLocked = false;
 	let coverDismissed = false;
+	const freezeDetailReturn = (): void => {
+		if (detailReturnLocked || !shell.classList.contains("is-detail-cover")) return;
+		detailReturn = map.getViewState();
+		detailReturnLocked = true;
+	};
 	returnToGraph.addEventListener("click", () => {
 		const saved = detailReturn;
 		detailReturn = null;
+		detailReturnLocked = false;
 		coverDismissed = true;
 		shell.classList.remove("is-detail-cover");
 		if (saved) map.setViewState(saved);
@@ -531,12 +538,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		frame.apply();
 		map.resize();
 		if (!coverDismissed && Boolean(selected) && !detail.hidden && shell.classList.contains("is-narrow")) frame.revealRight();
-		if (setDetailCover(shell, !coverDismissed && Boolean(selected) && !detail.hidden)) detailReturn = map.getViewState();
-		else if (!shell.classList.contains("is-detail-cover")) detailReturn = null;
+		if (setDetailCover(shell, !coverDismissed && Boolean(selected) && !detail.hidden)) {
+			detailReturn = map.getViewState();
+			detailReturnLocked = false;
+		} else if (!shell.classList.contains("is-detail-cover")) {
+			detailReturn = null;
+			detailReturnLocked = false;
+		}
 	});
 	narrowObserver.observe(stage);
-	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
-	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
+	zoomIn.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1.2); });
+	zoomOut.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1 / 1.2); });
 	zoomFit.addEventListener("click", () => map.fit(true));
 	let wheelHinted = false;
 	stage.addEventListener(
@@ -599,6 +611,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		selected = null;
 		selectedLink = null;
 		detailReturn = null;
+		detailReturnLocked = false;
 		coverDismissed = false;
 		setDetailCover(shell, false);
 		detail.replaceChildren();
@@ -625,7 +638,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			detail.hidden = false;
 			coverDismissed = false;
 		}
-		if (!coverDismissed && shell.classList.contains("is-narrow") && !shell.classList.contains("is-detail-cover") && !detail.hidden) detailReturn = map.getViewState();
+		if (!coverDismissed && shell.classList.contains("is-narrow") && !shell.classList.contains("is-detail-cover") && !detail.hidden) {
+			detailReturn = map.getViewState();
+			detailReturnLocked = false;
+		}
 		setDetailCover(shell, !coverDismissed && !detail.hidden);
 		map.setSelected(graph.nodes.some((node) => node.id === paper.id) ? paper.id : null);
 		if (link) session.apply({ type: "select-edge", id: `${link.source}\0${link.target}`, paperId: paper.id, source: reveal ? "user" : "refresh" });

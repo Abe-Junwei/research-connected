@@ -12,10 +12,14 @@
 
 ## See the research neighborhood
 
-<p><img src="docs/images/graph-pane.gif" width="100%" alt="Development preview, light theme: the map opens from the seed, a paper is selected, and the layout switches"></p>
-<p><img src="docs/images/graph-pane-dark.gif" width="100%" alt="Development preview, dark theme: the map opens from the seed, a paper is selected, and the layout switches"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-pane-dark.png">
+  <img src="docs/images/graph-pane.png" width="1600" alt="Development preview: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
+</picture>
 
-*Motion clips and stills: current local development preview, recorded October 29, 2026. These are not Obsidian-host captures or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
+[Light original](docs/images/graph-pane.png) · [Dark original](docs/images/graph-pane-dark.png)
+
+*All screenshots: interface preview captured October 29, 2026 at 3200 × 2000 (2×), outside the Obsidian window. Sample: “Deep learning” (2015); live public metadata may change.*
 
 Select a node or an edge to inspect shared references, co-citations, and direct citation evidence. The side panel’s bottom tabs include **Frequently cited references** (cited by at least two visible papers) and **Works citing this graph** (cites at least two visible papers); neither label implies publication order or intellectual influence.
 
@@ -41,15 +45,23 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 
 ## Explore research over time
 
-<p><img src="docs/images/timeline.gif" width="100%" alt="Development preview, light theme: year layout with the year band playing through publication years"></p>
-<p><img src="docs/images/timeline-dark.gif" width="100%" alt="Development preview, dark theme: year layout with the year band playing through publication years"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timeline-dark.png">
+  <img src="docs/images/timeline.png" width="1600" alt="Development preview: timeline layout with papers positioned by publication year and the year band below the map">
+</picture>
+
+[Light original](docs/images/timeline.png) · [Dark original](docs/images/timeline-dark.png)
 
 Choose the **Year** layout. The year band below the map narrows the visible papers by publication year.
 
 ## Keep the graph beside your notes
 
-<p><img src="docs/images/note-embed.png" width="100%" alt="Development preview, light theme: an interactive timeline graph embedded in a reading-note page"></p>
-<p><img src="docs/images/note-embed-dark.png" width="100%" alt="Development preview, dark theme: an interactive timeline graph embedded in a reading-note page"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/note-embed-dark.png">
+  <img src="docs/images/note-embed.png" width="1600" alt="Development preview: an interactive timeline graph embedded in a reading-note page">
+</picture>
+
+[Light original](docs/images/note-embed.png) · [Dark original](docs/images/note-embed-dark.png)
 
 Add this block to a note. It renders in Reading view and Live Preview.
 
@@ -65,12 +77,10 @@ Select a paper and choose **Export → Write to note** to create a literature no
 
 Embed options, note properties (YAML frontmatter), sampling, and algorithms are in the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md). The older `connected-papers` embed name still works.
 
-## Development status
+## Behavior notes
 
 <details>
-<summary>Unreleased features and validation boundaries</summary>
-
-The current [`slices/s02-s10`](https://github.com/Abe-Junwei/research-connected/tree/slices/s02-s10) work is tracked in [PR #10](https://github.com/Abe-Junwei/research-connected/pull/10). Full acceptance in the Obsidian host remains pending. Install a release for published functionality.
+<summary>Reading status, versions, and map limits</summary>
 
 - Reading status is shared across projects and confirmed version groups; saved papers and exclusions stay project-specific. Conflicts and external note edits require explicit resolution, retry, or sync opt-out.
 - Version groups use source-confirmed relationships or manual decisions, never title-only guesses. Exports retain version provenance.

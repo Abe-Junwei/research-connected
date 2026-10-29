@@ -188,10 +188,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const returnToGraph = el(evidenceHeader, "button", "cpo-detail-return", tr("返回图谱", "Back to graph"));
 	returnToGraph.type = "button";
 	let detailReturn: { zoom: number; centerX: number; centerY: number; selectedId: string | null } | null = null;
+	let detailReturnLocked = false;
 	let coverDismissed = false;
+	const freezeDetailReturn = (): void => {
+		if (detailReturnLocked || !root.classList.contains("is-detail-cover")) return;
+		detailReturn = map.getViewState();
+		detailReturnLocked = true;
+	};
 	returnToGraph.addEventListener("click", () => {
 		const saved = detailReturn;
 		detailReturn = null;
+		detailReturnLocked = false;
 		coverDismissed = true;
 		root.classList.remove("is-detail-cover");
 		if (saved) map.setViewState(saved);
@@ -746,6 +753,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		detail.replaceChildren();
 		if (!paper || !graph) {
 			detailReturn = null;
+			detailReturnLocked = false;
 			coverDismissed = false;
 			setDetailCover(root, false);
 			map.setSelected(null);
@@ -757,7 +765,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		paper = projectVersionNode(graph.nodes.find(node => node.id === paper?.id) ?? paper, seedIdForDisplay ? currentProject(seedIdForDisplay) : undefined, { ...mapFilter, scrubYear }) ?? paper;
 		selectedPaper = paper;
 		const abstractKey = doiFromPaper(paper) ?? paper.id;
-		if (!coverDismissed && root.classList.contains("is-narrow") && !root.classList.contains("is-detail-cover") && !detail.hidden) detailReturn = map.getViewState();
+		if (!coverDismissed && root.classList.contains("is-narrow") && !root.classList.contains("is-detail-cover") && !detail.hidden) {
+			detailReturn = map.getViewState();
+			detailReturnLocked = false;
+		}
 		setDetailCover(root, !coverDismissed && !detail.hidden);
 		map.setSelected(graph.nodes.some((node) => node.id === paper.id) ? paper.id : null);
 		const year = paper.year === null ? tr("年份不详", "Year unknown") : String(paper.year);
@@ -1379,7 +1390,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			selectedPaper = next.nodes.find((node) => paperHasId(node, restoreView.selectedId ?? "")) ?? seed;
 			if (selectedPaper) showDetail(selectedPaper);
 		}
-		if (root.classList.contains("is-detail-cover")) detailReturn = map.getViewState();
+		if (root.classList.contains("is-detail-cover")) {
+			detailReturn = map.getViewState();
+			detailReturnLocked = false;
+		}
 		applyVersionFilter();
 		paintLists();
 		const strategyNames = [
@@ -1660,8 +1674,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.addEventListener("compositionend", () => {
 		composing = false;
 	});
-	zoomIn.addEventListener("click", () => map.zoomBy(1.2));
-	zoomOut.addEventListener("click", () => map.zoomBy(1 / 1.2));
+	zoomIn.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1.2); });
+	zoomOut.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1 / 1.2); });
 	fit.addEventListener("click", () => map.fit(true));
 	reload.addEventListener("click", () => {
 		const seedId = currentSeedId();
@@ -1767,8 +1781,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		frame.apply();
 		map.resize();
 		if (!coverDismissed && Boolean(selectedPaper) && !detail.hidden && root.classList.contains("is-narrow")) frame.revealRight();
-		if (setDetailCover(root, !coverDismissed && Boolean(selectedPaper) && !detail.hidden)) detailReturn = map.getViewState();
-		else if (!root.classList.contains("is-detail-cover")) detailReturn = null;
+		if (setDetailCover(root, !coverDismissed && Boolean(selectedPaper) && !detail.hidden)) {
+			detailReturn = map.getViewState();
+			detailReturnLocked = false;
+		} else if (!root.classList.contains("is-detail-cover")) {
+			detailReturn = null;
+			detailReturnLocked = false;
+		}
 	});
 	observer.observe(stage);
 	window.requestAnimationFrame(() => map.resize());
