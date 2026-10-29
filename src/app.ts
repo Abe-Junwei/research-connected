@@ -57,7 +57,7 @@ import { citationCountText } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode, setDetailCover } from "./responsive";
 import { displayStageSource } from "./staging";
-import { commitSourceVersionRelations, matchingSeedProjects, acknowledgeIdentityStates, changeVersionExclusion, commitWorkIdentityDecision, composeProjectGraph, projectVersionGraph, projectVersionNode, projectVersionState, projectForSeed, projectWriteKey, reconcileProjectIdentity, resolveProjectPending, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
+import { commitSourceVersionRelations, matchingSeedProjects, acknowledgeIdentityStates, changeVersionExclusion, commitWorkIdentityDecision, composeProjectGraph, projectVersionGraph, projectVersionNode, projectVersionState, projectForSeed, projectPersistTarget, projectWriteKey, reconcileProjectIdentity, resolveProjectPending, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
 	destroy(): void;
@@ -954,10 +954,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const seed = current.nodes.find((node) => node.isSeed);
 		if (!seed || !deps.saveProject || applyingNotice || removedSeeds.has(seed.id)) return false;
 		const revision = saveRevision;
+		const projects = deps.getSettings().researchProjects;
+		const { writeKey, prior } = projectPersistTarget(projects, seed.id, activeProjectId);
+		// Foreign active slot: keep in-memory dive batches from leaking into the new seed's project.
+		const batches = writeKey ? deepDiveBatches : prior?.deepDives ?? [];
+		if (prior && prior.seedId !== seed.id) { paintSaveState("pending"); return false; }
 		const projectId = activeProjectId;
 		paintSaveState("saving");
-		const prior = activeProjectId ? deps.getSettings().researchProjects[activeProjectId] : projectForSeed(deps.getSettings().researchProjects, seed.id);
-		if (prior && prior.seedId !== seed.id && patch.seedId !== seed.id) { paintSaveState("pending"); return false; }
 		const project: ResearchProject = {
 			...prior,
 			...patch,
@@ -968,20 +971,22 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			snapshot: saveGraphSnapshot(current),
 			currentView: patch.currentView ?? { name: tr("当前视图", "Current view"), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: JSON.parse(JSON.stringify(mapFilter)) as GraphFilter, ...frame.collapsed() },
 			views: prior?.views ?? [],
-			deepDives: deepDiveBatches,
+			deepDives: batches,
 			paperStates: prior?.paperStates ?? {},
 		};
 		const previousSnapshot = lastProjectSnapshot;
 		lastProjectSnapshot = project.snapshot;
-		try { await deps.saveProject(project, activeProjectId ?? undefined); }
+		try { await deps.saveProject(project, writeKey); }
 		catch (error) {
 			lastProjectSnapshot = previousSnapshot;
 			if (graph === current && activeProjectId === projectId) paintSaveState(revision === saveRevision ? "error" : "pending");
 			status.textContent = error instanceof Error ? tr(`项目保存失败：${error.message}`, `Could not save project: ${error.message}`) : tr("项目保存失败", "Could not save the project");
 			return false;
 		}
-		if (graph === current && activeProjectId === projectId) {
-			refreshProjectSelect(activeProjectId ?? projectWriteKey(deps.getSettings().researchProjects, seed.id));
+		if (graph === current && (activeProjectId === projectId || !writeKey)) {
+			activeProjectId = writeKey ?? projectWriteKey(deps.getSettings().researchProjects, seed.id);
+			if (!writeKey) deepDiveBatches = batches;
+			refreshProjectSelect(activeProjectId);
 			paintSaveState(revision === saveRevision ? "saved" : "pending");
 		}
 		return true;
@@ -1017,7 +1022,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			paintSaveState(graph ? saveState : "idle");
 			return;
 		}
-		const openId = graph ? selectedId : null;
+		const seedId = graph ? currentSeedId() : null;
+		let openId = graph ? selectedId : null;
+		// Do not keep a project whose seed is not the graph on screen.
+		if (openId && seedId) {
+			const match = projects.find((project) => project.key === openId);
+			if (!match || match.seedId !== seedId) openId = projects.find((project) => project.seedId === seedId || project.key === seedId)?.key ?? null;
+		}
 		const selected = openId && projects.some((project) => project.key === openId) ? openId : null;
 		activeProjectId = selected;
 		projectName.textContent = selected ? projects.find((project) => project.key === selected)!.name : tr("研究项目", "Research project");
@@ -1570,7 +1581,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				if (graph) void enrichOpenCitations(graph);
 				return;
 			}
-			if (!await persistProject(restored.graph, { sampleIds: next.nodes.map(node => node.id), seedId: seed?.id })) return;
+			// Rebuild resolved a different seed than the open project: keep that project; persist under the new seed's key.
+			if (seed && targetProject && targetProject.seedId !== seed.id) {
+				activeProjectId = null;
+				deepDiveBatches = [];
+			}
+			if (!await persistProject(restored.graph, { sampleIds: next.nodes.map(node => node.id) })) return;
 			if (disposed || token !== generation || requests.get(requestKey) !== request) return;
 			applyGraph(restored.graph, restoreView, false, false);
 			window.dispatchEvent(new Event("research-connected-project"));

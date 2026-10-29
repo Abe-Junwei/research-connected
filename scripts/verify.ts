@@ -45,7 +45,7 @@ import { paperStateBadges } from "../src/citation-evidence";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import type { ConnectedPapersSettings } from "../src/settings-model";
-import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
+import { projectPersistTarget, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
 import { buildSimilarity, pairScore } from "../src/similarity";
 import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
 import { buildPairSimilarity } from "../src/diversity";
@@ -105,6 +105,10 @@ function unit(): void {
 	assert.equal(savedProjectForSeed({ W1: project }, { kind: "openalex", value: "https://openalex.org/W1" }), project);
 	assert.equal(savedProjectForSeed({ W1: project }, { kind: "doi", value: "10.1234/SEED" }), project);
 	assert.equal(savedProjectForSeed({ W1: project }, { kind: "doi", value: "10.1234/other" }), undefined);
+	assert.deepEqual(projectPersistTarget({ W1: project }, "W1", "W1"), { writeKey: "W1", prior: project });
+	assert.deepEqual(projectPersistTarget({ W1: project }, "W2", "W1"), { writeKey: undefined, prior: undefined }, "foreign active slot is not overwritten");
+	const other: ResearchProject = { ...project, seedId: "W2", name: "Other" };
+	assert.deepEqual(projectPersistTarget({ W1: project, W2: other }, "W2", "W1"), { writeKey: undefined, prior: other }, "same-seed prior is found without touching the foreign key");
 	assert.deepEqual(classifyQuery("  10.1038/nature14539 "), {
 		kind: "doi",
 		value: "10.1038/nature14539",
