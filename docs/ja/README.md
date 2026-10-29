@@ -12,12 +12,10 @@
 
 ## 論文の研究領域を見渡す
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
-  <img src="../images/graph-pane.png" width="1600" alt="開発版プレビュー：Deep learning をシード論文とする50件の論文地図と、右側の複数の表示中論文に引用された文献">
-</picture>
-
-[ライト版の原寸画像](../images/graph-pane.png) · [ダーク版の原寸画像](../images/graph-pane-dark.png)
+<p align="center">
+  <img src="../images/graph-pane.png" width="49%" alt="開発版プレビュー（ライト）：Deep learning をシード論文とする50件の論文地図と、右側の複数の表示中論文に引用された文献">
+  <img src="../images/graph-pane-dark.png" width="49%" alt="開発版プレビュー（ダーク）：Deep learning をシード論文とする50件の論文地図と、右側の複数の表示中論文に引用された文献">
+</p>
 
 *画像は現在のローカル開発版プレビューです。撮影日：2026-10-29、解像度：3200 × 2000（2×）。Obsidian 本体での撮影や公開済みリリースの機能保証ではありません。例は “Deep learning”（2015）。公開メタデータは変化します。画像の UI は英語で、対応言語は簡体字中国語と英語です。*
 
@@ -45,23 +43,19 @@
 
 ## 時間軸で研究を見る
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
-  <img src="../images/timeline.png" width="1600" alt="開発版プレビュー：発表年で並べた時間軸の地図と下部の年の帯">
-</picture>
-
-[ライト版の原寸画像](../images/timeline.png) · [ダーク版の原寸画像](../images/timeline-dark.png)
+<p align="center">
+  <img src="../images/timeline.png" width="49%" alt="開発版プレビュー（ライト）：発表年で並べた時間軸の地図と下部の年の帯">
+  <img src="../images/timeline-dark.png" width="49%" alt="開発版プレビュー（ダーク）：発表年で並べた時間軸の地図と下部の年の帯">
+</p>
 
 **Year** レイアウトに切り替えます。グラフ下部の年の帯で、発表年に基づいて表示範囲を絞り込めます。
 
 ## ノートのそばにグラフを置く
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
-  <img src="../images/note-embed.png" width="1600" alt="開発版プレビュー：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
-</picture>
-
-[ライト版の原寸画像](../images/note-embed.png) · [ダーク版の原寸画像](../images/note-embed-dark.png)
+<p align="center">
+  <img src="../images/note-embed.png" width="49%" alt="開発版プレビュー（ライト）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
+  <img src="../images/note-embed-dark.png" width="49%" alt="開発版プレビュー（ダーク）：読書ノートのページに埋め込んだ操作可能な時間軸グラフ">
+</p>
 
 次のブロックをノートに追加します。リーディングビューとライブプレビューで表示されます。
 

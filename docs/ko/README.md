@@ -12,12 +12,10 @@
 
 ## 논문의 연구 이웃 살펴보기
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
-  <img src="../images/graph-pane.png" width="1600" alt="개발 미리보기: Deep learning 기준 논문 50편의 지도와 오른쪽의 여러 표시 문헌이 인용한 작품">
-</picture>
-
-[밝은 원본](../images/graph-pane.png) · [어두운 원본](../images/graph-pane-dark.png)
+<p align="center">
+  <img src="../images/graph-pane.png" width="49%" alt="개발 미리보기(밝은 테마): Deep learning 기준 논문 50편의 지도와 오른쪽의 여러 표시 문헌이 인용한 작품">
+  <img src="../images/graph-pane-dark.png" width="49%" alt="개발 미리보기(어두운 테마): Deep learning 기준 논문 50편의 지도와 오른쪽의 여러 표시 문헌이 인용한 작품">
+</p>
 
 *모든 이미지는 현재 로컬 개발 미리보기입니다. 촬영일: 2026-10-29, 해상도: 3200 × 2000(2×). 실제 Obsidian 화면이나 최신 배포 버전의 기능 보장이 아닙니다. 예시는 “Deep learning”(2015)이며 공개 메타데이터는 바뀔 수 있습니다. 이미지의 UI는 영어이고, 지원 언어는 중국어 간체와 영어입니다.*
 
@@ -45,23 +43,19 @@
 
 ## 시간 순으로 보기
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
-  <img src="../images/timeline.png" width="1600" alt="개발 미리보기: 발표 연도별 시간축 지도와 하단 연도 표시">
-</picture>
-
-[밝은 원본](../images/timeline.png) · [어두운 원본](../images/timeline-dark.png)
+<p align="center">
+  <img src="../images/timeline.png" width="49%" alt="개발 미리보기(밝은 테마): 발표 연도별 시간축 지도와 하단 연도 표시">
+  <img src="../images/timeline-dark.png" width="49%" alt="개발 미리보기(어두운 테마): 발표 연도별 시간축 지도와 하단 연도 표시">
+</p>
 
 **Year** 레이아웃으로 바꿉니다. 그래프 아래 연도 막대에서 출판 연도에 따라 표시 범위를 좁힐 수 있습니다.
 
 ## 노트 옆에 그래프 두기
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
-  <img src="../images/note-embed.png" width="1600" alt="개발 미리보기: 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
-</picture>
-
-[밝은 원본](../images/note-embed.png) · [어두운 원본](../images/note-embed-dark.png)
+<p align="center">
+  <img src="../images/note-embed.png" width="49%" alt="개발 미리보기(밝은 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
+  <img src="../images/note-embed-dark.png" width="49%" alt="개발 미리보기(어두운 테마): 읽기 노트 페이지 안에 포함된 대화형 시간축 그래프">
+</p>
 
 아래 블록을 노트에 넣습니다. 읽기 화면과 실시간 미리보기에서 나타납니다.
 

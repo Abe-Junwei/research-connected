@@ -12,12 +12,10 @@
 
 ## See the research neighborhood
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-pane-dark.png">
-  <img src="docs/images/graph-pane.png" width="1600" alt="Development preview: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
-</picture>
-
-[Light original](docs/images/graph-pane.png) · [Dark original](docs/images/graph-pane-dark.png)
+<p align="center">
+  <img src="docs/images/graph-pane.png" width="49%" alt="Development preview, light theme: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
+  <img src="docs/images/graph-pane-dark.png" width="49%" alt="Development preview, dark theme: 50-paper map around Deep learning, with references cited by multiple visible papers in the right sidebar">
+</p>
 
 *All screenshots: current local development preview, captured October 29, 2026 at 3200 × 2000 (2×). These are not Obsidian-host screenshots or a claim about the latest published release. Sample: “Deep learning” (2015); live public metadata may change.*
 
@@ -45,23 +43,19 @@ This example is “Deep learning” by LeCun, Bengio, and Hinton (2015). Results
 
 ## Explore research over time
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/timeline-dark.png">
-  <img src="docs/images/timeline.png" width="1600" alt="Development preview: timeline layout with papers positioned by publication year and the year band below the map">
-</picture>
-
-[Light original](docs/images/timeline.png) · [Dark original](docs/images/timeline-dark.png)
+<p align="center">
+  <img src="docs/images/timeline.png" width="49%" alt="Development preview, light theme: timeline layout with papers positioned by publication year and the year band below the map">
+  <img src="docs/images/timeline-dark.png" width="49%" alt="Development preview, dark theme: timeline layout with papers positioned by publication year and the year band below the map">
+</p>
 
 Choose the **Year** layout. The year band below the map narrows the visible papers by publication year.
 
 ## Keep the graph beside your notes
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/note-embed-dark.png">
-  <img src="docs/images/note-embed.png" width="1600" alt="Development preview: an interactive timeline graph embedded in a reading-note page">
-</picture>
-
-[Light original](docs/images/note-embed.png) · [Dark original](docs/images/note-embed-dark.png)
+<p align="center">
+  <img src="docs/images/note-embed.png" width="49%" alt="Development preview, light theme: an interactive timeline graph embedded in a reading-note page">
+  <img src="docs/images/note-embed-dark.png" width="49%" alt="Development preview, dark theme: an interactive timeline graph embedded in a reading-note page">
+</p>
 
 Add this block to a note. It renders in Reading view and Live Preview.
 

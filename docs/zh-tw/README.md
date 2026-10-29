@@ -12,12 +12,10 @@
 
 ## 看清一篇論文的研究鄰域
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/graph-pane-dark.png">
-  <img src="../images/graph-pane.png" width="1600" alt="開發版預覽：以 Deep learning 為種子文獻的 50 篇文獻圖譜，右側顯示被多篇目前可見文獻引用的作品">
-</picture>
-
-[淺色原圖](../images/graph-pane.png) · [暗色原圖](../images/graph-pane-dark.png)
+<p align="center">
+  <img src="../images/graph-pane.png" width="49%" alt="開發版預覽（淺色）：以 Deep learning 為種子文獻的 50 篇文獻圖譜，右側顯示被多篇目前可見文獻引用的作品">
+  <img src="../images/graph-pane-dark.png" width="49%" alt="開發版預覽（暗色）：以 Deep learning 為種子文獻的 50 篇文獻圖譜，右側顯示被多篇目前可見文獻引用的作品">
+</p>
 
 *本頁截圖均為目前本機開發版預覽，攝於 2026-10-29，解析度 3200 × 2000（2×）。不是 Obsidian 宿主截圖，也不代表最新發行版功能。範例為 “Deep learning”（2015）；即時公共中繼資料可能變動。截圖介面為英文；外掛目前支援簡體中文與英文。*
 
@@ -45,23 +43,19 @@
 
 ## 按時間查看研究
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/timeline-dark.png">
-  <img src="../images/timeline.png" width="1600" alt="開發版預覽：按發表年份排列的時間圖譜，下方顯示年份帶">
-</picture>
-
-[淺色原圖](../images/timeline.png) · [暗色原圖](../images/timeline-dark.png)
+<p align="center">
+  <img src="../images/timeline.png" width="49%" alt="開發版預覽（淺色）：按發表年份排列的時間圖譜，下方顯示年份帶">
+  <img src="../images/timeline-dark.png" width="49%" alt="開發版預覽（暗色）：按發表年份排列的時間圖譜，下方顯示年份帶">
+</p>
 
 切換到**年份**佈局。圖譜下方的年份帶可依發表年份縮小可見範圍。
 
 ## 把圖譜放在筆記旁邊
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../images/note-embed-dark.png">
-  <img src="../images/note-embed.png" width="1600" alt="開發版預覽：在閱讀筆記頁面中嵌入可互動的時間圖譜">
-</picture>
-
-[淺色原圖](../images/note-embed.png) · [暗色原圖](../images/note-embed-dark.png)
+<p align="center">
+  <img src="../images/note-embed.png" width="49%" alt="開發版預覽（淺色）：在閱讀筆記頁面中嵌入可互動的時間圖譜">
+  <img src="../images/note-embed-dark.png" width="49%" alt="開發版預覽（暗色）：在閱讀筆記頁面中嵌入可互動的時間圖譜">
+</p>
 
 把下面的程式碼區塊放進筆記。它會在閱讀視圖和即時預覽中顯示。
 
