@@ -117,4 +117,4 @@ layout: temporal
 
 変更点は[リリースノート](https://github.com/Abe-Junwei/research-connected/releases)にあります。予定は[ロードマップ](https://github.com/Abe-Junwei/research-connected/blob/main/ROADMAP.md)にあります。コードとドキュメントへの貢献は[貢献ガイド](https://github.com/Abe-Junwei/research-connected/blob/main/CONTRIBUTING.md)に従います。
 
-[MIT](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE)。Research Connected は独立したプロジェクトであり、Connected Papers とは関係ありません。
+[AGPL-3.0](https://github.com/Abe-Junwei/research-connected/blob/main/LICENSE)。Research Connected は独立したプロジェクトであり、Connected Papers とは関係ありません。
