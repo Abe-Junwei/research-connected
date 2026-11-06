@@ -1,7 +1,7 @@
 import { OpenAlexError, retryAfterMs, type GetJson } from "../src/openalex";
 import type { PostJson } from "../src/citation-sources";
 import { screenWebResponse } from "../preview/quality";
-import { browserId } from "./browser-id";
+import { ensureSession, sessionHeaders } from "./session-auth";
 
 const OPENALEX_HOST = "api.openalex.org";
 const S2_HOST = "api.semanticscholar.org";
@@ -25,7 +25,11 @@ async function request(url: string, init: { headers: Record<string, string>; bod
 	const openalex = target.hostname === OPENALEX_HOST;
 	const s2 = target.hostname === S2_HOST;
 	if (init.body && !s2) throw new Error("Browser POST is only available for Semantic Scholar.");
-	const headers: Record<string, string> = { "Content-Type": "application/json", "X-Browser-Id": browserId() };
+	if (openalex) await ensureSession();
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+		...(openalex ? sessionHeaders() : {}),
+	};
 	let endpoint: string;
 	let body: string | undefined;
 	if (openalex) {

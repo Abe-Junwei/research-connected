@@ -8,8 +8,10 @@ import { normalizeProjects } from "../src/project-state";
 import { createReadingWorkflow, normalizeReadingWorkflow } from "../src/reading-workflow";
 import { revalidateWebSettings, commitWebRevalidation } from "../preview/revalidate";
 import { prepareWebSettings, checkWebMetadata, prepareWebGraph, decorateWebExport } from "../preview/quality";
+import { fixtureGet, fixturePost } from "../preview/fixture";
 import { writeWebProjectSettings, StorageFullError } from "./storage";
-import { confirmQuota, fetchQuotaStatus, formatQuotaBanner, releaseQuota, reserveQuota, type QuotaAction } from "./quota-client";
+import { clearLocalTask, confirmQuota, fetchQuotaStatus, formatQuotaBanner, readLocalTask, releaseQuota, reserveQuota, taskStillValid, type QuotaAction } from "./quota-client";
+import { ensureSession } from "./session-auth";
 import { claimBrowserTask, claimEdit, clearBrowserTask, currentTabId, isReadOnly, releaseEdit, startHeartbeat } from "./session";
 import { tr } from "../src/i18n";
 
@@ -90,7 +92,14 @@ function ensureEdit(projectKey: string): boolean {
 
 const operationGate: NonNullable<AppDeps["operationGate"]> = {
 	async reserve(action: QuotaAction) {
+		await ensureSession();
 		await refreshQuota();
+		const existing = readLocalTask();
+		if (existing && taskStillValid(existing)) {
+			setNotice(tr("当前标签页已有未完成的任务。", "This tab already has an unfinished task."), "error");
+			return { blocked: "browser_busy" };
+		}
+		if (existing) clearLocalTask(existing.reservationId);
 		const decision = await reserveQuota(action);
 		if (!decision.ok || !decision.reservation_id) {
 			setNotice(decision.message || tr("当前无法开始任务", "Cannot start a task right now"), "error");
@@ -105,7 +114,19 @@ const operationGate: NonNullable<AppDeps["operationGate"]> = {
 		await refreshQuota();
 		return { reservationId: decision.reservation_id };
 	},
+	async assertActive(reservationId: string) {
+		const task = readLocalTask();
+		if (!taskStillValid(task) || !task || task.reservationId !== reservationId) {
+			throw new Error(tr("任务已过期，迟到结果不会保存计次。", "The task expired; a late result is not saved or charged."));
+		}
+	},
 	async confirm(reservationId: string) {
+		const task = readLocalTask();
+		if (!taskStillValid(task) || !task || task.reservationId !== reservationId) {
+			clearBrowserTask(reservationId);
+			clearLocalTask(reservationId);
+			throw new Error(tr("任务已过期，迟到结果不会保存计次。", "The task expired; a late result is not saved or charged."));
+		}
 		const decision = await confirmQuota(reservationId);
 		clearBrowserTask(reservationId);
 		await refreshQuota();
@@ -114,12 +135,17 @@ const operationGate: NonNullable<AppDeps["operationGate"]> = {
 	async release(reservationId: string) {
 		try { await releaseQuota(reservationId); } catch { /* Best-effort release. */ }
 		clearBrowserTask(reservationId);
+		clearLocalTask(reservationId);
 		await refreshQuota();
 	},
 };
 
+
 async function start(): Promise<void> {
 	const host = root as HTMLElement;
+	if (!offline) {
+		try { await ensureSession(); } catch (error) { setNotice(error instanceof Error ? error.message : tr("无法建立会话", "Could not start a session"), "error"); }
+	}
 	if (detailId) {
 		document.title = "Research Connected";
 		host.replaceChildren();
@@ -150,6 +176,18 @@ async function start(): Promise<void> {
 			const back = el(panel, "a");
 			back.href = "./";
 			back.textContent = tr("返回图谱", "Back to graph");
+			back.addEventListener("click", (event) => {
+				if (window.history.length > 1) {
+					event.preventDefault();
+					window.history.back();
+				}
+			});
+			// Keep ?paper=/ ?doi= in the address bar so refresh stays on the detail route.
+			if (!window.location.search.includes("paper=") && !window.location.search.includes("doi=")) {
+				const next = new URL(window.location.href);
+				next.searchParams.set(detailId.toLowerCase().startsWith("10.") ? "doi" : "paper", detailId);
+				window.history.replaceState({}, "", next.toString());
+			}
 		} catch (error) {
 			panel.replaceChildren();
 			const failed = el(panel, "p", "cpo-side-tip");
@@ -188,8 +226,8 @@ async function start(): Promise<void> {
 		},
 		persistSettings,
 		loadSavedProject: () => Object.values(settings.researchProjects).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
-		getJson: browserGetJson,
-		postJson: browserPostJson,
+		getJson: offline ? fixtureGet : browserGetJson,
+		postJson: offline ? fixturePost : browserPostJson,
 		prepareGraph: graph => [review?.notice, prepareWebGraph(graph)].filter(Boolean).join("\n") || null,
 		decorateExport: (papers, text, format) => decorateWebExport(papers, text, format, review?.complete === false),
 		checkMetadata: paper => checkWebMetadata(paper, browserGetJson),

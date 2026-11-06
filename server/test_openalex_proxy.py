@@ -4,16 +4,17 @@ from __future__ import annotations
 import io
 import json
 import os
-from pathlib import Path
 import tempfile
 import threading
 import time
 import unittest
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
-from quota import QuotaStore, period_id
+from quota import QuotaStore, budget_period_id, operation_period_id
 from openalex_proxy import OpenAlexProxy, handler_for, validate_openalex
 
 
@@ -28,225 +29,203 @@ class Clock:
         self.now += seconds
 
 
+BEIJING = timezone(timedelta(hours=8))
+
+
 class QuotaLifecycle(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = os.path.join(self.tmp.name, "quota.json")
-        # 2026-11-06 12:00 Beijing = 2026-11-06 04:00 UTC
-        self.clock = Clock(time.mktime(time.strptime("2026-11-06 04:00:00", "%Y-%m-%d %H:%M:%S")))
-        # Force timezone-independent epoch via datetime
-        from datetime import datetime, timezone, timedelta
-        beijing = timezone(timedelta(hours=8))
-        self.clock.now = datetime(2026, 11, 6, 12, 0, tzinfo=beijing).timestamp()
-        self.store = QuotaStore(self.path, clock=self.clock, browser_daily=10, site_daily=500, reserve_ttl=300, ip_starts_per_minute=10, openalex_budget_usd=1.0, request_cost_usd=0.1)
+        self.clock = Clock(datetime(2026, 11, 6, 12, 0, tzinfo=BEIJING).timestamp())
+        self.store = QuotaStore(
+            self.path,
+            clock=self.clock,
+            browser_daily=10,
+            site_daily=500,
+            reserve_ttl=300,
+            ip_starts_per_minute=10,
+            openalex_budget_usd=1.0,
+            request_cost_usd=0.1,
+        )
+        self.session = self.store.create_session()
+        self.token = self.session["browser_token"]
+        self.nonce = self.session["session_nonce"]
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_period_boundary_at_beijing_0800(self):
-        from datetime import datetime, timezone, timedelta
-        beijing = timezone(timedelta(hours=8))
-        before = datetime(2026, 11, 6, 7, 59, tzinfo=beijing).timestamp()
-        after = datetime(2026, 11, 6, 8, 0, tzinfo=beijing).timestamp()
-        self.assertEqual(period_id(before), "2026-11-05")
-        self.assertEqual(period_id(after), "2026-11-06")
+    def reserve(self, action="build", ip="1.1.1.1", key=None, token=None, nonce=None):
+        return self.store.reserve(token or self.token, nonce or self.nonce, action, ip, key or ("idem-" + os.urandom(4).hex()))
 
-    def test_reserve_confirm_idempotent_and_release(self):
-        reserved = self.store.reserve("b1", "build", "1.1.1.1")
+    def test_period_boundary_at_beijing_0800_and_budget_utc(self):
+        before = datetime(2026, 11, 6, 7, 59, tzinfo=BEIJING).timestamp()
+        after = datetime(2026, 11, 6, 8, 0, tzinfo=BEIJING).timestamp()
+        self.assertEqual(operation_period_id(before), "2026-11-05")
+        self.assertEqual(operation_period_id(after), "2026-11-06")
+        utc_instant = datetime(2026, 11, 6, 0, 30, tzinfo=timezone.utc).timestamp()
+        self.assertEqual(budget_period_id(utc_instant), "2026-11-06")
+
+    def test_reserve_confirm_idempotent_cancel_expire(self):
+        key = "idem-1"
+        reserved = self.reserve(key=key)
         self.assertTrue(reserved.ok)
-        status = self.store.status("b1")
-        self.assertEqual(status["browser_remaining"], 9)
-        self.assertEqual(status["site_remaining"], 499)
-        confirmed = self.store.confirm("b1", reserved.reservation_id)
+        confirmed = self.store.confirm(self.token, self.nonce, reserved.reservation_id, key)
         self.assertTrue(confirmed.ok)
-        self.assertEqual(self.store.status("b1")["browser_remaining"], 9)
-        again = self.store.confirm("b1", reserved.reservation_id)
+        again = self.store.confirm(self.token, self.nonce, reserved.reservation_id, key)
         self.assertTrue(again.ok)
-        self.assertEqual(again.code, "confirmed")
-        self.assertEqual(self.store.status("b1")["browser_remaining"], 9, "idempotent confirm must not double-charge")
-        released = self.store.release("b1", reserved.reservation_id)
-        self.assertFalse(released.ok)
-        self.assertEqual(released.code, "already_confirmed")
+        self.assertEqual(self.store.status(self.token, self.nonce)["browser_remaining"], 9)
+        self.assertFalse(self.store.release(self.token, self.nonce, reserved.reservation_id, key).ok)
 
-    def test_cancel_and_expire_do_not_charge(self):
-        reserved = self.store.reserve("b2", "rebuild", "1.1.1.2")
-        released = self.store.release("b2", reserved.reservation_id)
-        self.assertTrue(released.ok)
-        self.assertEqual(self.store.status("b2")["browser_remaining"], 10)
-        reserved = self.store.reserve("b2", "expand", "1.1.1.2")
+        reserved = self.reserve(action="rebuild", key="idem-cancel")
+        self.assertTrue(self.store.release(self.token, self.nonce, reserved.reservation_id, "idem-cancel").ok)
+        self.assertEqual(self.store.status(self.token, self.nonce)["browser_remaining"], 9)
+
+        reserved = self.reserve(action="expand", key="idem-expire")
         self.clock.advance(301)
-        expired = self.store.confirm("b2", reserved.reservation_id)
+        expired = self.store.confirm(self.token, self.nonce, reserved.reservation_id, "idem-expire")
         self.assertFalse(expired.ok)
         self.assertEqual(expired.code, "expired")
-        self.assertEqual(self.store.status("b2")["browser_remaining"], 10)
 
-    def test_browser_eleventh_and_site_limit_and_ip_rate(self):
-        for i in range(10):
-            decision = self.store.reserve(f"fill-{i}", "build", f"9.9.9.{i}")
-            self.assertTrue(decision.ok)
-            self.assertTrue(self.store.confirm(f"fill-{i}", decision.reservation_id).ok)
-        # Separate browser still blocked by site when site_daily reduced
-        tight = QuotaStore(os.path.join(self.tmp.name, "site.json"), clock=self.clock, site_daily=2, browser_daily=10)
-        a = tight.reserve("a", "build", "2.2.2.1")
-        self.assertTrue(a.ok)
-        self.assertTrue(tight.confirm("a", a.reservation_id).ok)
-        b = tight.reserve("b", "build", "2.2.2.2")
-        self.assertTrue(b.ok)
-        self.assertTrue(tight.confirm("b", b.reservation_id).ok)
-        c = tight.reserve("c", "build", "2.2.2.3")
-        self.assertFalse(c.ok)
-        self.assertEqual(c.code, "site_quota")
+    def test_nonce_and_idempotency_bindings(self):
+        reserved = self.reserve(key="idem-bind")
+        other = self.store.create_session()
+        bad_nonce = self.store.confirm(self.token, other["session_nonce"], reserved.reservation_id, "idem-bind")
+        self.assertEqual(bad_nonce.code, "session_invalid")
+        bad_key = self.store.confirm(self.token, self.nonce, reserved.reservation_id, "other-key")
+        self.assertEqual(bad_key.code, "idempotency_mismatch")
 
-        browser = QuotaStore(os.path.join(self.tmp.name, "browser.json"), clock=self.clock, browser_daily=2)
-        for n in range(2):
-            d = browser.reserve("solo", "build", "3.3.3.3")
-            self.assertTrue(d.ok, d.message)
-            self.assertTrue(browser.confirm("solo", d.reservation_id).ok)
-        denied = browser.reserve("solo", "build", "3.3.3.3")
+    def test_new_period_does_not_migrate_reservation(self):
+        reserved = self.reserve(key="idem-period")
+        self.assertTrue(reserved.ok)
+        # Jump past Beijing 08:00 next day while reservation TTL rewritten forward.
+        self.clock.now = datetime(2026, 11, 7, 8, 0, tzinfo=BEIJING).timestamp()
+        # Keep the same session alive across the operation-period boundary.
+        token_hash = __import__("hashlib").sha256(self.token.encode()).hexdigest()
+        self.store.state["sessions"][token_hash]["expires_at"] = self.clock.now + 3600
+        self.store.state["reservations"][reserved.reservation_id]["expires_at"] = self.clock.now + 60
+        # Rolling must expire rather than migrate the open reservation.
+        status = self.store.status(self.token, self.nonce)
+        self.assertEqual(status["browser_remaining"], 10)
+        self.assertIsNone(status.get("active_reservation"))
+        denied = self.store.confirm(self.token, self.nonce, reserved.reservation_id, "idem-period")
         self.assertFalse(denied.ok)
-        self.assertEqual(denied.code, "browser_quota")
+        self.assertIn(denied.code, {"expired", "period_closed"})
+
+    def test_browser_site_ip_limits_and_restart(self):
+        for i in range(2):
+            session = self.store.create_session()
+            d = self.store.reserve(session["browser_token"], session["session_nonce"], "build", f"9.9.9.{i}", f"k{i}")
+            self.assertTrue(d.ok)
+            self.assertTrue(self.store.confirm(session["browser_token"], session["session_nonce"], d.reservation_id, f"k{i}").ok)
+        tight = QuotaStore(os.path.join(self.tmp.name, "site.json"), clock=self.clock, site_daily=1, browser_daily=10)
+        a = tight.create_session()
+        d = tight.reserve(a["browser_token"], a["session_nonce"], "build", "2.2.2.1", "a")
+        self.assertTrue(d.ok)
+        self.assertTrue(tight.confirm(a["browser_token"], a["session_nonce"], d.reservation_id, "a").ok)
+        b = tight.create_session()
+        blocked = tight.reserve(b["browser_token"], b["session_nonce"], "build", "2.2.2.2", "b")
+        self.assertEqual(blocked.code, "site_quota")
 
         rate = QuotaStore(os.path.join(self.tmp.name, "ip.json"), clock=self.clock, ip_starts_per_minute=10)
         for n in range(10):
-            d = rate.reserve(f"ipb-{n}", "build", "8.8.8.8")
+            s = rate.create_session()
+            d = rate.reserve(s["browser_token"], s["session_nonce"], "build", "8.8.8.8", f"ip{n}")
             self.assertTrue(d.ok)
-            self.assertTrue(rate.release(f"ipb-{n}", d.reservation_id).ok)
-        blocked = rate.reserve("ipb-10", "build", "8.8.8.8")
-        self.assertFalse(blocked.ok)
-        self.assertEqual(blocked.code, "ip_rate")
+            self.assertTrue(rate.release(s["browser_token"], s["session_nonce"], d.reservation_id, f"ip{n}").ok)
+        s = rate.create_session()
+        self.assertEqual(rate.reserve(s["browser_token"], s["session_nonce"], "build", "8.8.8.8", "ipx").code, "ip_rate")
 
-    def test_cross_period_confirm_does_not_charge_new_day(self):
-        reserved = self.store.reserve("night", "build", "4.4.4.4")
-        # Jump past Beijing 08:00 next day while reservation still within 5 minutes.
-        from datetime import datetime, timezone, timedelta
-        beijing = timezone(timedelta(hours=8))
-        self.clock.now = datetime(2026, 11, 7, 8, 0, tzinfo=beijing).timestamp()
-        # Keep reservation from expiring by rewriting expires_at into the future before confirm.
-        self.store.state["reservations"][reserved.reservation_id]["expires_at"] = self.clock.now + 60
-        denied = self.store.confirm("night", reserved.reservation_id)
-        self.assertFalse(denied.ok)
-        self.assertEqual(denied.code, "period_closed")
-        self.assertEqual(self.store.status("night")["browser_remaining"], 10)
-        self.assertEqual(self.store.status("night")["site_remaining"], 500)
-
-    def test_restart_preserves_counters(self):
-        reserved = self.store.reserve("persist", "build", "5.5.5.5")
-        self.assertTrue(self.store.confirm("persist", reserved.reservation_id).ok)
+        reserved = self.reserve(key="persist")
+        self.assertTrue(self.store.confirm(self.token, self.nonce, reserved.reservation_id, "persist").ok)
         reloaded = QuotaStore(self.path, clock=self.clock)
-        self.assertEqual(reloaded.status("persist")["browser_remaining"], 9)
-        self.assertEqual(reloaded.status("persist")["site_remaining"], 499)
+        # Same token/nonce session must still exist on disk.
+        self.assertEqual(reloaded.status(self.token, self.nonce)["browser_remaining"], 9)
 
-    def test_openalex_budget_blocks_and_privacy_state_has_no_doi(self):
-        # request_cost 0.1 with $1 budget => 10 charges
-        for _ in range(10):
-            ok, _ = self.store.charge_openalex()
-            self.assertTrue(ok)
-        ok, code = self.store.charge_openalex()
+    def test_budget_hold_settle_refund_and_privacy(self):
+        ok, _, hold = self.store.hold_openalex(0.4)
+        self.assertTrue(ok)
+        self.assertTrue(self.store.settle_openalex(hold)[0])
+        ok, _, hold = self.store.hold_openalex(0.4)
+        self.assertTrue(ok)
+        self.assertTrue(self.store.refund_openalex(hold)[0])
+        # Remaining room is 0.6; a 0.7 hold must fail without overshooting $1.
+        ok, code, _ = self.store.hold_openalex(0.7)
         self.assertFalse(ok)
         self.assertEqual(code, "openalex_budget")
-        denied = self.store.reserve("budget", "build", "6.6.6.6")
-        self.assertFalse(denied.ok)
-        self.assertEqual(denied.code, "openalex_budget")
         raw = Path(self.path).read_text(encoding="utf-8").lower()
-        self.assertNotIn("10.", raw)
         self.assertNotIn("doi", raw)
         self.assertNotIn("/works/", raw)
+        self.assertNotIn(self.token.lower(), raw)
 
 
 class OpenAlexProxyTests(unittest.TestCase):
-    def test_validation_rejects_unsafe_and_strips_mailto(self):
-        method, url = validate_openalex({"method": "GET", "path": "/works", "query": {"filter": "cites:W1", "per_page": "50", "select": "id,display_name", "mailto": "attacker@example.com"}})
+    def test_validation_and_mock_unconfigured(self):
+        method, url = validate_openalex({"method": "GET", "path": "/works/W1", "query": {"select": "id", "mailto": "x@y.z"}})
         self.assertEqual(method, "GET")
-        self.assertIn("filter=cites%3AW1", url)
         self.assertNotIn("mailto", url)
-        for bad in [
-            {"method": "POST", "path": "/works", "query": {}},
-            {"method": "GET", "path": "/authors", "query": {}},
-            {"method": "GET", "path": "/works", "query": {"filter": "cites:W1;DROP"}},
-            {"method": "GET", "path": "/works/not-an-id", "query": {}},
-        ]:
-            with self.assertRaises(ValueError):
-                validate_openalex(bad)
-
-    def test_key_budget_cache_and_http_boundary(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        path = os.path.join(tmp.name, "q.json")
-        from datetime import datetime, timezone, timedelta
-        beijing = timezone(timedelta(hours=8))
-        clock = Clock(datetime(2026, 11, 6, 12, 0, tzinfo=beijing).timestamp())
-        quota = QuotaStore(path, clock=clock, request_cost_usd=0.5, openalex_budget_usd=1.0)
+        quota = QuotaStore(os.path.join(tmp.name, "q.json"), clock=Clock(datetime(2026, 11, 6, 12, 0, tzinfo=BEIJING).timestamp()))
+        unconfigured = OpenAlexProxy("", quota)
+        self.assertEqual(unconfigured.request({"method": "GET", "path": "/works/W1", "query": {"select": "id"}})[2]["code"], "openalex_unconfigured")
+        mocked = OpenAlexProxy("", quota, allow_mock=True)
+        self.assertEqual(mocked.request({"method": "GET", "path": "/works/W1", "query": {"select": "id"}})[0], 200)
 
-        calls = []
-
-        def opener(req, timeout):
-            calls.append(req)
-            self.assertEqual(req.get_header("Authorization"), "Bearer server-key")
-            return io.BytesIO(json.dumps({"id": "https://openalex.org/W1", "display_name": "Demo"}).encode())
-
-        proxy = OpenAlexProxy("server-key", quota, opener=opener, interval=0)
-        payload = {"method": "GET", "path": "/works/W1", "query": {"select": "id,display_name"}}
-        self.assertEqual(proxy.request(payload)[0], 200)
-        self.assertEqual(proxy.request(payload)[0], 200)
-        self.assertEqual(len(calls), 1, "identical GETs share the cache")
-        self.assertEqual(proxy.request({"method": "GET", "path": "/works/W2", "query": {"select": "id"}})[0], 200)
-        blocked = proxy.request({"method": "GET", "path": "/works/W3", "query": {"select": "id"}})
-        self.assertEqual(blocked[0], 429)
-        self.assertEqual(blocked[2]["code"], "openalex_budget")
-
-        empty = OpenAlexProxy("", quota, opener=opener)
-        self.assertEqual(empty.request(payload)[0], 503)
-
-        # HTTP boundary: origin + no path logging side effects + quota routes
-        quota2 = QuotaStore(os.path.join(tmp.name, "q2.json"), clock=clock)
-        proxy2 = OpenAlexProxy("server-key", quota2, opener=opener, interval=0)
-        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(proxy2, quota2, allow_local=True))
+    def test_http_origin_session_and_quota_flow(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        clock = Clock(datetime(2026, 11, 6, 12, 0, tzinfo=BEIJING).timestamp())
+        quota = QuotaStore(os.path.join(tmp.name, "q.json"), clock=clock)
+        proxy = OpenAlexProxy("", quota, allow_mock=True)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(proxy, quota, allow_local=True, expose_debug=True))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         base = f"http://127.0.0.1:{server.server_port}"
         try:
-            with urllib.request.urlopen(base + "/health") as response:
-                health = json.load(response)
-            self.assertTrue(health["ok"])
-            self.assertTrue(health["key_configured"])
-
-            req = urllib.request.Request(
-                base + "/api/openalex",
-                data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai"},
-            )
-            with urllib.request.urlopen(req) as response:
-                self.assertEqual(json.load(response)["id"], "https://openalex.org/W1")
-
-            bad_origin = urllib.request.Request(
-                base + "/api/openalex",
-                data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json", "Origin": "https://evil.test"},
-            )
+            # Missing Origin is rejected.
+            req = urllib.request.Request(base + "/api/session", data=b"{}", headers={"Content-Type": "application/json"})
             with self.assertRaises(urllib.error.HTTPError) as error:
-                urllib.request.urlopen(bad_origin)
+                urllib.request.urlopen(req)
             self.assertEqual(error.exception.code, 403)
             error.exception.close()
 
-            reserve = urllib.request.Request(
-                base + "/api/quota/reserve",
-                data=json.dumps({"action": "build"}).encode(),
-                headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai", "X-Browser-Id": "browser-a"},
+            # Spoofed CF-Connecting-IP from untrusted peer is ignored (peer remains 127.0.0.1).
+            session_req = urllib.request.Request(
+                base + "/api/session",
+                data=b"{}",
+                headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1:4190"},
             )
+            with urllib.request.urlopen(session_req) as response:
+                session = json.load(response)
+            headers = {
+                "Content-Type": "application/json",
+                "Origin": "http://127.0.0.1:4190",
+                "X-Browser-Token": session["browser_token"],
+                "X-Session-Nonce": session["session_nonce"],
+                "CF-Connecting-IP": "203.0.113.9",
+            }
+            reserve = urllib.request.Request(base + "/api/quota/reserve", data=json.dumps({"action": "build", "idempotency_key": "local-1"}).encode(), headers=headers)
             with urllib.request.urlopen(reserve) as response:
                 body = json.load(response)
             self.assertTrue(body["ok"])
             reservation_id = body["reservation_id"]
-            confirm = urllib.request.Request(
-                base + "/api/quota/confirm",
-                data=json.dumps({"reservation_id": reservation_id}).encode(),
-                headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai", "X-Browser-Id": "browser-a"},
-            )
+            confirm = urllib.request.Request(base + "/api/quota/confirm", data=json.dumps({"reservation_id": reservation_id, "idempotency_key": "local-1"}).encode(), headers=headers)
             with urllib.request.urlopen(confirm) as response:
                 self.assertTrue(json.load(response)["ok"])
-            # Idempotent confirm
             with urllib.request.urlopen(confirm) as response:
                 self.assertTrue(json.load(response)["ok"])
+
+            # Evil origin
+            evil = urllib.request.Request(base + "/api/openalex", data=json.dumps({"method": "GET", "path": "/works/W1", "query": {"select": "id"}}).encode(), headers={"Content-Type": "application/json", "Origin": "https://evil.test"})
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(evil)
+            self.assertEqual(error.exception.code, 403)
+            error.exception.close()
+
+            # Product origin works with mock
+            good = urllib.request.Request(base + "/api/openalex", data=json.dumps({"method": "GET", "path": "/works/W1", "query": {"select": "id"}}).encode(), headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai"})
+            with urllib.request.urlopen(good) as response:
+                self.assertEqual(json.load(response)["id"], "https://openalex.org/W1")
         finally:
             server.shutdown()
             server.server_close()

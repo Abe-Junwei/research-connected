@@ -1,10 +1,13 @@
 """Bounded OpenAlex system proxy + anonymous operation quota for graph.jieyu.ai.
 
 OPENALEX_API_KEY stays in a root-only env file. Request paths/DOIs are never logged.
+Product POSTs require Origin + server-issued session nonce. Forwarded client IPs
+are trusted only from configured edge addresses.
 """
 from __future__ import annotations
 
 import collections
+import ipaddress
 import json
 import os
 import re
@@ -14,7 +17,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Callable
 
 from quota import QuotaStore
 
@@ -25,16 +27,7 @@ ALLOWED_ORIGINS = {
     "https://graph.jieyu.ai",
     "https://graph.jieyu.ai:8443",
 }
-LOCAL_ORIGINS = {
-    "http://127.0.0.1",
-    "http://localhost",
-    "http://127.0.0.1:4173",
-    "http://localhost:4173",
-    "http://127.0.0.1:8080",
-    "http://localhost:8080",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-}
+LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "localhost"}
 WORK_ID = re.compile(r"^W\d+$", re.I)
 SAFE_SELECT = re.compile(r"^[A-Za-z0-9_,]+$")
 SAFE_FILTER = re.compile(r"^[\w\-:|./\s]+$", re.I)
@@ -48,19 +41,63 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise urllib.error.HTTPError(req.full_url, code, "Redirect refused", headers, fp)
 
 
-def client_ip(handler: BaseHTTPRequestHandler) -> str:
-    forwarded = handler.headers.get("CF-Connecting-IP") or handler.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-    if forwarded:
-        return forwarded[:64]
+def env_flag(*names: str) -> bool:
+    for name in names:
+        value = os.environ.get(name, "").strip().lower()
+        if value in {"1", "true", "yes", "on"}:
+            return True
+    return False
+
+
+def parse_trusted_proxies(raw: str) -> list[ipaddress._BaseNetwork]:
+    networks: list[ipaddress._BaseNetwork] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "/" in part:
+                networks.append(ipaddress.ip_network(part, strict=False))
+            else:
+                networks.append(ipaddress.ip_network(part + ("/32" if ":" not in part else "/128"), strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
+def peer_ip(handler: BaseHTTPRequestHandler) -> str:
     return (handler.client_address[0] if handler.client_address else "unknown")[:64]
 
 
-def origin_allowed(origin: str | None, allow_local: bool) -> bool:
+def client_ip(handler: BaseHTTPRequestHandler, trusted_proxies: list[ipaddress._BaseNetwork]) -> str:
+    peer = peer_ip(handler)
+    try:
+        peer_addr = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    if not any(peer_addr in network for network in trusted_proxies):
+        return peer
+    forwarded = handler.headers.get("CF-Connecting-IP") or handler.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    return (forwarded or peer)[:64]
+
+
+def origin_allowed(origin: str | None, allow_local: bool) -> tuple[bool, str]:
     if not origin:
-        return True  # same-origin navigations / curl without Origin
+        return False, "origin_required"
     if origin in ALLOWED_ORIGINS:
-        return True
-    return allow_local and origin in LOCAL_ORIGINS
+        return True, ""
+    if not allow_local:
+        return False, "origin_forbidden"
+    try:
+        parsed = urllib.parse.urlparse(origin)
+    except ValueError:
+        return False, "origin_forbidden"
+    if parsed.scheme != "http":
+        return False, "origin_forbidden"
+    host = (parsed.hostname or "").lower()
+    if host not in LOCAL_ORIGIN_HOSTS:
+        return False, "origin_forbidden"
+    return True, ""
 
 
 def validate_openalex(payload: dict) -> tuple[str, str]:
@@ -94,7 +131,6 @@ def validate_openalex(payload: dict) -> tuple[str, str]:
                 raise ValueError("Invalid per_page.") from None
             if not 1 <= per_page <= 100:
                 raise ValueError("Invalid per_page.")
-        # Drop client mailto; polite contact is owned by the server.
         query = {k: v for k, v in query.items() if k != "mailto"}
     elif path.startswith("/works/doi:"):
         doi = path[len("/works/doi:"):]
@@ -121,13 +157,53 @@ def validate_openalex(payload: dict) -> tuple[str, str]:
     return method, url
 
 
+def mock_openalex(path: str) -> dict:
+    """Deterministic offline payload used when no system key is configured."""
+    if path.startswith("/works/doi:") or path.startswith("/works/W"):
+        work_id = "W1"
+        if path.startswith("/works/W"):
+            work_id = path.split("/", 2)[-1]
+        return {
+            "id": f"https://openalex.org/{work_id}",
+            "display_name": "Mock seed work",
+            "publication_year": 2020,
+            "cited_by_count": 1,
+            "doi": "https://doi.org/10.0/mock",
+            "authorships": [{"author": {"display_name": "Mock Author"}}],
+            "abstract_inverted_index": {"Mock": [0], "abstract": [1]},
+            "referenced_works": ["https://openalex.org/W2"],
+            "related_works": ["https://openalex.org/W3"],
+            "type": "article",
+            "is_retracted": False,
+            "language": "en",
+            "primary_location": {"source": {"display_name": "Mock Journal"}},
+        }
+    return {
+        "results": [
+            {
+                "id": "https://openalex.org/W2",
+                "display_name": "Mock neighbor",
+                "publication_year": 2019,
+                "cited_by_count": 2,
+                "doi": "https://doi.org/10.0/mock-neighbor",
+                "authorships": [{"author": {"display_name": "Neighbor Author"}}],
+                "type": "article",
+                "is_retracted": False,
+                "language": "en",
+            }
+        ],
+        "meta": {"next_cursor": None},
+    }
+
+
 class OpenAlexProxy:
-    def __init__(self, key: str, quota: QuotaStore, opener=None, interval: float = 0.12, contact_email: str = ""):
+    def __init__(self, key: str, quota: QuotaStore, opener=None, interval: float = 0.12, contact_email: str = "", allow_mock: bool = False):
         self.key = key.strip()
         self.quota = quota
         self.opener = opener or urllib.request.build_opener(NoRedirect()).open
         self.interval = interval
         self.contact_email = contact_email.strip()
+        self.allow_mock = allow_mock
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(16)
         self.cache: collections.OrderedDict = collections.OrderedDict()
@@ -136,12 +212,16 @@ class OpenAlexProxy:
 
     def request(self, payload: dict) -> tuple[int, dict, object]:
         method, url = validate_openalex(payload)
+        path = urllib.parse.urlparse(url).path
         if not self.key:
+            if self.allow_mock:
+                return 200, {"X-OpenAlex-Mode": "mock"}, mock_openalex(path)
             return 503, {}, {"error": "OpenAlex system API key is not configured.", "code": "openalex_unconfigured"}
         if not self.quota.openalex_allowed():
             return 429, {"Retry-After": "3600"}, {"error": "OpenAlex daily free budget is exhausted.", "code": "openalex_budget"}
         if not self.slots.acquire(blocking=False):
             return 503, {"Retry-After": "10"}, {"error": "OpenAlex queue is full. Try again later.", "code": "openalex_busy"}
+        hold_id = None
         try:
             if not self.lock.acquire(timeout=20):
                 return 503, {"Retry-After": "10"}, {"error": "OpenAlex queue timed out.", "code": "openalex_busy"}
@@ -156,16 +236,17 @@ class OpenAlexProxy:
                     return 429, {"Retry-After": str(max(1, int(delay + 1)))}, {"error": "OpenAlex is cooling down. Try again later.", "code": "openalex_rate"}
                 if delay > 0:
                     time.sleep(delay)
-                ok, code = self.quota.charge_openalex()
+                ok, code, hold_id = self.quota.hold_openalex()
                 if not ok:
                     return 429, {"Retry-After": "3600"}, {"error": "OpenAlex daily free budget is exhausted.", "code": code}
                 self.next_request = time.monotonic() + self.interval
+                final_url = url
                 if self.contact_email:
                     parsed = urllib.parse.urlparse(url)
                     q = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
                     q["mailto"] = [self.contact_email]
-                    url = urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode({k: v[0] for k, v in q.items()})))
-                req = urllib.request.Request(url, method=method, headers={
+                    final_url = urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode({k: v[0] for k, v in q.items()})))
+                req = urllib.request.Request(final_url, method=method, headers={
                     "Accept": "application/json",
                     "Authorization": f"Bearer {self.key}",
                     "User-Agent": "research-connected-web/1.0",
@@ -179,6 +260,9 @@ class OpenAlexProxy:
                     if not isinstance(data, (dict, list)):
                         raise ValueError("Invalid OpenAlex payload.")
                 except urllib.error.HTTPError as error:
+                    if hold_id:
+                        self.quota.refund_openalex(hold_id)
+                        hold_id = None
                     headers = {}
                     body = {"error": f"OpenAlex request failed (HTTP {error.code}).", "code": "openalex_upstream"}
                     if error.code == 429:
@@ -190,7 +274,13 @@ class OpenAlexProxy:
                     error.close()
                     return error.code, headers, body
                 except (OSError, ValueError, json.JSONDecodeError):
+                    if hold_id:
+                        self.quota.refund_openalex(hold_id)
+                        hold_id = None
                     return 502, {}, {"error": "OpenAlex returned unavailable or invalid data.", "code": "openalex_upstream"}
+                if hold_id:
+                    self.quota.settle_openalex(hold_id)
+                    hold_id = None
                 ttl = 300
                 if cache_key in self.cache:
                     self.cache_bytes -= self.cache.pop(cache_key)[2]
@@ -202,6 +292,8 @@ class OpenAlexProxy:
             finally:
                 self.lock.release()
         finally:
+            if hold_id:
+                self.quota.refund_openalex(hold_id)
             self.slots.release()
 
 
@@ -219,26 +311,40 @@ def decision_payload(decision) -> dict:
         payload["reservation_id"] = decision.reservation_id
     if decision.expires_at is not None:
         payload["expires_at"] = decision.expires_at
+    if decision.idempotency_key:
+        payload["idempotency_key"] = decision.idempotency_key
     return payload
 
 
-def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = False):
+def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = False, trusted_proxies: list | None = None, expose_debug: bool = False):
+    trusted = trusted_proxies or []
+
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
             self.connection.settimeout(5)
 
-        def log_message(self, format, *args):  # noqa: A003 — stdlib signature
+        def log_message(self, format, *args):  # noqa: A003
             # Never print request paths: they may contain DOIs or work ids.
             return
 
-        def reply(self, status: int, headers: dict, data: object):
+        def cors_headers(self, origin: str | None) -> dict:
+            headers = {"Cache-Control": "no-store"}
+            ok, _ = origin_allowed(origin, allow_local)
+            if ok and origin:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Vary"] = "Origin"
+                headers["Access-Control-Allow-Headers"] = "Content-Type, X-Browser-Token, X-Session-Nonce"
+                headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            return headers
+
+        def reply(self, status: int, headers: dict, data: object, origin: str | None = None):
             raw = json.dumps(data, ensure_ascii=False).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
-            self.send_header("Cache-Control", "no-store")
-            for key, value in headers.items():
+            merged = {**self.cors_headers(origin), **headers}
+            for key, value in merged.items():
                 self.send_header(key, value)
             self.end_headers()
             try:
@@ -256,31 +362,57 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
             data = json.loads(raw)
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object.")
+            # Product requests must not smuggle debug fields unless local mode says so.
+            if not expose_debug and any(key.startswith("debug_") for key in data):
+                raise ValueError("Debug fields are not allowed.")
             return data
 
-        def browser_id(self) -> str:
-            value = (self.headers.get("X-Browser-Id") or "").strip()
-            if not value or len(value) > 128 or not re.fullmatch(r"[A-Za-z0-9._:-]+", value):
-                raise ValueError("Missing or invalid X-Browser-Id.")
-            return value
+        def require_origin(self) -> str:
+            origin = self.headers.get("Origin")
+            ok, code = origin_allowed(origin, allow_local)
+            if not ok:
+                raise PermissionError(code)
+            return origin or ""
 
-        def check_origin(self) -> bool:
-            return origin_allowed(self.headers.get("Origin"), allow_local)
+        def session_creds(self) -> tuple[str, str]:
+            token = (self.headers.get("X-Browser-Token") or "").strip()
+            nonce = (self.headers.get("X-Session-Nonce") or "").strip()
+            if not token or not nonce:
+                raise ValueError("Missing X-Browser-Token or X-Session-Nonce.")
+            return token, nonce
+
+        def do_OPTIONS(self):
+            origin = self.headers.get("Origin")
+            ok, code = origin_allowed(origin, allow_local)
+            if not ok:
+                self.reply(403, {}, {"error": "Unsupported origin.", "code": code}, origin)
+                return
+            self.reply(204, {}, {}, origin)
 
         def do_GET(self):
             if self.path == "/health":
-                self.reply(200, {}, {
+                # Loopback health may omit Origin; never include secrets.
+                peer = peer_ip(self)
+                if peer not in {"127.0.0.1", "::1"} and not allow_local:
+                    self.reply(403, {}, {"error": "Health is loopback-only.", "code": "forbidden"})
+                    return
+                payload = {
                     "ok": True,
                     "service": "research-connected-web",
                     "key_configured": bool(proxy.key),
+                    "openalex_mode": "key" if proxy.key else "mock" if proxy.allow_mock else "unconfigured",
                     "openalex_budget_ok": quota.openalex_allowed(),
-                })
+                }
+                if expose_debug:
+                    payload["debug_allow_local"] = allow_local
+                self.reply(200, {}, payload)
             else:
                 self.reply(404, {}, {"error": "Not found."})
 
         def do_POST(self):
             path = self.path.split("?", 1)[0]
             if path not in {
+                "/api/session",
                 "/api/openalex",
                 "/api/quota/status",
                 "/api/quota/reserve",
@@ -289,39 +421,54 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
             }:
                 self.reply(404, {}, {"error": "Not found."})
                 return
-            if not self.check_origin():
-                self.reply(403, {}, {"error": "Unsupported origin.", "code": "origin"})
+            try:
+                origin = self.require_origin()
+            except PermissionError as error:
+                self.reply(403, {}, {"error": "Unsupported origin.", "code": str(error) or "origin_forbidden"})
                 return
             try:
+                if path == "/api/session":
+                    # Empty body optional.
+                    length = int(self.headers.get("Content-Length", "0") or 0)
+                    if length:
+                        self.read_json()
+                    session = quota.create_session()
+                    self.reply(200, {}, session, origin)
+                    return
                 if path == "/api/openalex":
                     payload = self.read_json()
-                    # Browser id is optional for single-paper lookups that do not
-                    # consume operation quota, but still useful for future audits.
                     status, headers, data = proxy.request(payload)
-                    self.reply(status, headers, data)
+                    self.reply(status, headers, data, origin)
                     return
-                browser = self.browser_id()
+                token, nonce = self.session_creds()
                 if path == "/api/quota/status":
-                    self.reply(200, {}, quota.status(browser))
+                    self.reply(200, {}, quota.status(token, nonce), origin)
                     return
                 body = self.read_json()
                 if path == "/api/quota/reserve":
-                    decision = quota.reserve(browser, str(body.get("action") or ""), client_ip(self))
-                    self.reply(200 if decision.ok else 429, {}, decision_payload(decision))
+                    decision = quota.reserve(
+                        token,
+                        nonce,
+                        str(body.get("action") or ""),
+                        client_ip(self, trusted),
+                        str(body.get("idempotency_key") or ""),
+                    )
+                    self.reply(200 if decision.ok else 429, {}, decision_payload(decision), origin)
                     return
                 reservation_id = str(body.get("reservation_id") or "")
+                idempotency_key = str(body.get("idempotency_key") or "")
                 if path == "/api/quota/confirm":
-                    decision = quota.confirm(browser, reservation_id)
-                    self.reply(200 if decision.ok else 409, {}, decision_payload(decision))
+                    decision = quota.confirm(token, nonce, reservation_id, idempotency_key)
+                    self.reply(200 if decision.ok else 409, {}, decision_payload(decision), origin)
                     return
                 if path == "/api/quota/release":
-                    decision = quota.release(browser, reservation_id)
-                    self.reply(200 if decision.ok else 409, {}, decision_payload(decision))
+                    decision = quota.release(token, nonce, reservation_id, idempotency_key or None)
+                    self.reply(200 if decision.ok else 409, {}, decision_payload(decision), origin)
                     return
             except ValueError as error:
-                self.reply(400, {}, {"error": str(error), "code": "bad_request"})
+                self.reply(400, {}, {"error": str(error), "code": "bad_request"}, self.headers.get("Origin"))
             except Exception:
-                self.reply(500, {}, {"error": "Internal error.", "code": "internal"})
+                self.reply(500, {}, {"error": "Internal error.", "code": "internal"}, self.headers.get("Origin"))
 
     return Handler
 
@@ -332,16 +479,27 @@ def main(argv: list[str] | None = None):
     parser.add_argument("--host", default=os.environ.get("LISTEN_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("LISTEN_PORT", "9186")))
     parser.add_argument("--state", default=os.environ.get("QUOTA_STATE_PATH", "/var/lib/research-connected/quota-state.json"))
-    parser.add_argument("--allow-local", action="store_true", default=os.environ.get("OPENALEX_ALLOW_LOCAL", "") == "1")
+    parser.add_argument("--allow-local", action="store_true", default=env_flag("OPENALEX_ALLOW_LOCAL", "OPENALEX_ALLOW_LOCAL_ORIGINS"))
+    parser.add_argument("--mock", action="store_true", default=env_flag("OPENALEX_ALLOW_MOCK"))
     args = parser.parse_args(argv)
     key = os.environ.get("OPENALEX_API_KEY", "")
     contact = os.environ.get("OPENALEX_CONTACT_EMAIL", "")
     budget = float(os.environ.get("OPENALEX_DAILY_BUDGET_USD", "1"))
     cost = float(os.environ.get("OPENALEX_REQUEST_COST_USD", "0.0001"))
+    trusted = parse_trusted_proxies(os.environ.get("TRUSTED_PROXIES", ""))
+    allow_mock = args.mock or (args.allow_local and not key)
     quota = QuotaStore(args.state, openalex_budget_usd=budget, request_cost_usd=cost)
-    proxy = OpenAlexProxy(key, quota, contact_email=contact)
-    server = ThreadingHTTPServer((args.host, args.port), handler_for(proxy, quota, allow_local=args.allow_local))
-    print(json.dumps({"listening": f"{args.host}:{args.port}", "key_configured": bool(key), "allow_local": args.allow_local}), flush=True)
+    proxy = OpenAlexProxy(key, quota, contact_email=contact, allow_mock=allow_mock)
+    server = ThreadingHTTPServer(
+        (args.host, args.port),
+        handler_for(proxy, quota, allow_local=args.allow_local, trusted_proxies=trusted, expose_debug=args.allow_local),
+    )
+    print(json.dumps({
+        "listening": f"{args.host}:{args.port}",
+        "key_configured": bool(key),
+        "allow_local": args.allow_local,
+        "openalex_mode": "key" if key else "mock" if allow_mock else "unconfigured",
+    }), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -19,6 +19,8 @@
 		"test:web-quota": "python3 -m unittest discover -s server -p 'test_*.py'",
 		"test:web-storage": "node scripts/verify-web-storage.mjs",
 		"test:web-secrets": "npm run web && node scripts/verify-web-secrets.mjs",
+		"test:web-live": "node scripts/verify-web-quota-live.mjs",
+		"test:web-browser-local": "npm exec --yes --package=playwright@1.48.2 -- node scripts/verify-web-browser-local.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint src preview web --max-warnings 0",
 		"test:browser:build": "node esbuild.config.mjs review-browser"

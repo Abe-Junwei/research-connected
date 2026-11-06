@@ -96,6 +96,8 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	 */
 	operationGate?: {
 		reserve(action: "build" | "rebuild" | "expand"): Promise<{ reservationId: string } | { blocked: string }>;
+		/** Reject late results before they overwrite local storage or charge quota. */
+		assertActive(reservationId: string): Promise<void>;
 		confirm(reservationId: string): Promise<void>;
 		release(reservationId: string): Promise<void>;
 	};
@@ -1356,6 +1358,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				warnings: result.warnings,
 			};
 			deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
+			if (reservationId && deps.operationGate) await deps.operationGate.assertActive(reservationId);
 			await applyEdit(refreshDerived(graftNodes(host, [...papers, ...aliases], lists)), tr(`已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, `Added ${papers.length} papers (${directions.join(" · ")})${result.noMore ? " · end of candidates" : ""}${result.warnings.length ? ` · ${result.warnings.join("; ")}` : ""}`), paper.id);
 			if (reservationId && deps.operationGate) {
 				await deps.operationGate.confirm(reservationId);
@@ -1649,6 +1652,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				}
 				const view: SavedView = { name: tr("当前视图", "Current view"), layout: "force2d", scrubYear: null, selectedId: null, zoom: 1, centerX: 0, centerY: 0, updatedAt: Date.now(), filter: emptyFilter(), leftCollapsed: false, rightCollapsed: false };
 				const created: ResearchProject = { version: 1, seedId: seed.id, name: seed.title || seed.id, updatedAt: Date.now(), snapshot: saveGraphSnapshot(restored.graph), sampleIds: next.nodes.map(node => node.id), currentView: view, views: [] };
+				if (reservationId && deps.operationGate) await deps.operationGate.assertActive(reservationId);
 				await deps.saveProject(created);
 				if (disposed || token !== generation || requests.get(requestKey) !== request) {
 					if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
@@ -1687,6 +1691,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					return;
 				}
 			}
+			if (reservationId && deps.operationGate) await deps.operationGate.assertActive(reservationId);
 			if (!await persistProject(restored.graph, { sampleIds: next.nodes.map(node => node.id) })) {
 				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
 				reservationId = null;

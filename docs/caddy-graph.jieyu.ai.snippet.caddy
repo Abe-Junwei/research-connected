@@ -1,0 +1,44 @@
+# DEPLOY PREP ONLY — do not paste onto production until private staging passes.
+# graph.jieyu.ai on :8443 (Cloudflare Origin Rule → 8443). Never bind :443 (Xray).
+# S2 remains on 127.0.0.1:9185. OpenAlex+quota proxy on 127.0.0.1:9186.
+
+graph.jieyu.ai:8443 {
+	# Hide query strings and bodies for all /api/* so DOI paths never hit access logs.
+	log {
+		output file /var/log/caddy/graph.jieyu.ai.log
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>uri_query delete
+				request>headers delete
+				request>body delete
+			}
+		}
+	}
+
+	@api path /api/*
+	handle @api {
+		# Only trust Cloudflare edge when orange-clouded; adjust to your real CF ranges if needed.
+		reverse_proxy 127.0.0.1:9186 {
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	handle_path /research-connected/preview/* {
+		respond "Not Found" 404
+	}
+
+	handle {
+		root * /var/www/graph.jieyu.ai
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# TRUSTED_PROXIES on the Python service should list only the local Caddy peer, e.g. 127.0.0.1.
+# Lua / OpenResty equivalent should likewise strip uri args for /api and never log request bodies.
