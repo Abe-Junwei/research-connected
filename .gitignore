@@ -21,3 +21,8 @@ preview/embed.js
 site/
 .superdesign/tmp
 __pycache__/
+web/dist/
+server/*.pyc
+server/__pycache__/
+.quota-state.json
+server/.quota-state.json

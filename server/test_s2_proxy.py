@@ -74,6 +74,9 @@ class ProxyCheck(unittest.TestCase):
                     urllib.request.urlopen(req)
                 self.assertEqual(error.exception.code, expected)
                 error.exception.close()
+            req = urllib.request.Request(base+"/api/semantic-scholar", data=json.dumps(BATCH).encode(), headers={"Content-Type":"application/json", "Origin":"https://graph.jieyu.ai"})
+            with urllib.request.urlopen(req) as r:
+                self.assertEqual(json.load(r), [{"abstract":"available"}])
         finally:
             server.shutdown()
             server.server_close()

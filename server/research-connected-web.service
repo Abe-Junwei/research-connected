@@ -1,0 +1,21 @@
+[Unit]
+Description=Research Connected OpenAlex + quota proxy
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/research-connected-web.env
+WorkingDirectory=/opt/research-connected/server
+ExecStart=/usr/bin/python3 /opt/research-connected/server/openalex_proxy.py
+Restart=on-failure
+RestartSec=3
+User=research-connected
+Group=research-connected
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/research-connected
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

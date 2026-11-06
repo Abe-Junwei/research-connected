@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Research Connected</title>
+		<link rel="stylesheet" href="../styles.css?web=1" />
+		<style>
+			html, body, #app { height: 100%; margin: 0; }
+			body {
+				--background-primary: #ffffff;
+				--background-secondary: #f6f5f2;
+				--text-normal: #3a3f45;
+				--text-muted: #6b7280;
+				--text-faint: #9aa0a6;
+				--background-modifier-border: #e5e2da;
+				--background-modifier-hover: rgba(60, 64, 70, 0.08);
+				--background-modifier-box-shadow: rgba(60, 64, 70, 0.14);
+				--interactive-accent: #7856c8;
+				--interactive-accent-hover: #6a4cb0;
+				--graph-node: #5c6570;
+				--graph-text: #3a3f45;
+				--graph-node-focused: #7856c8;
+				--font-interface: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+			}
+			.cpo-web-chrome {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px 16px;
+				align-items: center;
+				padding: 8px 12px;
+				border-bottom: 1px solid var(--background-modifier-border);
+				background: var(--background-secondary);
+				color: var(--text-muted);
+				font-size: 12px;
+			}
+			.cpo-web-chrome[hidden], #cpo-web-notice[hidden], #cpo-quota-line[hidden] { display: none; }
+			#cpo-web-notice[data-kind="error"] { color: #b42318; }
+			.cpo-web-detail { max-width: 720px; margin: 24px auto; padding: 0 16px; }
+			.cpo-web-detail h1 { font-size: 1.4rem; color: var(--text-normal); }
+		</style>
+	</head>
+	<body>
+		<div class="cpo-web-chrome" id="cpo-web-chrome">
+			<span id="cpo-quota-line" hidden></span>
+			<button type="button" id="cpo-takeover" class="cpo-text-btn">接管编辑</button>
+			<span>项目只保存在当前浏览器；清除站点数据可能丢失。查询会发送给文献数据源（OpenAlex 等）。</span>
+		</div>
+		<div id="cpo-web-notice" hidden role="status"></div>
+		<div id="app"></div>
+		<script type="module" src="./web.js"></script>
+	</body>
+</html>

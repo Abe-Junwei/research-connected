@@ -90,6 +90,17 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	initialDoi?: string;
 	/** Seed to build immediately; wins over initialDoi when both are set. */
 	initialTarget?: { kind: "doi" | "openalex"; value: string };
+	/**
+	 * Optional standalone-web operation quota gate. Obsidian omits this and
+	 * keeps personal keys / vault storage unchanged.
+	 */
+	operationGate?: {
+		reserve(action: "build" | "rebuild" | "expand"): Promise<{ reservationId: string } | { blocked: string }>;
+		confirm(reservationId: string): Promise<void>;
+		release(reservationId: string): Promise<void>;
+	};
+	/** Web-only confirmations (e.g. adopt a shrunken rebuild). Obsidian omits this. */
+	confirmChoice?: (message: string) => Promise<boolean>;
 }
 
 const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", string> = {
@@ -1290,6 +1301,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			status.textContent = tr("这张图已有一轮深挖在进行，请稍后重试", "A deep dive is already running for this graph. Try again later.");
 			return;
 		}
+		let reservationId: string | null = null;
+		if (deps.operationGate) {
+			const gate = await deps.operationGate.reserve("expand");
+			if ("blocked" in gate) {
+				session.endDive(seedId);
+				status.textContent = tr("深挖未开始：当前额度或并发限制不允许启动", "Deep dive not started: quota or concurrency limits blocked it");
+				return;
+			}
+			reservationId = gate.reservationId;
+		}
 		dives.add(projectKey);
 		const request = (requests.get(projectKey) ?? 0) + 1;
 		requests.set(projectKey, request);
@@ -1303,7 +1324,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
 			const result = await expandAround(oa, host, paper, hiddenIds, settings, slots);
 			const { papers, aliases, lists } = result;
-			if (disposed || token !== generation || graph !== host || requests.get(projectKey) !== request) return;
+			if (disposed || token !== generation || graph !== host || requests.get(projectKey) !== request) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				return;
+			}
 			if (papers.length === 0) {
 				const batch: DeepDiveBatch = { id: `${Date.now()}`, parentId: paper.id, createdAt: Date.now(), references: 0, citations: 0, additions: [], noMore: result.noMore, warnings: result.warnings };
 				deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
@@ -1316,6 +1340,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					result.overlaps ? tr(`${result.overlaps} 篇同时出现在参考与施引候选中`, `${result.overlaps} appear in both reference and citation candidates`) : "",
 				].filter(Boolean);
 				status.textContent = result.warnings.length ? result.warnings.join(tr("；", "; ")) : result.noMore ? tr("已读完当前可访问候选，没有更多文献", "All accessible candidates have been read; no more papers are available") : tr(`本轮没有新增文献${reasons.length ? `：${reasons.join("；")}` : "；候选页仍可继续读取"}`, `No papers added in this round${reasons.length ? `: ${reasons.join("; ")}` : "; more candidate pages can still be read"}`);
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
 				return;
 			}
 			const directions = [tr(`参考 ${result.references}`, `References ${result.references}`), tr(`施引 ${result.citations}`, `Citing ${result.citations}`)];
@@ -1331,11 +1357,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			};
 			deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
 			await applyEdit(refreshDerived(graftNodes(host, [...papers, ...aliases], lists)), tr(`已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, `Added ${papers.length} papers (${directions.join(" · ")})${result.noMore ? " · end of candidates" : ""}${result.warnings.length ? ` · ${result.warnings.join("; ")}` : ""}`), paper.id);
+			if (reservationId && deps.operationGate) {
+				await deps.operationGate.confirm(reservationId);
+				reservationId = null;
+			}
 		} catch (error) {
+			if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+			reservationId = null;
 			if (disposed || token !== generation || graph !== host) return;
 			deepDiveBatches = previousBatches;
 			status.textContent = error instanceof Error ? error.message : tr("深挖失败。", "Deep dive failed.");
 		} finally {
+			if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
 			dives.delete(projectKey);
 			session.endDive(seedId);
 			expanding = false;
@@ -1532,6 +1565,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const request = (requests.get(requestKey) ?? 0) + 1;
 		requests.set(requestKey, request);
 		const token = ++generation;
+		let reservationId: string | null = null;
+		if (deps.operationGate) {
+			const gate = await deps.operationGate.reserve(refresh ? "rebuild" : "build");
+			if ("blocked" in gate) {
+				showError(tr("当前额度或并发限制不允许启动", "Quota or concurrency limits blocked this start"));
+				return;
+			}
+			reservationId = gate.reservationId;
+		}
 		setBusy(true);
 		clearError();
 		hideResults();
@@ -1562,7 +1604,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				new CrossrefClient(deps.getJson, settings.contactEmail),
 				{ savedSeed: targetProject?.snapshot?.nodes.find(node => node.isSeed), allowRetractedSeed },
 			);
-			if (disposed || token !== generation || requests.get(requestKey) !== request) return;
+			if (disposed || token !== generation || requests.get(requestKey) !== request) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
+				return;
+			}
 			const seed = next.nodes.find((node) => node.isSeed);
 			const project = targetProject ? settings.researchProjects[activeProjectId ?? ""] : seed ? projectForSeed(settings.researchProjects, seed.id) : undefined;
 			const projectKey = project ? Object.entries(settings.researchProjects).find(([, candidate]) => candidate === project)?.[0] : undefined;
@@ -1573,16 +1619,42 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			for (const paper of project?.manualPapers ?? []) origins.set(paper.id, "related");
 			const extras = [...origins.keys()].filter((id) => !excluded.has(id) && (!(project?.retractedBatchIds?.length) || project?.manualPapers?.some(paper => paper.id === id) || project?.deepDives?.some(batch => !project.retractedBatchIds?.includes(batch.id) && batch.additions.some(item => item.paperId === id))));
 			const restored = extras.length ? await restoreGraftedMembers(oa, next, extras, settings, excluded, origins) : { graph: next, failed: 0 };
-			if (disposed || token !== generation || requests.get(requestKey) !== request) return;
+			if (disposed || token !== generation || requests.get(requestKey) !== request) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
+				return;
+			}
 			if (restored.failed) throw new Error(tr(`更新未完成：${restored.failed} 篇保留论文读取失败，原图未替换`, `Update incomplete: ${restored.failed} retained papers could not be loaded; previous graph retained`));
-			if (!refresh && projectKey) { await switchProject(projectKey); return; }
+			if (!refresh && projectKey) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
+				await switchProject(projectKey);
+				return;
+			}
 			if (!refresh) {
 				if (!seed || !deps.saveProject) throw new Error(tr("无法保存新项目", "Could not save the new project"));
-				if (!await flushProjectSave() || disposed || token !== generation || requests.get(requestKey) !== request) return;
+				const neighborCount = restored.graph.nodes.filter(node => !node.isSeed).length;
+				if (neighborCount < 1) {
+					applyGraph(restored.graph, undefined, false, false);
+					input.value = seed.id;
+					status.textContent = tr("只取得种子文献，未取得邻居；不计次数。", "Only the seed paper was retrieved; no neighbors. Not charged.");
+					if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+					reservationId = null;
+					return;
+				}
+				if (!await flushProjectSave() || disposed || token !== generation || requests.get(requestKey) !== request) {
+					if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+					reservationId = null;
+					return;
+				}
 				const view: SavedView = { name: tr("当前视图", "Current view"), layout: "force2d", scrubYear: null, selectedId: null, zoom: 1, centerX: 0, centerY: 0, updatedAt: Date.now(), filter: emptyFilter(), leftCollapsed: false, rightCollapsed: false };
 				const created: ResearchProject = { version: 1, seedId: seed.id, name: seed.title || seed.id, updatedAt: Date.now(), snapshot: saveGraphSnapshot(restored.graph), sampleIds: next.nodes.map(node => node.id), currentView: view, views: [] };
 				await deps.saveProject(created);
-				if (disposed || token !== generation || requests.get(requestKey) !== request) return;
+				if (disposed || token !== generation || requests.get(requestKey) !== request) {
+					if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+					reservationId = null;
+					return;
+				}
 				activeProjectId = projectWriteKey(deps.getSettings().researchProjects, seed.id);
 				deepDiveBatches = [];
 				applyGraph(restored.graph, view, false, false);
@@ -1590,6 +1662,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				refreshProjectSelect(activeProjectId);
 				paintSaveState("saved");
 				window.dispatchEvent(new Event("research-connected-project"));
+				if (reservationId && deps.operationGate) {
+					await deps.operationGate.confirm(reservationId);
+					reservationId = null;
+				}
 				if (graph) void enrichOpenCitations(graph);
 				return;
 			}
@@ -1598,12 +1674,39 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				activeProjectId = null;
 				deepDiveBatches = [];
 			}
-			if (!await persistProject(restored.graph, { sampleIds: next.nodes.map(node => node.id) })) return;
-			if (disposed || token !== generation || requests.get(requestKey) !== request) return;
+			const previousNodes = targetProject?.snapshot?.nodes.length ?? 0;
+			const nextNodes = restored.graph.nodes.length;
+			const sourceFailed = restored.graph.warnings.length > 0;
+			if (deps.operationGate && refresh && previousNodes > 0 && sourceFailed && nextNodes < previousNodes * 0.7) {
+				const message = tr(`新图明显缩水（${previousNodes} → ${nextNodes}），且有来源失败。保留旧图。是否仍采用新图？采用并保存成功后才计次。`, `The new graph shrank substantially (${previousNodes} → ${nextNodes}) with source failures. Keep the old graph. Adopt the new graph anyway? Charging happens only after a successful save.`);
+				const adopt = deps.confirmChoice ? await deps.confirmChoice(message) : false;
+				if (!adopt) {
+					if (reservationId) await deps.operationGate.release(reservationId);
+					reservationId = null;
+					status.textContent = tr("已保留旧图；本次不计次数。", "Kept the previous graph; not charged.");
+					return;
+				}
+			}
+			if (!await persistProject(restored.graph, { sampleIds: next.nodes.map(node => node.id) })) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
+				return;
+			}
+			if (disposed || token !== generation || requests.get(requestKey) !== request) {
+				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+				reservationId = null;
+				return;
+			}
 			applyGraph(restored.graph, restoreView, false, false);
 			window.dispatchEvent(new Event("research-connected-project"));
+			if (reservationId && deps.operationGate) {
+				await deps.operationGate.confirm(reservationId);
+				reservationId = null;
+			}
 			if (graph) void enrichOpenCitations(graph);
 		} catch (error) {
+			if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
+			reservationId = null;
 			if (token !== generation) return;
 			if (error instanceof RetractedSeedError) {
 				showError(error.message);
@@ -1625,6 +1728,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				status.textContent = tr("图谱还没有建起来。", "The graph has not been built yet.");
 			}
 		} finally {
+			if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
 			if (token === generation) setBusy(false);
 		}
 	};

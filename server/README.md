@@ -48,3 +48,18 @@ Run `python3 -m unittest discover -s server -p 'test_*.py'`, `npm run test:s2`,
 upstream responses after deployment: transport success alone does not establish
 that a paper has an abstract or a compatible embedding. Local text/structural
 evidence remains available when enhancement is incomplete.
+
+
+## OpenAlex system proxy + operation quota (`openalex_proxy.py`)
+
+Formal web product only (`https://graph.jieyu.ai`). Not used by the Obsidian plugin.
+
+- Bind `127.0.0.1:9186` (do not collide with S2 on `9185`, and never bind `:443`).
+- Env file template: `research-connected-web.env.example` → `/etc/research-connected-web.env` (root 0600).
+- Endpoints: `POST /api/openalex`, `POST /api/quota/{status,reserve,confirm,release}`, `GET /health`.
+- Origin allowlist: `https://graph.jieyu.ai` (+ `:8443`). Local origins only when `OPENALEX_ALLOW_LOCAL=1`.
+- Beijing 08:00 quota periods; browser 10 / site 500 successful confirms; IP 10 starts/minute; 5-minute reservations.
+- OpenAlex daily free budget defaults to `$1` with no top-up. Request paths/DOIs are never logged.
+- Persist counters in `QUOTA_STATE_PATH` so restarts do not reset the period.
+
+Tests: `python3 -m unittest discover -s server -p 'test_*.py'`.

@@ -176,11 +176,12 @@ def handler_for(proxy):
                 self.reply(404, {}, {"error": "Not found."})
 
         def do_POST(self):
-            if self.path not in {"/research-connected/preview/api/semantic-scholar", "/research-connected/api/semantic-scholar"}:
+            if self.path not in {"/research-connected/preview/api/semantic-scholar", "/research-connected/api/semantic-scholar", "/api/semantic-scholar"}:
                 self.reply(404, {}, {"error": "Not found."})
                 return
             origin = self.headers.get("Origin")
-            if origin and origin not in {"https://status.jieyu.ai", "https://status.jieyu.ai:8443"}:
+            allowed = {"https://status.jieyu.ai", "https://status.jieyu.ai:8443", "https://graph.jieyu.ai", "https://graph.jieyu.ai:8443"}
+            if origin and origin not in allowed:
                 self.reply(403, {}, {"error": "Unsupported origin."})
                 return
             try:

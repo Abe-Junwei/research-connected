@@ -82,6 +82,25 @@ if (mode === "preview") {
 	process.exit(0);
 }
 
+if (mode === "web") {
+	mkdirSync("web/dist", { recursive: true });
+	await esbuild.build({
+		entryPoints: ["web/main.ts"],
+		alias: { obsidian: "./scripts/obsidian-stub.ts" },
+		bundle: true,
+		platform: "browser",
+		format: "iife",
+		outfile: "web/dist/web.js",
+		logLevel: "info",
+	});
+	const html = readFileSync("web/index.html", "utf8")
+		.replace(/href="\.\.\/styles\.css[^"]*"/, 'href="./styles.css"')
+		.replace("./web.js", "./web.js");
+	writeFileSync("web/dist/index.html", html);
+	writeFileSync("web/dist/styles.css", readFileSync("styles.css"));
+	process.exit(0);
+}
+
 if (mode === "review-browser") {
 	mkdirSync(".superdesign/tmp", { recursive: true });
 	await esbuild.build({
