@@ -12,7 +12,8 @@ import { fixtureGet, fixturePost } from "../preview/fixture";
 import { writeWebProjectSettings, StorageFullError } from "./storage";
 import { clearLocalTask, confirmQuota, fetchQuotaStatus, formatQuotaBanner, readLocalTask, releaseQuota, reserveQuota, taskStillValid, type QuotaAction } from "./quota-client";
 import { ensureSession } from "./session-auth";
-import { claimBrowserTask, claimEdit, clearBrowserTask, currentTabId, isReadOnly, releaseEdit, startHeartbeat } from "./session";
+import { claimBrowserTask, claimEdit, clearBrowserTask, currentTabId, isReadOnly, readLock, releaseEdit, startHeartbeat } from "./session";
+import { initTheme, wireThemeControls } from "./theme";
 import { tr } from "../src/i18n";
 
 const STORAGE_KEY = "research-connected-web-settings";
@@ -38,6 +39,8 @@ try {
 } catch { /* Keep defaults when storage is unavailable. */ }
 
 prepareWebSettings(settings);
+initTheme();
+wireThemeControls();
 
 const notice = document.querySelector("#cpo-web-notice");
 const quotaLine = document.querySelector("#cpo-quota-line");
@@ -82,6 +85,7 @@ function ensureEdit(projectKey: string): boolean {
 	const result = claimEdit(projectKey);
 	if (!result.ok) {
 		setNotice(tr("另一标签页正在编辑此项目。可查看和复制，或使用“接管编辑”。", "Another tab is editing this project. You can view and copy, or take over editing."), "info");
+		window.dispatchEvent(new Event("research-connected-project"));
 		return false;
 	}
 	editingProject = projectKey;
@@ -211,14 +215,80 @@ async function start(): Promise<void> {
 	await refreshQuota();
 
 	const takeover = document.querySelector("#cpo-takeover");
+	const privacyBtn = document.querySelector("#cpo-privacy-info");
+	const privacyPanel = document.querySelector("#cpo-privacy-panel");
+
+	function activeProjectKey(): string | null {
+		const keys = Object.keys(settings.researchProjects);
+		if (editingProject && keys.includes(editingProject)) return editingProject;
+		return keys[0] ?? null;
+	}
+
+	function syncTakeoverButton(): void {
+		if (!(takeover instanceof HTMLButtonElement)) return;
+		const projectKey = activeProjectKey();
+		const foreign = Boolean(projectKey && isReadOnly(projectKey));
+		takeover.hidden = !foreign;
+		if (foreign && projectKey) {
+			const lock = readLock(projectKey);
+			takeover.textContent = tr("接管编辑", "Take over editing");
+			takeover.setAttribute("aria-label", tr("另一标签页正在编辑此项目，点击接管编辑权", "Another tab is editing this project. Take over editing."));
+			takeover.title = lock ? tr("另一标签页持有编辑锁", "Another tab holds the edit lock") : "";
+		}
+	}
+
 	if (takeover instanceof HTMLButtonElement) {
+		takeover.hidden = true;
 		takeover.onclick = () => {
-			const projectKey = Object.keys(settings.researchProjects)[0];
+			const projectKey = activeProjectKey();
 			if (!projectKey) return;
-			claimEdit(projectKey, true);
+			const result = claimEdit(projectKey, true);
+			if (!result.ok) {
+				setNotice(tr("未能接管编辑，请重试。", "Could not take over editing. Try again."), "error");
+				syncTakeoverButton();
+				return;
+			}
+			editingProject = projectKey;
+			heartbeatStop?.();
+			heartbeatStop = startHeartbeat(projectKey);
+			syncTakeoverButton();
 			setNotice(tr("已接管编辑。原标签页将变为只读，其进行中的任务结果将被忽略。", "Edit takeover complete. The previous tab becomes read-only and its in-flight results are ignored."));
 		};
 	}
+
+	function setPrivacyOpen(open: boolean): void {
+		if (!(privacyBtn instanceof HTMLButtonElement) || !(privacyPanel instanceof HTMLElement)) return;
+		privacyBtn.setAttribute("aria-expanded", open ? "true" : "false");
+		privacyPanel.hidden = !open;
+	}
+
+	if (privacyBtn instanceof HTMLButtonElement && privacyPanel instanceof HTMLElement) {
+		setPrivacyOpen(false);
+		privacyBtn.addEventListener("click", (event) => {
+			event.stopPropagation();
+			setPrivacyOpen(privacyPanel.hidden);
+		});
+		document.addEventListener("click", (event) => {
+			if (privacyPanel.hidden) return;
+			const target = event.target;
+			if (!(target instanceof Node)) return;
+			if (privacyPanel.contains(target) || privacyBtn.contains(target)) return;
+			setPrivacyOpen(false);
+		});
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && !privacyPanel.hidden) {
+				setPrivacyOpen(false);
+				privacyBtn.focus();
+			}
+		});
+	}
+
+	window.addEventListener("storage", (event) => {
+		if (!event.key || event.key.startsWith("research-connected-edit-lock:")) syncTakeoverButton();
+	});
+	window.addEventListener("research-connected-project", () => syncTakeoverButton());
+	window.setInterval(syncTakeoverButton, 2000);
+	syncTakeoverButton();
 
 	mountGraphApp(host, {
 		...createReadingWorkflow({ getSettings: () => settings, persist: persistSettings }),
@@ -250,6 +320,8 @@ async function start(): Promise<void> {
 		if (editingProject) releaseEdit(editingProject);
 	});
 	void currentTabId();
+	// Re-assert tokens on the mounted surface and refresh the canvas palette.
+	window.dispatchEvent(new Event("research-connected-theme"));
 }
 
 void start();

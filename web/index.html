@@ -4,6 +4,18 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Research Connected</title>
+		<script>
+			(function () {
+				try {
+					var mode = localStorage.getItem("research-connected-web-theme") || "system";
+					var dark = mode === "dark" || (mode !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+					var root = document.documentElement;
+					root.classList.add(dark ? "theme-dark" : "theme-light");
+					root.style.colorScheme = dark ? "dark" : "light";
+					root.style.backgroundColor = dark ? "#1a1d24" : "#ffffff";
+				} catch (e) { /* first paint fallback */ }
+			})();
+		</script>
 		<link rel="stylesheet" href="../styles.css?web=1" />
 		<style>
 			html, body, #app { height: 100%; margin: 0; }
@@ -22,29 +34,148 @@
 				--graph-text: #3a3f45;
 				--graph-node-focused: #7856c8;
 				--font-interface: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+				background: var(--background-primary);
+				color: var(--text-normal);
+			}
+			html.theme-dark body,
+			body.theme-dark {
+				--background-primary: #1a1d24;
+				--background-secondary: #232833;
+				--text-normal: #e6e4df;
+				--text-muted: #a8a299;
+				--text-faint: #7a756c;
+				--background-modifier-border: rgba(255,255,255,.14);
+				--background-modifier-hover: rgba(255, 255, 255, 0.08);
+				--background-modifier-box-shadow: rgba(0, 0, 0, 0.45);
+				--interactive-accent: #a994e8;
+				--interactive-accent-hover: #b9a6ee;
+				--graph-node: #d5d0c6;
+				--graph-text: #e6e4df;
+				--graph-node-focused: #a994e8;
+				--cpo-canvas-bg-start: #1a1d24;
+				--cpo-canvas-bg-end: #12151b;
 			}
 			.cpo-web-chrome {
 				display: flex;
 				flex-wrap: wrap;
-				gap: 8px 16px;
+				gap: 8px 12px;
 				align-items: center;
-				padding: 8px 12px;
+				padding: 6px 10px;
 				border-bottom: 1px solid var(--background-modifier-border);
 				background: var(--background-secondary);
 				color: var(--text-muted);
 				font-size: 12px;
 			}
-			.cpo-web-chrome[hidden], #cpo-web-notice[hidden], #cpo-quota-line[hidden] { display: none; }
+			.cpo-web-chrome-spacer { flex: 1 1 auto; min-width: 8px; }
+			.cpo-web-chrome[hidden], #cpo-web-notice[hidden], #cpo-quota-line[hidden],
+			#cpo-takeover[hidden], #cpo-privacy-panel[hidden] { display: none !important; }
 			#cpo-web-notice[data-kind="error"] { color: #b42318; }
 			.cpo-web-detail { max-width: 720px; margin: 24px auto; padding: 0 16px; }
 			.cpo-web-detail h1 { font-size: 1.4rem; color: var(--text-normal); }
+			.cpo-icon-btn {
+				box-sizing: border-box;
+				min-width: 44px;
+				min-height: 44px;
+				padding: 10px;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 10px;
+				background: var(--background-primary);
+				color: var(--text-normal);
+				font: inherit;
+				cursor: pointer;
+			}
+			.cpo-icon-btn:focus-visible {
+				outline: 2px solid var(--interactive-accent);
+				outline-offset: 2px;
+			}
+			.cpo-icon-btn[aria-expanded="true"] {
+				border-color: var(--interactive-accent);
+				color: var(--interactive-accent);
+			}
+			.cpo-privacy-wrap { position: relative; }
+			#cpo-privacy-panel {
+				position: absolute;
+				right: 0;
+				top: calc(100% + 6px);
+				z-index: 40;
+				width: min(320px, calc(100vw - 24px));
+				padding: 12px 14px;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 12px;
+				background: var(--background-primary);
+				color: var(--text-normal);
+				box-shadow: 0 10px 28px var(--background-modifier-box-shadow);
+				font-size: 13px;
+				line-height: 1.5;
+			}
+			.cpo-theme-group {
+				display: inline-flex;
+				align-items: stretch;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 12px;
+				overflow: hidden;
+				background: var(--background-primary);
+			}
+			.cpo-theme-group button {
+				min-height: 44px;
+				min-width: 44px;
+				padding: 8px 10px;
+				border: 0;
+				border-right: 1px solid var(--background-modifier-border);
+				background: transparent;
+				color: var(--text-muted);
+				font: inherit;
+				font-size: 12px;
+				cursor: pointer;
+			}
+			.cpo-theme-group button:last-child { border-right: 0; }
+			.cpo-theme-group button.is-selected,
+			.cpo-theme-group button[aria-checked="true"] {
+				background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-primary));
+				color: var(--text-normal);
+				font-weight: 600;
+			}
+			.cpo-theme-group button:focus-visible {
+				outline: 2px solid var(--interactive-accent);
+				outline-offset: -2px;
+				z-index: 1;
+			}
+			.cpo-text-btn {
+				min-height: 44px;
+				padding: 8px 12px;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 10px;
+				background: var(--background-primary);
+				color: var(--text-normal);
+				font: inherit;
+				cursor: pointer;
+			}
 		</style>
 	</head>
 	<body>
 		<div class="cpo-web-chrome" id="cpo-web-chrome">
 			<span id="cpo-quota-line" hidden></span>
-			<button type="button" id="cpo-takeover" class="cpo-text-btn">接管编辑</button>
-			<span>项目只保存在当前浏览器；清除站点数据可能丢失。查询会发送给文献数据源（OpenAlex 等）。</span>
+			<button type="button" id="cpo-takeover" class="cpo-text-btn" hidden>接管编辑</button>
+			<span class="cpo-web-chrome-spacer" aria-hidden="true"></span>
+			<div class="cpo-theme-group" id="cpo-theme-group" role="radiogroup" aria-label="外观主题">
+				<button type="button" role="radio" data-theme-mode="system" aria-checked="true">跟随系统</button>
+				<button type="button" role="radio" data-theme-mode="light" aria-checked="false">浅色</button>
+				<button type="button" role="radio" data-theme-mode="dark" aria-checked="false">深色</button>
+			</div>
+			<div class="cpo-privacy-wrap">
+				<button
+					type="button"
+					id="cpo-privacy-info"
+					class="cpo-icon-btn"
+					aria-expanded="false"
+					aria-controls="cpo-privacy-panel"
+					aria-label="站点说明与隐私提示"
+					title="站点说明与隐私提示"
+				>info</button>
+				<div id="cpo-privacy-panel" role="region" aria-labelledby="cpo-privacy-info" hidden>
+					项目只保存在当前浏览器；清除站点数据可能丢失。查询会发送给文献数据源（OpenAlex 等）。
+				</div>
+			</div>
 		</div>
 		<div id="cpo-web-notice" hidden role="status"></div>
 		<div id="app"></div>
