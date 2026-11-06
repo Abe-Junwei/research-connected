@@ -112,6 +112,11 @@ export function paperRecords(paper: PaperNode): PaperRecord[] {
 	return records?.length ? records.map((item) => item.id === record.id ? { ...item, ...record } : item) : [record];
 }
 
+/** Lookup aliases retain note links without making them extra graph members. */
+export function paperSourceIds(paper: Pick<PaperNode, "id" | "records" | "sourceAliases">): string[] {
+	return [...new Set([paper, ...(paper.records ?? [])].flatMap(record => [record.id, ...(record.sourceAliases ?? [])]).filter(id => /^W\d+$/.test(id)))];
+}
+
 export function paperHasId(paper: Pick<PaperNode, "id" | "records">, id: string): boolean {
 	return paper.id === id || Boolean(paper.records?.some((record) => record.id === id));
 }

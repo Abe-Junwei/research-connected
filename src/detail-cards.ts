@@ -536,6 +536,7 @@ export function abstractCaption(
 }
 
 export interface PaperDetailOptions {
+	checkMetadata?: (paper: PaperNode) => Promise<string | null>;
 	isClassic?: boolean;
 	abstractText: (paper: PaperNode) => string;
 	onRetryAbstract?: () => void;
@@ -564,6 +565,27 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 	const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
 	paintMetadataCard(parent, paper, graph.crossCheck?.get(paper.id), options.isClassic);
 	paintIdentitySources(parent, paper, options.openExternal, options.separate, options.conflict, options.acknowledge);
+	if (options.checkMetadata) {
+		const notice = el(parent.querySelector<HTMLElement>(".cpo-paper-identity") ?? parent, "p", "cpo-fact-note cpo-metadata-review");
+		notice.hidden = true;
+		notice.setAttribute("aria-live", "polite");
+		void options.checkMetadata(paper).then(text => {
+			if (!notice.isConnected) return;
+			if (!text) { notice.remove(); return; }
+			notice.hidden = false;
+			el(notice, "span", "", text);
+			for (const [url, label] of [[paper.doiUrl, tr("核对 DOI", "Check DOI")], [paper.openAlexUrl, tr("核对 OpenAlex", "Check OpenAlex")]] as const) {
+				if (!url) continue;
+				const button = el(notice, "button", "cpo-text-btn", label);
+				button.type = "button";
+				button.onclick = () => options.openExternal(url);
+			}
+		}).catch(() => {
+			if (!notice.isConnected) return;
+			notice.hidden = false;
+			notice.textContent = tr("来源元数据核对未完成，请检查原始记录。", "Metadata verification is incomplete; check the original records.");
+		});
+	}
 	const versionFacts = graph.researchProjection?.selfCitations.filter(link => paperRecords(paper).some(record => record.id === link.citingId || record.id === link.citedId)) ?? [];
 	if (versionFacts.length) { const facts = el(parent, "details", "cpo-work-sources"); el(facts, "summary", "cpo-fact-note", tr("研究内部的版本引用", "Citations between versions of this research")); for (const link of versionFacts) el(facts, "p", "cpo-fact-note", `${link.citingId} → ${link.citedId} · ${link.source}`); }
 	paintPaperWorkflowState(parent, paper, options.workflow, options.onReading, options.onExclude, options.onRestore);

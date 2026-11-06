@@ -72,6 +72,10 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
+	/** Optional host-specific metadata review; absent in Obsidian. */
+	checkMetadata?: (paper: PaperNode) => Promise<string | null>;
+	prepareGraph?: (graph: SimilarityGraph) => string | null;
+	decorateExport?: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => string;
 	openExternal: (url: string) => void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
@@ -463,14 +467,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				copyTable.prepend(createChromeIcon("table"));
 				copyTable.type = "button";
 				copyTable.onclick = () => {
-					const text = toMarkdownTable(orderedForExport(items.map((item) => item.paper)));
+					const papers = orderedForExport(items.map((item) => item.paper));
+					const raw = toMarkdownTable(papers), text = deps.decorateExport?.(papers, raw, "markdown") ?? raw;
 					void chrome?.copyText(text, tr("表格", "Table"));
 				};
 				const copyBib = el(actionItems, "button", "cpo-library-menu-item", tr("复制 BibTeX", "Copy BibTeX"));
 				copyBib.prepend(createChromeIcon("copy"));
 				copyBib.type = "button";
 				copyBib.onclick = () => {
-					const text = toBibTeX(orderedForExport(items.map((item) => item.paper)));
+					const papers = orderedForExport(items.map((item) => item.paper));
+					const raw = toBibTeX(papers), text = deps.decorateExport?.(papers, raw, "bibtex") ?? raw;
 					void chrome?.copyText(text, "BibTeX");
 				};
 				if (deps.createNote) {
@@ -706,7 +712,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				status: workflowState(paper, seedId).reading,
 			};
 			const filename = literatureFilename(paper, settings.literatureFilename, fields);
-			const markdown = literatureMarkdown(paper, settings.literatureTemplate, fields);
+			const raw = literatureMarkdown(paper, settings.literatureTemplate, fields);
+			const markdown = deps.decorateExport?.([paper], raw, "markdown") ?? raw;
 			if (deps.createNote) {
 				try {
 					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
@@ -723,7 +730,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		const range = chrome?.exportOptions() ?? { mode: "one" as const, includeSeedException: false };
 		const nodes = orderedForExport(graphExportVersions(graph.nodes, currentSeedId() ? currentProject(currentSeedId()!) : undefined, { ...mapFilter, scrubYear }, range.mode, range.includeSeedException));
-		const text = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
+		const raw = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
+		const text = deps.decorateExport?.(nodes, raw, kind === "bibtex" ? "bibtex" : kind === "yaml" ? "yaml" : "markdown") ?? raw;
 		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
 
@@ -792,6 +800,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			diveNote = tr(`第 ${diveIndex + 1} 轮深挖 · ${parent?.title ?? batch.parentId} · ${sources}`, `Deep dive ${diveIndex + 1} · ${parent?.title ?? batch.parentId} · ${sources}`);
 		}
 		paintPaperDetail(detail, graph, paper, {
+			checkMetadata: deps.checkMetadata,
 			isClassic: !!map.classicEvidence(paper.id),
 			abstractText,
 			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
@@ -1194,6 +1203,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	}
 
 	const applyEdit = async (next: SimilarityGraph, note: string, nearId?: string, reflow = false, persist = true): Promise<void> => {
+		const quality = deps.prepareGraph?.(next);
 		if (persist && !await persistProject(next)) throw new Error(tr("项目保存失败，原图已保留", "Project save failed; the previous graph was retained"));
 		graph = next;
 		map.adoptGraph(next.nodes, next.edges, next.seedScore, nearId, reflow, next.referenceLists);
@@ -1209,7 +1219,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			selectedEdge = null;
 			showDetail(seed);
 		} else showDetail(next.nodes.find((node) => node.id === selectedId) ?? null);
-		appendStatusDetail(status, note, graphStatusSummary(next));
+		appendStatusDetail(status, [note, quality].filter(Boolean).join("\n"), graphStatusSummary(next));
 	};
 	const currentSeedId = (): string | null => graph?.nodes.find((node) => node.isSeed)?.id ?? null;
 
@@ -1355,6 +1365,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (savedProject) reconcileProjectIdentity(savedProject, next);
 		if (savedProject) next = composeProjectGraph(next, savedProject, deps.getSettings().maxNodes);
 		next = projectVersionGraph(next, savedProject);
+		const quality = deps.prepareGraph?.(next);
 		const persistedExcluded = Object.entries(savedProject?.versionStates ?? savedProject?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
 		hiddenIds = new Set([...(next.excludedIds ?? []), ...persistedExcluded]);
 		graph = next;
@@ -1428,6 +1439,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const enhancementNote = enhancementText(next);
 		if (enhancementNote) status.textContent += ` · ${enhancementNote}`;
 		if (next.nodes.length > deps.getSettings().maxNodes) status.textContent += tr(` · 明确保留超出采样上限 ${next.nodes.length - deps.getSettings().maxNodes} 篇`, ` · ${next.nodes.length - deps.getSettings().maxNodes} explicitly retained beyond the sample cap`);
+		if (quality) status.textContent += ` · ${quality}`;
 		paintGraphStatus(status, graphStatusSummary(next), status.textContent ?? "");
 		} finally { applyingNotice = wasApplying; }
 		if (persist) {
@@ -1766,6 +1778,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (saved) {
 				const view = map.getViewState();
 				graph = projectVersionGraph(composeProjectGraph(saved, project, deps.getSettings().maxNodes), project);
+				const quality = deps.prepareGraph?.(graph);
+				if (quality) appendStatusDetail(status, quality);
 				const sharedSeed = saved.nodes.find(node => node.isSeed);
 				if (sharedSeed) {
 					input.value = sharedSeed.id; seedTitle.textContent = sharedSeed.title; seedTitle.title = sharedSeed.title;

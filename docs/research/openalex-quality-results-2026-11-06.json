@@ -1,0 +1,1154 @@
+{
+  "retrieved_at": "2026-11-06T07:23:51.228796+00:00",
+  "measured_at": "2026-11-06T08:40:39.691Z",
+  "scope": "Bounded diagnostic sample, not a population error rate. Legacy screenshot text is additionally covered by the regression test.",
+  "total": 80,
+  "flagged": 6,
+  "counts": {
+    "book": {
+      "total": 22,
+      "flagged": 0
+    },
+    "book-chapter": {
+      "total": 22,
+      "flagged": 1
+    },
+    "article": {
+      "total": 33,
+      "flagged": 3
+    },
+    "book-review": {
+      "total": 3,
+      "flagged": 2
+    }
+  },
+  "alias": {
+    "requested": "W564766481",
+    "current": "W4213325732"
+  },
+  "results": [
+    {
+      "id": "W1973826788",
+      "title": "Regularity in semantic change",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1075/clscc.15.c10",
+      "year": 2024,
+      "authors": "Elizabeth Closs Traugott, Richard B. Dasher",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 442,
+      "problem": "contents",
+      "evidence": "List of figures Preface and acknowledgements Conventions List of abbreviations 1. The framework 2. Prior and current work on semantic change 3. The development of modal verbs 4. The development of adv"
+    },
+    {
+      "id": "W4211177138",
+      "title": "Regularity in Semantic Change",
+      "type": "book",
+      "doi": "https://doi.org/10.1017/cbo9780511486500",
+      "year": 2001,
+      "authors": "Elizabeth Closs Traugott, Richard B. Dasher",
+      "groups": [
+        "regularity-title",
+        "regularity-book"
+      ],
+      "abstractLength": 902,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W1986451821",
+      "title": "Regularity in Semantic Change",
+      "type": "book-review",
+      "doi": "https://doi.org/10.1016/j.pragma.2003.08.003",
+      "year": 2003,
+      "authors": "Jacqueline Visconti",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 0,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3171230946",
+      "title": "ON REGULARITY IN SEMANTIC CHANGE",
+      "type": "article",
+      "doi": "https://doi.org/10.1515/jlse.1985.14.3.155",
+      "year": 1985,
+      "authors": "Elizabeth Closs Traugott",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 101,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4362561479",
+      "title": "A computational analysis of crosslinguistic regularity in semantic change",
+      "type": "article",
+      "doi": "https://doi.org/10.3389/fcomm.2023.1136338",
+      "year": 2023,
+      "authors": "Olivia Fugikawa, Oliver Hayman, Raymond Liu et al.",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 1598,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2364438493",
+      "title": "On the Regularity in Semantic Change in Complex Sentences",
+      "type": "article",
+      "doi": null,
+      "year": 2007,
+      "authors": "LI Jin-xi",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 390,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W1983953292",
+      "title": "Review of Traugott & Dasher (2002): Regularity in Semantic Change",
+      "type": "book-review",
+      "doi": "https://doi.org/10.1075/dia.21.1.13for",
+      "year": 2004,
+      "authors": "Benjamin W. Fortson",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 203,
+      "problem": "web-boilerplate",
+      "evidence": "Preview this article: Review of “Regularity in Semantic Change” by Elizabeth Closs Traugott & Richard B. Dasher, Page 1 of 1 < Previous page | Next page > /docserver/preview/fulltext/dia.21.1.13for-1."
+    },
+    {
+      "id": "W2050237708",
+      "title": "Review of Traugott & Dasher (2002): Regularity in semantic change",
+      "type": "article",
+      "doi": "https://doi.org/10.1075/fol.11.2.07goo",
+      "year": 2004,
+      "authors": "Louis Goossens",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 205,
+      "problem": "web-boilerplate",
+      "evidence": "Preview this article: Review of \"Regularity in semantic change\" by Elizabeth Closs Traugott and Richard B. Dasher, Page 1 of 1 < Previous page | Next page > /docserver/preview/fulltext/fol.11.2.07goo-"
+    },
+    {
+      "id": "W71581822",
+      "title": "Traugott & Dasher: Regularity in semantic change",
+      "type": "article",
+      "doi": null,
+      "year": 2004,
+      "authors": "Ursula Lenker",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 0,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4296703166",
+      "title": "Regularity of semantic change in Romance anatomical terms",
+      "type": "article",
+      "doi": "https://doi.org/10.1075/jhl.21046.law",
+      "year": 2022,
+      "authors": "James Law",
+      "groups": [
+        "regularity-title"
+      ],
+      "abstractLength": 958,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4213325732",
+      "title": "Modality, Subjectivity, and Semantic Change",
+      "type": "book",
+      "doi": "https://doi.org/10.1093/acprof:oso/9780199694372.001.0001",
+      "year": 2012,
+      "authors": "Heiko Narrog",
+      "groups": [
+        "modality-title",
+        "modality-book",
+        "modality-screenshot"
+      ],
+      "abstractLength": 1407,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2047824812",
+      "title": "Review of Narrog (2012): Modality, subjectivity and semantic change: A crosslinguistic perspective",
+      "type": "book-review",
+      "doi": "https://doi.org/10.1075/dia.31.1.05tra",
+      "year": 2014,
+      "authors": "Elizabeth Closs Traugott",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 203,
+      "problem": "web-boilerplate",
+      "evidence": "Preview this article: Heiko Narrog. Modality, subjectivity and semantic change: A cross-linguistic perspective., Page 1 of 1 < Previous page | Next page > /docserver/preview/fulltext/dia.31.1.05tra-1."
+    },
+    {
+      "id": "W2932334984",
+      "title": "Modality, Subjectivity, and Semantic Change: A Cross-Linguistic Perspective",
+      "type": "article",
+      "doi": "https://doi.org/10.9793/elsj.32.1_223",
+      "year": 2015,
+      "authors": "Osamu Sawada",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 0,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2531378938",
+      "title": "Review of Narrog (2012): Modality, Subjectivity, and Semantic Change. A Cross-Linguistic Perspective",
+      "type": "article",
+      "doi": "https://doi.org/10.1075/sl.40.3.10bei",
+      "year": 2016,
+      "authors": "Karin Beijering",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 209,
+      "problem": "web-boilerplate",
+      "evidence": "Preview this article: Narrog, Heiko. 2012. Modality, Subjectivity, and Semantic Change. A Cross-Linguistic Perspective, Page 1 of 1 < Previous page | Next page > /docserver/preview/fulltext/sl.40.3.10"
+    },
+    {
+      "id": "W327005651",
+      "title": "Semantic extension of sensory adjectives in English and Japanese: from perception to modality (Semantic-pragmatic changes in grammar and lexicon: emergence of concessivity, politeness effect, and speaker's subjective evaluation)",
+      "type": "article",
+      "doi": null,
+      "year": 2008,
+      "authors": "三佳 進藤",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 0,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2501932830",
+      "title": "Modality and Semantic Change",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1093/acprof:oso/9780199694372.003.0003",
+      "year": 2012,
+      "authors": "Heiko Narrog",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 596,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2140358605",
+      "title": "On the Rise of Epistemic Meanings in English: An Example of Subjectification in Semantic Change",
+      "type": "article",
+      "doi": "https://doi.org/10.2307/414841",
+      "year": 1989,
+      "authors": "Elizabeth Closs Traugott",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 749,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W1437325864",
+      "title": "Semantic Change in the Domain of Modality: English \"must\" and Polish \"musieć\"",
+      "type": "article",
+      "doi": null,
+      "year": 2014,
+      "authors": "Maja Lubańska",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 721,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7203597701",
+      "title": "A Study on the Subjectivity of the Chinese Modal Particle ‘了₂’",
+      "type": "article",
+      "doi": "https://doi.org/10.25021/jcll.2026.6.158.149",
+      "year": 2026,
+      "authors": "Beach Yoon",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 1343,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2066030745",
+      "title": "Meaning change in the Dutch core modals: (Inter)subjectification in a grammatical paradigm",
+      "type": "article",
+      "doi": "https://doi.org/10.1080/03740463.2014.955978",
+      "year": 2014,
+      "authors": "Pieter Byloo, Jan Nuyts",
+      "groups": [
+        "modality-title"
+      ],
+      "abstractLength": 978,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2516169292",
+      "title": "Women, Peace and Security in Iraq: Iraq’s National Action Plan to implement Resolution 1325",
+      "type": "book",
+      "doi": "https://doi.org/10.21953/lse.ro.67347",
+      "year": 2016,
+      "authors": "Zeynep N. Kaya",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1848,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2388886",
+      "title": "Legacy: photographs inside the Chernobyl exclusion zone",
+      "type": "book",
+      "doi": null,
+      "year": 2001,
+      "authors": "John Darwell",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 765,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7119382926",
+      "title": "Sentimental itinerary of a city - João Pessoa - PB - Brazil.",
+      "type": "book",
+      "doi": null,
+      "year": 1962,
+      "authors": "Walfredo González Rodríguez",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 577,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4243552519",
+      "title": "The Idea of the Antipodes",
+      "type": "book",
+      "doi": "https://doi.org/10.4324/9780203860397",
+      "year": 2010,
+      "authors": "Matthew Boyd Goldie",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 539,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4301379893",
+      "title": "Teaching English as a Foreign Language",
+      "type": "book",
+      "doi": "https://doi.org/10.4324/9780203412541",
+      "year": 2002,
+      "authors": "Dr Geoffrey Broughton, Geoffrey Broughton, Christopher J. Brumfit et al.",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 213,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2186661607",
+      "title": "Methoden empirischer Fremdsprachenforschung im Prozess",
+      "type": "book",
+      "doi": "https://doi.org/10.17875/gup2012-309",
+      "year": 2012,
+      "authors": "Cerri, Chiara, Sabine Jentges, Antje Stork",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 36,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2623348861",
+      "title": "CADES INTERNATIONAL CONFERENCE ON EDUCATION, PEDAGOGY AND HUMANITIES RESEARCH: book of Proceedings",
+      "type": "book",
+      "doi": "https://doi.org/10.12731/cadesephr2016",
+      "year": 2016,
+      "authors": "Author unknown",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1022,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7132098283",
+      "title": "Teknologi panel surya",
+      "type": "book",
+      "doi": null,
+      "year": 2024,
+      "authors": "A. (Asrori) Asrori, A. M. (Ach.) Zainuri, E. (Eko) Yudianto",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1306,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4318477051",
+      "title": "Inventaire des mesures de maitrise des echanges exterieurs cerealiers des pays d'Afrique de l'Ouest, du Cameroun et du Tchad. Etudes de cas : Gambie, Senegal, Mauritanie, Mali",
+      "type": "book",
+      "doi": null,
+      "year": 1988,
+      "authors": "M. Coulibaly, Johny Egg, G. Mettetal et al.",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 618,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4234360374",
+      "title": "Love after Auschwitz",
+      "type": "book",
+      "doi": "https://doi.org/10.14361/9783839404423",
+      "year": 2006,
+      "authors": "Kurt Grünberg",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 995,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7111812356",
+      "title": "Progettare il web per la cultura. Per una breve storia delle linee guida e dei toolkit per la qualita del web culturale pubblico e aperto. Dal progetto MINERVA al Design System .Italia",
+      "type": "book",
+      "doi": null,
+      "year": 2024,
+      "authors": "Monterosso, Francesco",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1557,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4415516532",
+      "title": "Inscriptions of Wisdom",
+      "type": "book",
+      "doi": "https://doi.org/10.1515/9798855803655",
+      "year": 2025,
+      "authors": "MUKHTAR H. ALI",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1399,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4366378130",
+      "title": "Colombia conectada El “Tíbet de Sudamérica” en perspectiva global, siglos XIX y XX",
+      "type": "book",
+      "doi": "https://doi.org/10.12804/urosario9789585001152",
+      "year": 2023,
+      "authors": "Laura Alejandra Buenaventura Gómez",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1148,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7120900752",
+      "title": "Portfólio de tecnologias, produtos e serviços.",
+      "type": "book",
+      "doi": null,
+      "year": 2007,
+      "authors": "Embrapa Amazônia Oriental.",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 2386,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4297816813",
+      "title": "Louise Colet: Sicilia 1860",
+      "type": "book",
+      "doi": null,
+      "year": 2018,
+      "authors": "Brigitte Urbani",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1128,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W619898647",
+      "title": "Descriptive catalogue of the reptiles of British India",
+      "type": "book",
+      "doi": "https://doi.org/10.5962/bhl.title.54001",
+      "year": 1876,
+      "authors": "William L. Theobald",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1244,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4399227923",
+      "title": "Sports, Exercise, and Fitness",
+      "type": "book",
+      "doi": "https://doi.org/10.5040/9798216017912",
+      "year": 2005,
+      "authors": "Mary Beth Allen",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1095,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7138880318",
+      "title": "Queering Friendship",
+      "type": "book",
+      "doi": "https://doi.org/10.5771/9783689005320",
+      "year": 2026,
+      "authors": "Lio Dohmen",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 719,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W1518017256",
+      "title": "Evaluating the foundation phase: key findings on literacy and numeracy",
+      "type": "book",
+      "doi": null,
+      "year": 2015,
+      "authors": "Mirain Rhys, Sam Waldron, Chris Taylor",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 670,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3030914981",
+      "title": "Police, Power, and the Production of Racial Boundaries",
+      "type": "book",
+      "doi": "https://doi.org/10.36019/9780813569772",
+      "year": 2019,
+      "authors": "Ana Muñiz",
+      "groups": [
+        "sample-book"
+      ],
+      "abstractLength": 1748,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2493637660",
+      "title": "How Employees Can Leverage Web 2.0 in New Ways to Reflect on Employment and Employers",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4018/978-1-60566-384-5.ch049",
+      "year": 2010,
+      "authors": "James M. Richards",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 890,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4385346708",
+      "title": "Using SPSS to analyse questionnaires: Reliability",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4324/9780429350863-18",
+      "year": 2023,
+      "authors": "Perry R. Hinton, Isabella McMurray, Charlotte Brownlow et al.",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 387,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3138916307",
+      "title": "Overview of Vaccines",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1385/0-89603-334-1:1",
+      "year": 2003,
+      "authors": "Gordon Ada",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 415,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3000649373",
+      "title": "RADIOMETRIC METHOD FOR ASSESSING THE DEPTH OF THERMAL INJURIES",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.30525/978-9934-588-15-0-62",
+      "year": 2019,
+      "authors": "Yuliya Shtefura, Kostyantyn Shevchenko",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 1746,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4398247381",
+      "title": "Effective Altruism for Mortals",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1093/oso/9780197757376.003.0010",
+      "year": 2024,
+      "authors": "Stefan Schubert, Lucius Caviola",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 812,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2921538250",
+      "title": "Condensed Benzimidazoles Are a Novel Scaffold for Antioxidant Agents’ Search and Development",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.5772/intechopen.82817",
+      "year": 2019,
+      "authors": "Вадим Анатольевич Косолапов, А. А. Спасов, Вера Алексеевна Анисимова et al.",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 1055,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W337602350",
+      "title": "Die Änderung des elektrischen Dipolmoments des menschlichen Auges (ODM) bei kurzen und mittellangen Hell- und Dunkelreizen (Sekunden- und Minuten-Bereich)",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1007/978-3-642-47089-9_40",
+      "year": 1975,
+      "authors": "Jürgen Hennig, R. Täumer, D. Pernice",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 759,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7106624429",
+      "title": "Integrating Digital Technology in Education",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1108/978-1-64113-672-320251012",
+      "year": 2019,
+      "authors": "Lucia Chacon-Diaz, Susan Brown",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 1595,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7124738697",
+      "title": "CHAPITRE 2 « Rompre le cordon ombilical » qui relie le musée au Conservatoire : une histoire conflictuelle du patrimoine musical dans la France contemporaine",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1515/9782766306954-003",
+      "year": 2025,
+      "authors": "Louis Petitjean",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 205,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W99309751",
+      "title": "Algebra der Darstellungstheorie",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1007/978-3-663-02555-9_12",
+      "year": 1931,
+      "authors": "Eugen Wigner",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 182,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2593051155",
+      "title": "De la didactique à la pédagogie : des orientations nouvelles",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4000/books.ugaeditions.1317",
+      "year": 2013,
+      "authors": "Dominique Augé",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 499,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4387594988",
+      "title": "A convolutional neural network for scoring of sleep stages from raw single-channel EEG signals",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1049/pbhe059e_ch9",
+      "year": 2023,
+      "authors": "Ravi Raja A, Sri Tellakula Ramya, M. Rajalakshmi et al.",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 1247,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4294840767",
+      "title": "Zhejiang province",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4324/9781003248422-5",
+      "year": 2022,
+      "authors": "Wiebke Antonia Rabe",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 879,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3116919526",
+      "title": "Comprehension Difficulties Related to “Interference in Short-Term Memory”",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4324/9781410603609-18",
+      "year": 1999,
+      "authors": "William J. Clancey",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 764,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2484279165",
+      "title": "A Civil Rights Division in Justice",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.14325/mississippi/9781604737899.003.0003",
+      "year": 2010,
+      "authors": "Gordon A. Martin",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 295,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4388300675",
+      "title": "The Zimbabwe Massacre",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1093/oso/9780195111132.003.0023",
+      "year": 1997,
+      "authors": "Carol Cunningham, Joël Berger",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 555,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4407196215",
+      "title": "The V-Flex",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1201/9781003433538-12",
+      "year": 2025,
+      "authors": "Scott C Sherman, Yossi Elran, Ann Schwartz",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 707,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7116932496",
+      "title": "Metal Uptake, Regulation, and Excretion in Freshwater Invertebrates",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.1201/9781003760221-9",
+      "year": 2025,
+      "authors": "Philip S. Rainbow, Reinhard Dallinger",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 1422,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4251458130",
+      "title": "The Crimea and the Indian Mutiny",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4324/9781315834290-7",
+      "year": 2014,
+      "authors": "Anthony Clayton",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 918,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2498179666",
+      "title": "Strategic Knowledge Management in Matrix Multinational Organizations",
+      "type": "book-chapter",
+      "doi": "https://doi.org/10.4018/978-1-59904-630-3.ch020",
+      "year": 2008,
+      "authors": "Alan M. Thompson",
+      "groups": [
+        "sample-book-chapter"
+      ],
+      "abstractLength": 892,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7168146089",
+      "title": "A Structured Taxonomy of IT Supply Chain Risks in the Indian Banking Sector",
+      "type": "article",
+      "doi": "https://doi.org/10.53739/samvad/2026/v32/174644",
+      "year": 2026,
+      "authors": "Merikh Ahadi -, Eronimus Anthonysamy, Kamran Morovati",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1114,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2147281104",
+      "title": "MODIS derived fine mode fraction characteristics of marine, dust, and anthropogenic aerosols over the ocean, constrained by GOCART, MOPITT, and TOMS",
+      "type": "article",
+      "doi": "https://doi.org/10.1029/2007jd008974",
+      "year": 2007,
+      "authors": "Thomas A. Jones, Sundar A. Christopher",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 2760,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4378575121",
+      "title": "Dermatology patient perspectives regarding consent, privacy, security, and identifiability of clinical photography at a tertiary cancer center: A qualitative study",
+      "type": "article",
+      "doi": "https://doi.org/10.1016/j.jdin.2023.05.010",
+      "year": 2023,
+      "authors": "Yuna Oh, Mary Sun, Lilly ChunHong Gu et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 385,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W569936877",
+      "title": "FURTHER RECORD OF SPADELLA ANGULATA TOKIOKA IN THE WESTERN NORTH PACIFIC",
+      "type": "article",
+      "doi": "https://doi.org/10.5134/175946",
+      "year": 1977,
+      "authors": "Takasi Tokioka, Iwao Hamatani",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 2020,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W1567687922",
+      "title": "Equisetum laevigatum A. Braun",
+      "type": "article",
+      "doi": null,
+      "year": 1947,
+      "authors": "Ernest L. Stover",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 69,
+      "problem": "url-only",
+      "evidence": "https://thekeep.eiu.edu/herbarium_specimens_byname/3064/thumbnail.jpg"
+    },
+    {
+      "id": "W3045690679",
+      "title": "Cecil Castellucci Interview",
+      "type": "article",
+      "doi": "https://doi.org/10.1080/21504857.2020.1800499",
+      "year": 2020,
+      "authors": "Jeffery Klaehn",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1067,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4210616526",
+      "title": "Thermophysical Properties and Liquid–Liquid Equilibria of Pseudoternary Systems {Toluene + n-Heptane + Deep Eutectic Solvents Based on Levulinic Acid}",
+      "type": "article",
+      "doi": "https://doi.org/10.1021/acs.jced.1c00733",
+      "year": 2022,
+      "authors": "Myeongjin Jung, YoonKook Park",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1439,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4383041032",
+      "title": "Leveraging technology to drive the NDNQI® prevalence and incidence study",
+      "type": "article",
+      "doi": "https://doi.org/10.1097/nmg.0000000000000027",
+      "year": 2023,
+      "authors": "Abigail M. Hebb, Kalie Souto, Ian Stasko et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 273,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W3017078332",
+      "title": "Using the Turkish Red Pine Tree to Monitor Heavy Metal Pollution",
+      "type": "article",
+      "doi": "https://doi.org/10.15244/pjoes/114505",
+      "year": 2020,
+      "authors": "İbrahim Ertuğrul Yalçın, İbrahim İlker Özyiğit, İlhan Doğan et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1770,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7155493726",
+      "title": "CURRENT STATE AND PROBLEMS OF MANAGING PRESCHOOL EDUCATIONAL INSTITUTIONS BASED ON INNOVATIVE APPROACHES",
+      "type": "article",
+      "doi": "https://doi.org/10.5281/zenodo.19744866",
+      "year": 2026,
+      "authors": "Nematova Zarina Furqat qizi, Dilafruz Khalilova",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 643,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2011255230",
+      "title": "Sensitivity Analysis of Limit-Cycle Oscillating Hybrid Systems",
+      "type": "article",
+      "doi": "https://doi.org/10.1137/100804632",
+      "year": 2011,
+      "authors": "Kamil A. Khan, V. P. Saxena, Paul I. Barton",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1203,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W910800395",
+      "title": "对“大学英语”学习的几点思考",
+      "type": "article",
+      "doi": null,
+      "year": 2004,
+      "authors": "陈文光",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 112,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4313198320",
+      "title": "The Use of an Amyloid beta Intracerebroventricular Model to Investigate the Interaction between Alzheimer‘s Disease and Circadian Dysfunction",
+      "type": "article",
+      "doi": "https://doi.org/10.1254/jpssuppl.96.0_3-b-ss14-2",
+      "year": 2022,
+      "authors": "Lyndah E. Lovell, Chihiro Nozaki, Yu Tahara et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1037,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7220389473",
+      "title": "Camouflaged Object Segmentation Using a U-Net Based Deep Learning Approach",
+      "type": "article",
+      "doi": "https://doi.org/10.47392/irjaeh.2026.0707",
+      "year": 2026,
+      "authors": "Dharitree Devi, Arpita Prusty, Deepanjali Khadia et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1312,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2344619379",
+      "title": "NITRIC OXIDE AND LACTATE RESPONSES TO MAXIMAL INTERMITTENT ACUTE EXERCISE",
+      "type": "article",
+      "doi": null,
+      "year": 2016,
+      "authors": "Mehmet Özkol, Saadet Rana Varol, Faruk Turgay et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1311,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2368185210",
+      "title": "Isolation, Purification and Characterization of Apolipoprotein AI From Laying-hen Serum",
+      "type": "article",
+      "doi": null,
+      "year": 2004,
+      "authors": "Li HaoTang",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 742,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2363860789",
+      "title": "The lnterrelation Between the Evoluation of “Beizi” and Modern Apparel Patterns",
+      "type": "article",
+      "doi": null,
+      "year": 2003,
+      "authors": "Huang Ke",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 279,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W7137692378",
+      "title": "Kvantitatív MRI módszerek alkalmazása a központi idegrendszer betegségeiben",
+      "type": "article",
+      "doi": null,
+      "year": 2018,
+      "authors": "Nagy Szilvia Anett",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 2355,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W4320023595",
+      "title": "THE MODELS OF TRAINING BASED ON TRAINING NEEDS ANALYSIS FOR WAITERS/SS IN REGENCY OF SAMOSIR",
+      "type": "article",
+      "doi": "https://doi.org/10.36983/japm.v10i2.315",
+      "year": 2022,
+      "authors": "Syahrul Nugraha",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1362,
+      "problem": null,
+      "evidence": ""
+    },
+    {
+      "id": "W2990122087",
+      "title": "Identification of an occult recto-prostatic fistula with cystoscopy-assisted air colostogram",
+      "type": "article",
+      "doi": "https://doi.org/10.1016/j.ijscr.2019.11.019",
+      "year": 2019,
+      "authors": "Matthew P. Shaughnessy, Christine J. Park, Adam Benjamin Hittelman et al.",
+      "groups": [
+        "sample-article"
+      ],
+      "abstractLength": 1716,
+      "problem": null,
+      "evidence": ""
+    }
+  ]
+}

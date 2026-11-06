@@ -136,7 +136,7 @@ function s2FormatError(context: string, json: unknown): CitationSourceError {
 }
 
 function pause(ms: number): Promise<void> {
-	return new Promise((resolve) => window.setTimeout(resolve, ms));
+	return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 export class OpenCitationsClient {
@@ -379,7 +379,7 @@ async function cachedGet(get: GetJson, url: string, init: { headers: Record<stri
 	if (cached && Date.now() - cached.at < 300_000) return cached.result;
 	const previous = queues.get(origin) ?? Promise.resolve();
 	const result = previous.catch(() => {}).then(async () => {
-		await new Promise(resolve => window.setTimeout(resolve, origin.includes("semanticscholar") ? 1100 : 400));
+		await new Promise(resolve => globalThis.setTimeout(resolve, origin.includes("semanticscholar") ? 1100 : 400));
 		return get(url, init);
 	});
 	queues.set(origin, result);

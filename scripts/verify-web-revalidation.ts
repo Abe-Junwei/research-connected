@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import { matchLiteratureNote } from "../src/export-graph";
+import { applyWebSourceRecord } from "../preview/quality";
+import { DEFAULT_SETTINGS } from "../src/settings-model";
+import { loadNeighborhood } from "../src/neighborhood";
+import { OpenAlexClient } from "../src/openalex";
+import { fixtureGet } from "../preview/fixture";
+import { saveGraphSnapshot, restoreGraphSnapshot } from "../src/project-state";
+import { remapWebIds, revalidateWebSettings, commitWebRevalidation } from "../preview/revalidate";
+import { decorateWebExport, prepareWebGraph, type WebRecord } from "../preview/quality";
+
+export async function verifyWebRevalidation(): Promise<void> {
+	const settings = structuredClone(DEFAULT_SETTINGS);
+	const graph = await loadNeighborhood(new OpenAlexClient(fixtureGet, settings), { kind: "doi", value: "10.1234/seed" }, settings);
+	const old = graph.nodes[0]!;
+	const oldId = old.id, canonical = "W999998888";
+	const original = structuredClone(old);
+	settings.researchProjects = { saved: { version: 1, seedId: oldId, name: `Keep ${oldId}`, updatedAt: 1, views: [], snapshot: saveGraphSnapshot(graph) } };
+	const raw = { id: `https://openalex.org/${canonical}`, display_name: "Refreshed source title", publication_year: 2012, cited_by_count: 390, authorships: [{ author: { display_name: "Heiko Narrog" } }], abstract_inverted_index: { "A": [0], "genuine": [1], "abstract.": [2] }, referenced_works: [] };
+	const get = async (url: string): Promise<unknown> => new URL(url).pathname === "/works" ? { results: [raw] } : new URL(url).pathname.endsWith(oldId) ? raw : fixtureGet(url, { headers: {} });
+	let commits = 0;
+	const outcome = await revalidateWebSettings(settings, get, () => { commits++; }, 100000000);
+	assert.equal(outcome?.complete, true);
+	assert.equal(commits, 1);
+	const project = settings.researchProjects.saved!;
+	assert.equal(project.seedId, canonical);
+	assert.equal(project.name, `Keep ${oldId}`, "human names are not identifier fields");
+	const restored = restoreGraphSnapshot(project.snapshot!)!;
+	assert.ok(restored);
+	const updated = restored.nodes.find(p => p.id === canonical)!;
+	assert.equal(updated.citedByCount, 390, "citation counts are replaced, never added");
+	assert.equal(updated.title, raw.display_name);
+	assert.ok(updated.sourceAliases?.includes(oldId));
+	assert.equal(matchLiteratureNote([{ path: "original-note.md", frontmatter: { openalex: `https://openalex.org/${oldId}`, "rc-status": "read" } }], updated, "doi")?.path, "original-note.md", "canonical migration retains notes containing the old ID without rewriting the note");
+
+	assert.equal((updated as WebRecord).webSource?.requestedId, oldId);
+	applyWebSourceRecord(updated, { ...updated, title: "Another source refresh" }, canonical, 100000002);
+	assert.ok(updated.sourceAliases?.includes(oldId), "later metadata updates retain the original alias");
+	const after = JSON.stringify(settings);
+	assert.equal(await revalidateWebSettings(settings, async () => { throw Error("must not query fresh records"); }, () => { throw Error("must not write"); }, 100000001), null);
+	assert.equal(JSON.stringify(settings), after);
+	const initial = structuredClone(DEFAULT_SETTINGS);
+	initial.researchProjects = { saved: { version: 1, seedId: oldId, name: "Original", updatedAt: 1, views: [], snapshot: saveGraphSnapshot(graph) } };
+	const before = JSON.stringify(initial);
+	assert.equal((await revalidateWebSettings(initial, get, () => { throw Error("storage full"); }))?.complete, false);
+	assert.equal(JSON.stringify(initial), before, "failed persistence retains every original field");
+	assert.equal((await revalidateWebSettings(initial, async () => { throw Error("offline"); }, () => { throw Error("unexpected commit"); }))?.complete, false);
+	assert.equal(JSON.stringify(initial), before);
+	const partial = structuredClone(initial);
+	partial.researchProjects.saved!.manualPapers = Array.from({ length: 81 }, (_, index) => ({ ...original, id: `W${700000 + index}` }));
+	let batches = 0;
+	const partialResult = await revalidateWebSettings(partial, async (url) => {
+		const query = new URL(url);
+		if (++batches > 1) throw Error("later batch offline");
+		return { results: query.searchParams.get("filter")!.replace("openalex:", "").split("|").map(id => ({ ...raw, id: `https://openalex.org/${id}` })) };
+	}, () => {});
+	assert.equal(partialResult?.complete, false);
+	assert.ok(partial.researchProjects.saved!.manualPapers!.some(paper => (paper as WebRecord).webSource), "a failed later batch must not discard successful earlier source checks");
+	const mapped = remapWebIds({ ...initial, researchProjects: { saved: { ...initial.researchProjects.saved!, paperStates: { [oldId]: { paper: original, reading: "unread", staged: true, excluded: false, updatedAt: 1, source: "test" } } } } } as typeof initial, new Map([[oldId, canonical]]));
+	assert.ok(mapped.researchProjects.saved!.paperStates![canonical]);
+	assert.equal(mapped.researchProjects.saved!.paperStates![canonical]!.staged, true);
+	const collision = structuredClone(initial);
+	const state = { paper: original, reading: "unread" as const, staged: true, excluded: false, source: "test", updatedAt: 1 };
+	collision.researchProjects.saved!.paperStates = { [oldId]: state, [canonical]: { ...state, paper: { ...original, id: canonical }, reading: "read" } };
+	assert.throws(() => remapWebIds(collision, new Map([[oldId, canonical]])), /conflict|冲突/);
+	const memory = new Map([["settings", before]]);
+	const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+	Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: { getItem: (key: string) => memory.get(key) ?? null, setItem: (key: string, value: string) => { if (key === "settings") throw Error("storage full"); memory.set(key, value); } } } });
+	try {
+		assert.throws(() => commitWebRevalidation("settings", settings), /storage full/);
+		assert.equal(memory.get("settings"), before);
+		assert.equal(memory.get("settings-before-source-review"), before);
+	} finally { if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow); else Reflect.deleteProperty(globalThis, "window"); }
+	assert.throws(() => remapWebIds(initial, new Map([[oldId, canonical], [canonical, oldId]])), /cycle|循环/);
+	const blocked = structuredClone(updated) as typeof updated & WebRecord;
+	blocked.webMetadataReview = { problem: "contents", identity: "conflict" };
+	restored.nodes = [blocked, ...restored.nodes.filter(p => p.id !== canonical)];
+	restored.catalog = restored.nodes;
+	restored.semanticScores = new Map([[canonical, .99]]);
+	assert.ok(prepareWebGraph(restored));
+	assert.equal(restored.seedScore.has(canonical), false);
+	for (const format of ["bibtex", "yaml", "markdown"] as const) assert.match(decorateWebExport([blocked], "entry", format), /identity-conflict/);
+	assert.ok(decorateWebExport([blocked], "---\ntitle: Paper\n---\nBody", "markdown").startsWith("---\ntitle: Paper\n---"));
+	assert.equal(decorateWebExport([{ ...original, id: "W987654321", doiUrl: null, records: undefined }], "unchanged", "bibtex"), "unchanged");
+	console.log("Web source migration, persistence rollback, rescoring and export checks passed");
+}

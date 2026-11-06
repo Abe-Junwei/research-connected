@@ -2,7 +2,7 @@ import { availableCitations, citationCountText } from "./visual";
 import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
 import { normalizeDoi } from "./paper";
-import { paperDois, paperRecords } from "./work-identity";
+import { paperDois, paperRecords, paperSourceIds } from "./work-identity";
 import { projectVersionState, selectExportVersions, type ReadingStatus, type ResearchProject } from "./project-state";
 import { nodeMatchesFilter, type GraphFilter } from "./graph-filter";
 import type { PaperNode } from "./types";
@@ -168,13 +168,13 @@ export interface IndexedNote {
 /** All known identifiers participate; ambiguous notes are returned for selection. */
 export function matchLiteratureNote(
 	files: readonly { path: string; frontmatter?: Record<string, unknown> }[],
-	paper: Pick<PaperNode, "id" | "doiUrl" | "records">,
+	paper: Pick<PaperNode, "id" | "doiUrl" | "records" | "sourceAliases">,
 	doiProperty: string,
 ): IndexedNote | null {
 	const index = indexLiteratureFiles(files, doiProperty);
 	const matches = new Map<string, IndexedNote>();
 	for (const doi of paperDois(paper)) { const note = index.byDoi.get(doi); if (note) for (const path of note.alternatives ?? [note.path]) matches.set(path, note); }
-	for (const id of [paper.id, ...(paper.records ?? []).map((record) => record.id)]) { const note = index.byId.get(id); if (note) for (const path of note.alternatives ?? [note.path]) matches.set(path, note); }
+	for (const id of paperSourceIds(paper)) { const note = index.byId.get(id); if (note) for (const path of note.alternatives ?? [note.path]) matches.set(path, note); }
 	return matches.size > 1 ? { path: [...matches.keys()][0]!, reading: null, alternatives: [...matches.keys()] } : [...matches.values()][0] ?? null;
 }
 

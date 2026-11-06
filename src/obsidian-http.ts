@@ -1,3 +1,4 @@
+import { screenWebResponse } from "./source-quality";
 import { tr } from "./i18n";
 import { requestUrl } from "obsidian";
 import { explainStatus, OpenAlexError, retryAfterMs, type GetJson } from "./openalex";
@@ -44,12 +45,13 @@ export const obsidianGetJson: GetJson = async (url, init) => {
 	if (response.status >= 400) {
 		throw new OpenAlexError(explainGet(url, response.status), response.status, retryAfterMs(response.headers));
 	}
+	let json: unknown;
 	try {
-		const json: unknown = response.json;
-		return json;
+		json = response.json;
 	} catch {
 		throw new OpenAlexError(tr(`${serviceName(url)} 返回了无法解析的内容。`, `${serviceName(url)} returned content that could not be parsed.`), response.status);
 	}
+	return screenWebResponse(json, new URL(url));
 };
 
 export const obsidianPostJson = async (
@@ -70,12 +72,13 @@ export const obsidianPostJson = async (
 		throw new OpenAlexError(tr(`无法连接 ${service}。`, `Could not connect to ${service}.`));
 	}
 	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status, retryAfterMs(response.headers));
+	let json: unknown;
 	try {
-		const json: unknown = response.json;
-		return json;
+		json = response.json;
 	} catch {
 		throw new OpenAlexError(tr(`${service} 返回了无法解析的内容。`, `${service} returned content that could not be parsed.`), response.status);
 	}
+	return screenWebResponse(json, new URL(url), init.body);
 };
 
 /** POST targets are Semantic Scholar or the configured LLM; unknown hosts are the LLM. */

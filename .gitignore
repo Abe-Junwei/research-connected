@@ -20,3 +20,4 @@ preview/preview.js
 preview/embed.js
 site/
 .superdesign/tmp
+__pycache__/

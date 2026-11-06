@@ -31,6 +31,9 @@ export interface EmbedDeps extends Partial<ReadingWorkflowDeps> {
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
 	postJson?: PostJson;
+	checkMetadata?: (paper: PaperNode) => Promise<string | null>;
+	prepareGraph?: (graph: SimilarityGraph) => string | null;
+	decorateExport?: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => string;
 	openExternal: (url: string) => void;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	persistAssociation?: (projectKey: string | null) => Promise<void>;
@@ -507,7 +510,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				status: workflowState(paper, seedId).reading,
 			};
 			const filename = literatureFilename(paper, settings.literatureFilename, fields);
-			const markdown = literatureMarkdown(paper, settings.literatureTemplate, fields);
+			const raw = literatureMarkdown(paper, settings.literatureTemplate, fields);
+			const markdown = deps.decorateExport?.([paper], raw, "markdown") ?? raw;
 			if (deps.createNote) {
 				try {
 					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
@@ -524,7 +528,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}
 		const range = chrome?.exportOptions() ?? { mode: "one" as const, includeSeedException: false };
 		const nodes = orderedForExport(graphExportVersions(currentGraph.nodes, associatedProject(), viewFilter, range.mode, range.includeSeedException));
-		const text = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
+		const raw = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
+		const text = deps.decorateExport?.(nodes, raw, kind === "bibtex" ? "bibtex" : kind === "yaml" ? "yaml" : "markdown") ?? raw;
 		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
 
@@ -656,6 +661,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const paperState = workflowState(paper, seedId);
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
 		paintPaperDetail(detail, graph, paper, {
+			checkMetadata: deps.checkMetadata,
 			isClassic: !!map.classicEvidence(paper.id),
 			abstractText: embedAbstractText,
 			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
@@ -820,6 +826,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const savedProject = associatedProject();
 		if (savedProject) reconcileProjectIdentity(savedProject, graph);
 		graph = projectVersionGraph(graph, savedProject);
+		const quality = deps.prepareGraph?.(graph);
 		const excluded = Object.entries(savedProject?.versionStates ?? savedProject?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
 		graph.excludedIds = excluded;
 		currentGraph = graph;
@@ -848,7 +855,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			samplingText(graph.retrievalStats.citations, tr("施引文献", "Citing papers")),
 			samplingText(graph.retrievalStats.related, tr("相关作品", "Related works")),
 		] : [];
-		const diagnostics = [fullStatus, ...samples, ...graph.warnings.map(item => WARNING_TEXT[item]), enhancementNote].filter(Boolean).join("\n");
+		const diagnostics = [fullStatus, ...samples, ...graph.warnings.map(item => WARNING_TEXT[item]), enhancementNote, quality].filter(Boolean).join("\n");
 		paintGraphStatus(status, graphStatusSummary(graph), diagnostics);
 		if (previousSelection) showDetail(graph.nodes.find(node => node.id === previousSelection.id) ?? previousSelection, graph, previousLink);
 		else if (seed) showDetail(seed, graph, null);

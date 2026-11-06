@@ -1,0 +1,24 @@
+[Unit]
+Description=Research Connected Semantic Scholar proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/research-connected-s2.env
+ExecStart=/usr/bin/python3 /opt/research-connected/server/s2_proxy.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+MemoryMax=192M
+TasksMax=48
+LimitNOFILE=256
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

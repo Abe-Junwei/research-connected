@@ -16,6 +16,8 @@ export interface AdmissionDecision {
 
 export interface PaperRecord {
 	id: string;
+	/** Previous IDs explicitly resolved to this canonical work by OpenAlex; keeps existing notes linked. */
+	sourceAliases?: string[];
 	title: string;
 	year: number | null;
 	citedByCount: number;

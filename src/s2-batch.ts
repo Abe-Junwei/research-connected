@@ -55,7 +55,7 @@ function errorInfo(error: unknown): { status?: number; retryAfterMs?: number; me
 	};
 }
 
-const wait = (ms: number): Promise<void> => new Promise(resolve => window.setTimeout(resolve, ms));
+const wait = (ms: number): Promise<void> => new Promise(resolve => globalThis.setTimeout(resolve, ms));
 
 export async function fetchS2Batch(
 	post: PostJson | undefined,

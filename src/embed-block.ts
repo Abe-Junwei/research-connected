@@ -1,5 +1,6 @@
 import { tr } from "./i18n";
 import { MarkdownRenderChild, Plugin, TFile, type MarkdownPostProcessorContext } from "obsidian";
+import type { AppDeps } from "./app";
 import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
@@ -11,6 +12,7 @@ interface EmbedHost extends Plugin {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
 	readingWorkflow: ReturnType<typeof createReadingWorkflow>;
+	sourceQuality: Pick<AppDeps, "checkMetadata" | "prepareGraph" | "decorateExport">;
 	/** Open the full graph pane focused on a seed; absent in hosts that cannot. */
 	openGraph?(target: { kind: "doi" | "openalex"; value: string }): void;
 }
@@ -45,6 +47,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 		const { plugin } = this;
 		this.destroyView = mountEmbed(this.containerEl, {
 			...plugin.readingWorkflow,
+			...plugin.sourceQuality,
 			source: this.source,
 			getSettings: () => plugin.getSettings(),
 			getJson: obsidianGetJson,
