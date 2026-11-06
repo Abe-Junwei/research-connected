@@ -165,6 +165,9 @@ async function start(): Promise<void> {
 			if (!paper) {
 				const missing = el(panel, "p", "cpo-side-tip");
 				missing.textContent = tr("未找到该文献。打开此链接不会自动建图，也不携带原浏览器的收藏或排除状态。", "Paper not found. Opening this link does not build a graph or carry favorites or exclusions.");
+				const backMissing = el(panel, "a");
+				backMissing.href = "./";
+				backMissing.textContent = tr("返回图谱", "Back to graph");
 				return;
 			}
 			const title = el(panel, "h1");
@@ -192,6 +195,9 @@ async function start(): Promise<void> {
 			panel.replaceChildren();
 			const failed = el(panel, "p", "cpo-side-tip");
 			failed.textContent = error instanceof Error ? error.message : tr("查询失败", "Lookup failed");
+			const backFail = el(panel, "a");
+			backFail.href = "./";
+			backFail.textContent = tr("返回图谱", "Back to graph");
 		}
 		return;
 	}
@@ -231,7 +237,7 @@ async function start(): Promise<void> {
 		prepareGraph: graph => [review?.notice, prepareWebGraph(graph)].filter(Boolean).join("\n") || null,
 		decorateExport: (papers, text, format) => decorateWebExport(papers, text, format, review?.complete === false),
 		checkMetadata: paper => checkWebMetadata(paper, browserGetJson),
-		operationGate,
+		...(offline ? {} : { operationGate }),
 		confirmChoice: async (message) => window.confirm(message),
 		openExternal: (url) => {
 			const safe = allowedExternalUrl(url);
