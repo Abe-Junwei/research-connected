@@ -1,0 +1,93 @@
+{
+  "target": "https://graph.jieyu.ai/?audit=20261107-final",
+  "results": [
+    {
+      "visit": "cold",
+      "ttfb": 2238,
+      "html": 2737,
+      "ready": 5138,
+      "paint": 2776,
+      "assets": [
+        {
+          "name": "/web-32KI6ANC.js",
+          "start": 2553,
+          "end": 5111,
+          "bytes": 101639
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "MISS",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-32KI6ANC.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "22",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 2,
+      "html": 2,
+      "ready": 17,
+      "assets": [
+        {
+          "name": "/web-32KI6ANC.js",
+          "start": 6,
+          "end": 6,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "MISS",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-32KI6ANC.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "22",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 3,
+      "html": 3,
+      "ready": 18,
+      "assets": [
+        {
+          "name": "/web-32KI6ANC.js",
+          "start": 6,
+          "end": 6,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "MISS",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-32KI6ANC.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "22",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,452 @@
+[
+  {
+    "target": "https://graph.jieyu.ai/__perf-external.html?fixture=1",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1785,
+        "html": 1786,
+        "ready": 2720,
+        "paint": 2704,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 1793,
+            "end": 2673,
+            "bytes": 98524
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 1794,
+            "end": 2672,
+            "bytes": 13262
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "288",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "388",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 11,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "388",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "288",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 11,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "388",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "288",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "target": "https://graph.jieyu.ai/__perf-inline.html?fixture=1",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1791,
+        "html": 1792,
+        "ready": 2569,
+        "paint": 1848,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 1805,
+            "end": 2531,
+            "bytes": 98524
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "394",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 12,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "394",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 13,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "394",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "target": "https://graph.jieyu.ai/__perf-inline.html?fixture=1",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1417,
+        "html": 1420,
+        "ready": 2417,
+        "paint": 1476,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 1428,
+            "end": 2381,
+            "bytes": 98524
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "400",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 2,
+        "ready": 16,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 5,
+            "end": 5,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "400",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 2,
+        "ready": 16,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 5,
+            "end": 5,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-inline.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "400",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "target": "https://graph.jieyu.ai/__perf-external.html?fixture=1",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1439,
+        "html": 1439,
+        "ready": 1963,
+        "paint": 1960,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 1442,
+            "end": 1932,
+            "bytes": 98524
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 1442,
+            "end": 1933,
+            "bytes": 13262
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "306",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "405",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 11,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "405",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "306",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 12,
+        "assets": [
+          {
+            "name": "/web-LJE2EJEV.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          },
+          {
+            "name": "/styles-7d34701557f267e0.css",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/__perf-external.html",
+            "status": 200,
+            "cache": "DYNAMIC",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-LJE2EJEV.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "405",
+            "policy": "public, max-age=31536000, immutable"
+          },
+          {
+            "path": "/styles-7d34701557f267e0.css",
+            "status": 200,
+            "cache": "HIT",
+            "age": "306",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  }
+]

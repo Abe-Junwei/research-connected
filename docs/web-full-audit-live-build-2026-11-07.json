@@ -1,0 +1,17 @@
+{
+  "nodes": 50,
+  "browserRemaining": 9,
+  "siteRemaining": 499,
+  "budgetRemaining": 0.9994,
+  "elapsedMs": 36562,
+  "responses": {
+    "/api/version 200": 3,
+    "/api/session 200": 1,
+    "/api/quota/status 200": 4,
+    "/api/quota/reserve 200": 1,
+    "/api/openalex 200": 7,
+    "/api/semantic-scholar 429": 1,
+    "/api/quota/confirm 200": 1
+  },
+  "errors": []
+}

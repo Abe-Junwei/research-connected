@@ -1,0 +1,66 @@
+{
+  "target": "https://graph.jieyu.ai/?fixture=1",
+  "results": [
+    {
+      "visit": "cold",
+      "ttfb": 1207,
+      "html": 1207,
+      "ready": 2041,
+      "paint": 1968,
+      "assets": [
+        {
+          "name": "/styles-bf3dd7e4278b1625.css",
+          "start": 1211,
+          "end": 1943,
+          "bytes": 22986
+        },
+        {
+          "name": "/web-CMUUY4BK.js",
+          "start": 1211,
+          "end": 2006,
+          "bytes": 120225
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 664,
+      "html": 665,
+      "ready": 694,
+      "assets": [
+        {
+          "name": "/styles-bf3dd7e4278b1625.css",
+          "start": 678,
+          "end": 678,
+          "bytes": 0
+        },
+        {
+          "name": "/web-CMUUY4BK.js",
+          "start": 678,
+          "end": 678,
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 646,
+      "html": 647,
+      "ready": 667,
+      "assets": [
+        {
+          "name": "/styles-bf3dd7e4278b1625.css",
+          "start": 655,
+          "end": 655,
+          "bytes": 0
+        },
+        {
+          "name": "/web-CMUUY4BK.js",
+          "start": 655,
+          "end": 655,
+          "bytes": 0
+        }
+      ]
+    }
+  ]
+}

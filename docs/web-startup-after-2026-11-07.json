@@ -1,0 +1,66 @@
+{
+  "target": "https://graph.jieyu.ai/?fixture=1",
+  "results": [
+    {
+      "visit": "cold",
+      "ttfb": 3588,
+      "html": 3590,
+      "ready": 4469,
+      "paint": 4300,
+      "assets": [
+        {
+          "name": "/web-JSUZEM2L.js",
+          "start": 3599,
+          "end": 4444,
+          "bytes": 123761
+        },
+        {
+          "name": "/styles-7d34701557f267e0.css",
+          "start": 3599,
+          "end": 4271,
+          "bytes": 17347
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 2,
+      "html": 2,
+      "ready": 21,
+      "assets": [
+        {
+          "name": "/web-JSUZEM2L.js",
+          "start": 10,
+          "end": 10,
+          "bytes": 0
+        },
+        {
+          "name": "/styles-7d34701557f267e0.css",
+          "start": 10,
+          "end": 10,
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 3,
+      "html": 4,
+      "ready": 23,
+      "assets": [
+        {
+          "name": "/web-JSUZEM2L.js",
+          "start": 12,
+          "end": 12,
+          "bytes": 0
+        },
+        {
+          "name": "/styles-7d34701557f267e0.css",
+          "start": 12,
+          "end": 12,
+          "bytes": 0
+        }
+      ]
+    }
+  ]
+}

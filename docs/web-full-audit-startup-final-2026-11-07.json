@@ -1,0 +1,96 @@
+{
+  "target": "https://graph.jieyu.ai/?v=6aa4eb62e83d1624",
+  "results": [
+    {
+      "visit": "cold",
+      "ttfb": 3240,
+      "html": 3759,
+      "ready": 6951,
+      "paint": 3784,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "start": 3760,
+          "end": 6926,
+          "bytes": 101639
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "36",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "37",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 2,
+      "html": 2,
+      "ready": 19,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "start": 7,
+          "end": 7,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "36",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "37",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 1,
+      "html": 2,
+      "ready": 17,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "start": 6,
+          "end": 6,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "36",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "37",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}
