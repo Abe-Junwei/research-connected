@@ -28,6 +28,10 @@ try {
 	await page.goto(`${base}/?fixture=1`);
 	await page.getByRole("button", { name: /构建|Build/ }).waitFor();
 
+	check(await page.locator(".cpo-bar #cpo-web-chrome").count() === 1, "web controls merged into build bar");
+	check(await page.locator("#cpo-theme-toggle svg").count() === 2, "sun and moon icons rendered");
+	check(await page.locator("#cpo-privacy-info svg").count() === 1, "info uses a bare icon at the right edge");
+
 	// Privacy info collapsed by default
 	const info = page.locator("#cpo-privacy-info");
 	const panel = page.locator("#cpo-privacy-panel");
@@ -127,7 +131,7 @@ try {
 		});
 	}
 
-	await page.locator('#cpo-theme-group button[data-theme-mode="light"]').click();
+	if (await page.locator("#cpo-theme-toggle").getAttribute("aria-pressed") === "true") await page.locator("#cpo-theme-toggle").click();
 	await page.waitForTimeout(400);
 	const light = await canvasStats();
 	check(light && light.lightClass && !light.darkClass, "light class on html");
@@ -135,7 +139,7 @@ try {
 	check(light && light.avg > 200 && !light.nightCanvas, `light canvas bright avg=${light?.avg} night=${light?.nightCanvas}`);
 	check(light && light.primary.toLowerCase() === "#ffffff", `light --background-primary=${light?.primary}`);
 
-	await page.locator('#cpo-theme-group button[data-theme-mode="dark"]').click();
+	await page.locator("#cpo-theme-toggle").click();
 	await page.waitForTimeout(500);
 	const dark = await canvasStats();
 	check(dark && dark.darkClass && !dark.lightClass, "dark class on html");
@@ -145,7 +149,9 @@ try {
 	check(light && dark && (light.avg - dark.avg) > 150, `canvas bg luminance changed light=${light?.avg} dark=${dark?.avg}`);
 	check(dark && dark.primary.toLowerCase() === "#1a1d24", `dark --background-primary=${dark?.primary}`);
 
-	await page.locator('#cpo-theme-group button[data-theme-mode="system"]').click();
+	await page.evaluate(() => localStorage.removeItem("research-connected-web-theme"));
+	await page.reload();
+	await page.locator("#cpo-theme-toggle").waitFor();
 	await page.emulateMedia({ colorScheme: "dark" });
 	await page.waitForTimeout(500);
 	const sysDark = await canvasStats();
@@ -158,8 +164,14 @@ try {
 	check(sysLight && sysLight.lightClass && !sysLight.nightCanvas, "system+emulate light → theme-light");
 	check(sysLight && sysLight.avg > 200, `system light canvas avg=${sysLight?.avg}`);
 
+	// A stalled API must not block restoration of the local graph.
+	await page.route("**/api/**", route => new Promise(resolve => setTimeout(resolve, 3000)).then(() => route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"test unavailable"}' })).catch(() => {}));
+	await page.goto(base, { waitUntil: "domcontentloaded" });
+	await page.locator(".cpo-bar #cpo-web-chrome").waitFor({ timeout: 1000 });
+	check(await page.locator("canvas").count() === 1, "local graph mounts before delayed session and quota responses");
+
 	const persisted = await page.evaluate(() => localStorage.getItem("research-connected-web-theme"));
-	check(persisted === "system", `theme preference persisted as system, got ${persisted}`);
+	check(persisted === null, `unset preference follows system, got ${persisted}`);
 } finally {
 	await browser.close();
 }

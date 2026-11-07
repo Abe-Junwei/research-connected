@@ -82,6 +82,19 @@ try {
 	const detailAfter = await page.locator(".cpo-evidence-sidebar").innerText();
 	check(/种子|表示学习|Example|题名|2015|作者|DOI|10\.1234/i.test(detailAfter), "clicking graph updates evidence/detail pane");
 
+	// A stored paper remains readable and exportable when every API is offline.
+	const storedPaper = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem("research-connected-web-settings")).researchProjects)[0].snapshot.nodes[0]);
+	const localDetail = await desktop.newPage();
+	let providerCalls = 0;
+	await localDetail.route("**/api/**", route => { if (new URL(route.request().url()).pathname === "/api/openalex") providerCalls++; return route.fulfill({ status: 503, body: "{}" }); });
+	await localDetail.goto(`${base}/?paper=${encodeURIComponent(storedPaper.id)}`);
+	await localDetail.getByText(storedPaper.title, { exact: true }).waitFor();
+	check(providerCalls === 0, "local paper detail makes no provider request");
+	await localDetail.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => { throw new Error("denied"); } } }));
+	await localDetail.getByRole("button", { name: "BibTeX", exact: true }).click();
+	check((await localDetail.locator("pre.cpo-export-text").innerText()).includes("@"), "offline detail supports manual BibTeX copy");
+	await localDetail.close();
+
 	// Independent detail route + refresh keep query; back restores
 	await page.goto(`${base}/?paper=W2919115771`);
 	await page.waitForTimeout(600);
@@ -97,33 +110,24 @@ try {
 	// history.back may restore previous fixture graph URL
 	check(true, "detail back clicked");
 
-	// Storage full keeps old projects (exercise writeWebProjectSettings path via page function if exposed; else mirror API)
+	// Exercise the real saved-paper action and storage adapter under quota failure.
 	await page.goto(`${base}/?fixture=1`);
-	await page.getByRole("button", { name: /构建|Build/ }).waitFor({ state: "visible" });
-	const storage = await page.evaluate(async () => {
+	await page.locator(".cpo-paper-stage").first().waitFor();
+	const beforeFull = await page.evaluate(() => {
 		const key = "research-connected-web-settings";
-		const keep = { version: 1, seedId: "Wkeep", name: "Keep", updatedAt: 1, views: [], snapshot: { nodes: [{ id: "Wkeep", title: "Keep" }], edges: [], seedScore: {}, catalog: [], referenceLists: [] } };
-		const settings = { researchProjects: { Wkeep: keep }, apiKey: "system-proxy" };
-		localStorage.setItem(key, JSON.stringify(settings));
 		const original = localStorage.getItem(key);
-		const proto = Object.getPrototypeOf(localStorage);
-		const real = proto.setItem;
+		const proto = Object.getPrototypeOf(localStorage), real = proto.setItem;
+		window.__restoreStorage = () => { proto.setItem = real; };
 		proto.setItem = function (k, v) {
 			if (k === key) throw new DOMException("full", "QuotaExceededError");
 			return real.call(this, k, v);
 		};
-		let errorName = "";
-		try {
-			// Dynamic import of storage helper is bundled; call through same algorithm inline.
-			const payload = JSON.stringify({ ...settings, researchProjects: { ...settings.researchProjects, Wx: { ...keep, seedId: "Wx", name: "New", snapshot: { nodes: [{ id: "Wx", title: "x".repeat(8000) }] } } } });
-			localStorage.setItem(key, payload);
-		} catch (error) {
-			errorName = error?.name || String(error);
-		}
-		proto.setItem = real;
-		return { errorName, kept: localStorage.getItem(key) === original };
+		return original;
 	});
-	check(storage.errorName === "QuotaExceededError" && storage.kept, "storage full preserves previous projects");
+	await page.locator(".cpo-paper-stage").first().click();
+	await page.locator('#cpo-web-notice[data-kind="error"]').waitFor();
+	check(await page.evaluate(() => localStorage.getItem("research-connected-web-settings")) === beforeFull, "real failed save preserves previous projects");
+	await page.evaluate(() => window.__restoreStorage());
 
 	// Dual-tab takeover: real claimEdit semantics via shared localStorage keys used by web/session.ts
 	const pageA = page;
@@ -140,30 +144,23 @@ try {
 	});
 	check(Boolean(projectKey), `fixture build created a project (key=${projectKey})`);
 	if (projectKey) {
-		const lockA = await pageA.evaluate((key) => {
-			const tabId = sessionStorage.getItem("research-connected-tab-id") || crypto.randomUUID();
-			sessionStorage.setItem("research-connected-tab-id", tabId);
-			const lock = { owner: "a", tabId, projectKey: key, updatedAt: Date.now() };
-			localStorage.setItem("research-connected-edit-lock:" + key, JSON.stringify(lock));
-			return lock;
-		}, projectKey);
-		const readOnB = await pageB.evaluate((key) => {
-			const raw = localStorage.getItem("research-connected-edit-lock:" + key);
-			return raw ? JSON.parse(raw) : null;
-		}, projectKey);
-		check(readOnB && readOnB.tabId === lockA.tabId, "tab B sees tab A edit lock");
+		// Load the newly saved project; B was opened before A created it.
+		await pageB.reload();
+		await pageB.locator(".cpo-bar #cpo-web-chrome").waitFor();
+		const lockA = await pageA.evaluate(key => JSON.parse(localStorage.getItem("research-connected-edit-lock:" + key) || "null"), projectKey);
 		await pageB.locator("#cpo-takeover").click();
+		await pageB.waitForFunction(key => JSON.parse(localStorage.getItem("research-connected-edit-lock:" + key) || "null")?.tabId === sessionStorage.getItem("research-connected-tab-id"), projectKey);
+		const seenOnA = await pageA.evaluate(key => JSON.parse(localStorage.getItem("research-connected-edit-lock:" + key) || "null"), projectKey);
+		check(seenOnA && seenOnA.tabId !== lockA.tabId, "real takeover replaces edit owner");
+		await pageB.locator(".cpo-paper-stage").first().click();
 		await pageB.waitForTimeout(200);
-		// Force takeover through the same API the button uses for first project; also force claim
-		const after = await pageB.evaluate((key) => {
-			const tabId = sessionStorage.getItem("research-connected-tab-id") || crypto.randomUUID();
-			sessionStorage.setItem("research-connected-tab-id", tabId);
-			const lock = { owner: localStorage.getItem("research-connected-browser-token") || "b", tabId, projectKey: key, updatedAt: Date.now() };
-			localStorage.setItem("research-connected-edit-lock:" + key, JSON.stringify(lock));
-			return lock;
-		}, projectKey);
-		const seenOnA = await pageA.evaluate((key) => JSON.parse(localStorage.getItem("research-connected-edit-lock:" + key) || "null"), projectKey);
-		check(seenOnA && seenOnA.tabId === after.tabId && seenOnA.tabId !== lockA.tabId, "takeover replaced edit lock owner");
+		const afterOwnerWrite = await pageB.evaluate(() => localStorage.getItem("research-connected-web-settings"));
+		check(await pageA.locator(".cpo-paper-stage").first().isDisabled(), "old tab's project mutations are disabled after takeover");
+		await pageA.locator(".cpo-paper-stage").first().dispatchEvent("click");
+		await pageA.locator("canvas").first().dispatchEvent("wheel", { deltaY: 100 });
+		await pageA.waitForTimeout(700);
+		check(await pageA.evaluate(() => localStorage.getItem("research-connected-web-settings")) === afterOwnerWrite, "old tab cannot overwrite takeover owner's save through actions or gesture autosave");
+
 	}
 
 	// Expired task isolation: local task past expiresAt must block confirm path
@@ -195,18 +192,27 @@ try {
 	mpage.setDefaultTimeout(25000);
 	await mpage.goto(`${base}/?fixture=1`);
 	await mpage.getByRole("button", { name: /构建|Build/ }).click();
+	await mpage.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem("research-connected-web-settings") || "{}").researchProjects || {}).some(p => p.snapshot?.nodes?.length > 1));
+	await mpage.waitForTimeout(1200);
+	const closeCover = mpage.getByRole("button", { name: /返回图谱|Back to graph/ });
+	if (await closeCover.isVisible()) await closeCover.click();
 	const mcanvas = mpage.locator("canvas").first();
 	await mcanvas.waitFor({ state: "visible" });
 	const mbox = await mcanvas.boundingBox();
 	assert.ok(mbox, "mobile canvas");
 	await mpage.touchscreen.tap(mbox.x + mbox.width * 0.5, mbox.y + mbox.height * 0.5);
 	await mpage.waitForTimeout(700);
-	const mobileDetail = await mpage.evaluate(() => {
-		const cover = document.documentElement.classList.contains("is-detail-cover") || document.body.classList.contains("is-detail-cover") || !!document.querySelector(".is-detail-cover");
-		const side = (document.querySelector(".cpo-evidence-sidebar")?.innerText || "");
-		return cover || /种子|表示学习|2015|作者|题名/i.test(side);
-	});
-	check(mobileDetail, "mobile tap reaches detail UI");
+	await mpage.waitForURL(url => url.searchParams.has("paper"));
+	check(await mpage.locator("#cpo-web-paper-page").isVisible(), "mobile tap opens independent paper page");
+	check(await mpage.locator("#cpo-web-notice[data-kind=error]").isVisible() === false, "fresh mobile paper selection must not report a storage conflict");
+	await mpage.screenshot({ path: "/tmp/graph-audit-mobile.png", fullPage: true });
+	check(await mpage.getByRole("button", { name: /深挖此文献|Explore this paper/ }).isVisible(), "mobile detail has explicit explore action");
+	await mpage.getByRole("button", { name: /返回图谱|Back to graph/ }).click();
+	await mpage.waitForURL(url => !url.searchParams.has("paper"));
+	check(await mcanvas.isVisible(), "browser back restores graph");
+	await mpage.goForward();
+	check(await mpage.locator("#cpo-web-paper-page").isVisible(), "browser forward restores paper page");
+	await mpage.goBack();
 	// Mobile independent detail route
 	await mpage.goto(`${base}/?doi=10.1038/nature14539`);
 	await mpage.waitForTimeout(800);

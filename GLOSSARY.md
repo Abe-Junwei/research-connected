@@ -2,6 +2,10 @@
 
 Canonical user-facing terms for literature discovery and reading.
 
+## Product name
+
+**文现 / Research Connected**: the confirmed Chinese product name and retained English name (2026-11-07). The formal Web uses 文现 as the primary visible name; repository identifiers, browser storage keys and plugin identifiers stay unchanged.
+
 ## Surfaces
 
 **Graph / 图谱**:

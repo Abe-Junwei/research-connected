@@ -61,6 +61,11 @@ import { commitSourceVersionRelations, matchingSeedProjects, acknowledgeIdentity
 
 export interface GraphAppHandle {
 	destroy(): void;
+	cancelPending(): void;
+	expandPaper(paperId: string): Promise<void>;
+	selectPaper(paperId: string): void;
+	getViewState(): ReturnType<SimilarityMap["getViewState"]>;
+	setViewState(view: ReturnType<SimilarityMap["getViewState"]>): void;
 	/** Command-palette DOI path search over already-fetched reference lists. */
 	openDoiPathSearch(): void;
 }
@@ -103,6 +108,11 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	};
 	/** Web-only confirmations (e.g. adopt a shrunken rebuild). Obsidian omits this. */
 	confirmChoice?: (message: string) => Promise<boolean>;
+	/** Optional Web host guards; plugin behavior is unchanged when omitted. */
+	canMutate?: () => boolean;
+	onProjectChange?: (projectKey: string | null) => void;
+	beforeProjectSwitch?: () => Promise<boolean>;
+	onSelectPaper?: (paper: PaperNode, detail: HTMLElement) => void;
 }
 
 const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", string> = {
@@ -275,7 +285,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const removedSeeds = new Set<string>();
 	let persistProjectNow: (current: SimilarityGraph) => void = () => {};
 	const scheduleProjectSave = (): void => {
-		if (applyingNotice) return;
+		if (applyingNotice || deps.canMutate?.() === false) return;
 		saveRevision++;
 		paintSaveState("pending");
 		if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
@@ -343,6 +353,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		banner.hidden = true;
 		banner.textContent = "";
 	};
+	const allowMutation = (): boolean => {
+		if (deps.canMutate?.() !== false) return true;
+		status.textContent = tr("当前项目为只读或任务进行中；可查看和复制，任务结束或接管编辑后再修改。", "This project is read-only or a task is running. Viewing and copying remain available; edit after completion or takeover.");
+		return false;
+	};
 	const hideResults = (): void => {
 		results.hidden = true;
 		results.replaceChildren();
@@ -370,6 +385,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		return shared ? { ...state, reading: shared.reading ?? state.reading, readingConflict: !shared.confirmed } : state;
 	};
 	const commitWorkflow = async (paper: PaperNode, seedId: string, patch: { staged?: boolean; reading?: ReadingStatus }, source = "OpenAlex"): Promise<void> => {
+		if (!allowMutation()) throw new Error(tr("项目只读或任务进行中", "Project is read-only or busy"));
 		if (deps.commitWorkflow) {
 			const selected = patch.staged !== undefined ? (await choosePaperVersion(paper, false, versionDialogs.signal)).paper : paper;
 			await deps.commitWorkflow(selected, seedId, patch, activeProjectId ?? undefined);
@@ -790,7 +806,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			detailReturn = map.getViewState();
 			detailReturnLocked = false;
 		}
-		setDetailCover(root, !coverDismissed && !detail.hidden);
+		setDetailCover(root, (!deps.onSelectPaper || root.clientWidth > 640) && !coverDismissed && !detail.hidden);
 		map.setSelected(graph.nodes.some((node) => node.id === paper.id) ? paper.id : null);
 		const year = paper.year === null ? tr("年份不详", "Year unknown") : String(paper.year);
 		sheet.setSummary(paper.title, tr(`${year} · 被引 ${citationCountText(paper)}`, `${year} · cited ${citationCountText(paper)} times`), { lang: paper.language });
@@ -823,12 +839,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			} : undefined,
 			openExternal: deps.openExternal,
 			separate: () => {
-				if (!graph) return;
+				if (!graph || !allowMutation()) return;
 				void commitWorkIdentityDecision(deps.getSettings(), { ids: paperRecords(paper).map(record => record.id), kind: "separate", source: "manual", updatedAt: Date.now() }, () => deps.persistSettings?.()).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : String(error); });
 			},
 			conflict: project?.identityConflicts?.includes(paper.id) ?? false,
 			acknowledge: () => {
-				if (!project) return;
+				if (!project || !allowMutation()) return;
 				acknowledgeIdentityStates(project, paper);
 				void deps.persistSettings?.();
 				showDetail(paper);
@@ -853,6 +869,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			onJump: (target) => showDetail(target, true),
 		});
 		paintIdentityDecisionActions(detail, paper, [...graph.catalog, ...Object.values(deps.getSettings().researchProjects).flatMap(project => project.snapshot?.catalog ?? project.snapshot?.nodes ?? [])], async (ids, kind) => {
+			if (!allowMutation()) return;
 			if (!deps.persistSettings) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, deps.persistSettings);
 		});
@@ -877,6 +894,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				if (selectedPaper && (doiFromPaper(selectedPaper) ?? selectedPaper.id) === abstractKey && tab === "graph") showDetail(selectedPaper);
 			});
 		}
+		if (reveal && paper) deps.onSelectPaper?.(paper, detail);
 	};
 
 	map.onSelect = (paper) => { showDetail(paper, paper !== null); scheduleProjectSave(); };
@@ -1020,6 +1038,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	canvas.addEventListener("keyup", saveCurrentViewOnGesture);
 
 	saveProjectButton.onclick = async () => {
+		if (!allowMutation()) return;
 		if (!graph || (saveState !== "pending" && saveState !== "error")) return;
 		if (projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
 		const saved = await persistProject(graph);
@@ -1038,6 +1057,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		projectItems.replaceChildren();
 		if (projects.length === 0) {
 			activeProjectId = null;
+			deps.onProjectChange?.(null);
 			projectName.textContent = tr("研究项目", "Research project");
 			projectMenu.classList.add("is-disabled");
 			projectMenu.open = false;
@@ -1053,6 +1073,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		const selected = openId && projects.some((project) => project.key === openId) ? openId : null;
 		activeProjectId = selected;
+		deps.onProjectChange?.(selected);
 		projectName.textContent = selected ? projects.find((project) => project.key === selected)!.name : tr("研究项目", "Research project");
 		projectMenu.classList.remove("is-disabled");
 		paintSaveState(saveState === "idle" ? "saved" : saveState);
@@ -1095,6 +1116,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	function beginRename(row: HTMLElement, seedId: string): void {
+		if (!allowMutation()) return;
 		const project = deps.getSettings().researchProjects[seedId];
 		const nameButton = row.querySelector(".cpo-menu-switch");
 		if (!project || !nameButton) return;
@@ -1133,6 +1155,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	}
 
 	async function deleteProject(seedId: string): Promise<void> {
+		if (!allowMutation()) return;
 		const settings = deps.getSettings();
 		let key: string;
 		try { key = seedId; if (!settings.researchProjects[key]) return; }
@@ -1199,6 +1222,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		return !deps.saveProject || await persistProject(graph);
 	};
 	async function switchProject(seedId: string): Promise<boolean> {
+		if (deps.beforeProjectSwitch && !await deps.beforeProjectSwitch()) return false;
 		const token = ++generation;
 		if (!await flushProjectSave() || disposed || token !== generation) return false;
 		const project = deps.getSettings().researchProjects[seedId];
@@ -1238,6 +1262,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	let exclusionBusy = false;
 	const changeExclusion = async (paper: PaperNode, excluded: boolean): Promise<void> => {
+		if (!allowMutation()) return;
 		const host = graph;
 		const seedId = currentSeedId();
 		if (!host || !seedId || paper.isSeed || exclusionBusy) return;
@@ -1290,9 +1315,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		scheduleProjectSave();
 	};
 	const removePaper = (paper: PaperNode): Promise<void> => changeExclusion(paper, true);
+	const taskTransport = (token: number, reservationId: string | null) => {
+		const check = async (): Promise<void> => {
+			if (!deps.operationGate) return;
+			if (disposed || generation !== token) throw new Error(tr("任务已取消。", "Task cancelled."));
+			if (reservationId) await deps.operationGate.assertActive(reservationId);
+		};
+		return {
+			get: deps.operationGate ? async (...args: Parameters<GetJson>) => { await check(); return deps.getJson(...args); } : deps.getJson,
+			post: deps.postJson && deps.operationGate ? async (...args: Parameters<NonNullable<AppDeps["postJson"]>>) => { await check(); return deps.postJson!(...args); } : deps.postJson,
+		};
+	};
 
 	const expandPaper = async (paper: PaperNode): Promise<void> => {
-		if (!graph || expanding) return;
+		if (!graph || expanding || !allowMutation()) return;
 		hideNodeMenu();
 		const settings = deps.getSettings();
 		const seedId = graph.nodes.find((node) => node.isSeed)?.id;
@@ -1323,7 +1359,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		expandItem.disabled = true;
 		status.textContent = tr(`正在从「${paper.title.slice(0, 24)}」扩展…`, `Expanding from “${paper.title.slice(0, 24)}”…`);
 		try {
-			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
+			const transport = taskTransport(token, reservationId);
+			const oa = new OpenAlexClient(transport.get, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
 			const result = await expandAround(oa, host, paper, hiddenIds, settings, slots);
 			const { papers, aliases, lists } = result;
 			if (disposed || token !== generation || graph !== host || requests.get(projectKey) !== request) {
@@ -1331,6 +1368,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				return;
 			}
 			if (papers.length === 0) {
+				if (reservationId && deps.operationGate) await deps.operationGate.assertActive(reservationId);
 				const batch: DeepDiveBatch = { id: `${Date.now()}`, parentId: paper.id, createdAt: Date.now(), references: 0, citations: 0, additions: [], noMore: result.noMore, warnings: result.warnings };
 				deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
 				if (aliases.length) await applyEdit(graftNodes(host, aliases, lists), tr(`已补充 ${aliases.length} 条同作品来源记录`, `Added ${aliases.length} source records for existing works`));
@@ -1372,10 +1410,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			status.textContent = error instanceof Error ? error.message : tr("深挖失败。", "Deep dive failed.");
 		} finally {
 			if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
-			dives.delete(projectKey);
-			session.endDive(seedId);
-			expanding = false;
-			expandItem.disabled = false;
+			if (requests.get(projectKey) === request) { dives.delete(projectKey); session.endDive(seedId); }
+			if (token === generation) { expanding = false; expandItem.disabled = false; }
 		}
 	};
 
@@ -1525,21 +1561,22 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (current()) await commitSourceVersionRelations(settings, reports, deps.persistSettings, next.catalog);
 		} catch (error) { if (current()) status.textContent = error instanceof Error ? error.message : tr("版本关系保存失败，请重新加载重试", "Version relation save failed. Reload to retry."); }
 	};
-	const client = (): OpenAlexClient => {
+	const client = (get = deps.getJson): OpenAlexClient => {
 		const settings = deps.getSettings();
-		return new OpenAlexClient(deps.getJson, {
+		return new OpenAlexClient(get, {
 			apiKey: settings.apiKey,
 			contactEmail: settings.contactEmail,
 		});
 	};
-	const reconcileSource = (): SemanticScholarClient | null => {
-		if (!deps.postJson) return null;
+	const reconcileSource = (get = deps.getJson, post = deps.postJson): SemanticScholarClient | null => {
+		if (!post) return null;
 		const settings = deps.getSettings();
 		if (!settings.s2Reconcile) return null;
-		return new SemanticScholarClient(deps.getJson, settings.semanticScholarApiKey, deps.postJson);
+		return new SemanticScholarClient(get, settings.semanticScholarApiKey, post);
 	};
 
 	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false, restoreView?: SavedView, allowRetractedSeed = false): Promise<void> => {
+		if (!allowMutation()) return;
 		if (!refresh) {
 			const matches = matchingSeedProjects(deps.getSettings().researchProjects, target);
 			if (matches.length > 1) {
@@ -1580,7 +1617,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		setBusy(true);
 		clearError();
 		hideResults();
-		if (refresh && graph) {
+		if (refresh && graph && !deps.operationGate) {
 			map.setGraph([], [], new Map());
 			graphKey.setStats([], []);
 			empty.hidden = false;
@@ -1594,7 +1631,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		status.textContent = STAGE_TEXT.resolving;
 		try {
 			const settings = deps.getSettings();
-			const oa = client();
+			const transport = taskTransport(token, reservationId);
+			const oa = client(transport.get);
 			const next = await loadNeighborhood(
 				oa,
 				target,
@@ -1603,8 +1641,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					if (token !== generation) return;
 					messageText.textContent = status.textContent = STAGE_TEXT[stage];
 				},
-				reconcileSource(),
-				new CrossrefClient(deps.getJson, settings.contactEmail),
+				reconcileSource(transport.get, transport.post),
+				new CrossrefClient(transport.get, settings.contactEmail),
 				{ savedSeed: targetProject?.snapshot?.nodes.find(node => node.isSeed), allowRetractedSeed },
 			);
 			if (disposed || token !== generation || requests.get(requestKey) !== request) {
@@ -1628,6 +1666,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				return;
 			}
 			if (restored.failed) throw new Error(tr(`更新未完成：${restored.failed} 篇保留论文读取失败，原图未替换`, `Update incomplete: ${restored.failed} retained papers could not be loaded; previous graph retained`));
+			if (deps.operationGate && refresh && restored.graph.nodes.filter(node => !node.isSeed).length < 1) {
+				status.textContent = tr("未取得邻居文献，已保留旧图；本次不计次数。", "No neighbors retrieved. Previous graph retained; not charged.");
+				return;
+			}
 			if (!refresh && projectKey) {
 				if (reservationId && deps.operationGate) await deps.operationGate.release(reservationId);
 				reservationId = null;
@@ -1820,6 +1862,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		input.value = seedId;
 		void buildResolved({ kind: "openalex", value: seedId }, true);
 	});
+	if (deps.operationGate) reload.title = tr("重新加载：成功保存后使用1次额度", "Reload: uses one operation after a successful save");
 
 	const onKey = (event: KeyboardEvent): void => {
 		if (event.key === "Escape") {
@@ -1920,7 +1963,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		frame.apply();
 		map.resize();
 		if (!coverDismissed && Boolean(selectedPaper) && !detail.hidden && root.classList.contains("is-narrow")) frame.revealRight();
-		if (setDetailCover(root, !coverDismissed && Boolean(selectedPaper) && !detail.hidden)) {
+		if (setDetailCover(root, (!deps.onSelectPaper || root.clientWidth > 640) && !coverDismissed && Boolean(selectedPaper) && !detail.hidden)) {
 			detailReturn = map.getViewState();
 			detailReturnLocked = false;
 		} else if (!root.classList.contains("is-detail-cover")) {
@@ -2051,6 +2094,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	return {
 		openDoiPathSearch,
+		selectPaper: paperId => { const paper = graph?.nodes.find(node => node.id === paperId) ?? graph?.catalog.find(node => node.id === paperId); if (paper) showDetail(paper, true); },
+		getViewState: () => map.getViewState(),
+		setViewState: view => { coverDismissed = true; root.classList.remove("is-detail-cover"); map.resize(); map.setViewState(view); },
+		expandPaper: async paperId => { const paper = graph?.nodes.find(node => node.id === paperId); if (paper) await expandPaper(paper); },
+		cancelPending: () => {
+			generation++;
+			if (projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
+			const seed = currentSeedId();
+			if (seed) { dives.delete(activeProjectId ?? seed); session.endDive(seed); }
+			expanding = false;
+			expandItem.disabled = false;
+			setBusy(false);
+		},
 		destroy: () => {
 			disposed = true;
 			versionDialogs.abort();

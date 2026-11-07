@@ -14,7 +14,7 @@ async function json(path, { method = "POST", headers = {}, body } = {}) {
 }
 
 function auth(session) {
-	return { "X-Browser-Token": session.browser_token, "X-Session-Nonce": session.session_nonce };
+	return { "X-Browser-Token": session.browser_token, "X-Session-Nonce": session.session_nonce, "X-Client-Api": "2" };
 }
 
 const failures = [];
@@ -36,7 +36,7 @@ const sessionRes = await json("/api/session");
 check(sessionRes.status === 200 && sessionRes.data.browser_token && sessionRes.data.session_nonce, "session bootstrap");
 const session = sessionRes.data;
 
-const openalex = await json("/api/openalex", { body: { method: "GET", path: "/works/W1", query: { select: "id,display_name" } } });
+const openalex = await json("/api/openalex", { headers: auth(session), body: { method: "GET", path: "/works/W1", query: { select: "id,display_name" } } });
 check([200, 503].includes(openalex.status), `openalex mock/unconfigured status ${openalex.status}`);
 if (openalex.status === 503) check(openalex.data.code === "openalex_unconfigured", "unconfigured code");
 if (openalex.status === 200) check(openalex.data.id?.includes("openalex.org"), "mock work id");

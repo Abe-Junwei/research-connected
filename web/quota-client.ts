@@ -13,6 +13,7 @@ export interface QuotaStatus {
 	site_limit: number;
 	openalex_budget_remaining_usd: number;
 	openalex_budget_usd: number;
+	openalex_upstream_remaining_usd?: number;
 	active_reservation?: string;
 	reason: string;
 	code?: string;
@@ -40,6 +41,7 @@ export interface LocalTask {
 	action: QuotaAction;
 	expiresAt: number;
 	createdAt: number;
+	saved?: boolean;
 }
 
 export function readLocalTask(): LocalTask | null {
@@ -67,12 +69,16 @@ export function taskStillValid(task: LocalTask | null = readLocalTask(), now = D
 
 async function post(path: string, body?: Record<string, unknown>): Promise<QuotaDecision | QuotaStatus> {
 	await ensureSession();
-	const response = await window.fetch(path, {
+	let response = await window.fetch(path, {
 		method: "POST",
 		headers: { "Content-Type": "application/json", ...sessionHeaders() },
 		body: body ? JSON.stringify(body) : "{}",
 		signal: AbortSignal.timeout(15000),
 	});
+	if (response.status === 401 && path !== "/api/quota/confirm" && path !== "/api/quota/release") {
+		await ensureSession(true);
+		response = await window.fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...sessionHeaders() }, body: body ? JSON.stringify(body) : "{}", signal: AbortSignal.timeout(15000) });
+	}
 	const json = await response.json() as QuotaDecision | QuotaStatus;
 	if (!response.ok && "ok" in json) return json;
 	if (!response.ok) {
@@ -111,21 +117,29 @@ export async function confirmQuota(reservationId: string): Promise<QuotaDecision
 		clearLocalTask(reservationId);
 		return { ok: false, code: "expired", message: "Reservation expired before confirmation.", browser_remaining: 0, site_remaining: 0, reset_at: "", reason: "expired" };
 	}
-	const decision = await post("/api/quota/confirm", { reservation_id: reservationId, idempotency_key: task.idempotencyKey }) as QuotaDecision;
-	if (decision.ok) clearLocalTask(reservationId);
-	return decision;
+	while (taskStillValid() && readLocalTask()?.reservationId === reservationId) {
+		try {
+			const decision = await post("/api/quota/confirm", { reservation_id: reservationId, idempotency_key: task.idempotencyKey }) as QuotaDecision;
+			clearLocalTask(reservationId);
+			return decision;
+		} catch {
+			// The result is already saved; retry the same confirmation, never release on a lost reply.
+			await new Promise<void>(resolve => window.setTimeout(resolve, Math.min(2000, Math.max(0, task.expiresAt * 1000 - Date.now()))));
+		}
+	}
+	clearLocalTask(reservationId);
+	return { ok: false, code: "expired", message: "Saved result retained; confirmation expired without charging.", browser_remaining: 0, site_remaining: 0, reset_at: "", reason: "expired" };
 }
 
-export async function releaseQuota(reservationId: string): Promise<QuotaDecision> {
+export async function releaseQuota(reservationId: string, takeover = false): Promise<QuotaDecision> {
 	const task = readLocalTask();
 	const idempotencyKey = task && task.reservationId === reservationId ? task.idempotencyKey : undefined;
-	const decision = await post("/api/quota/release", { reservation_id: reservationId, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }) as QuotaDecision;
+	const decision = await post("/api/quota/release", { reservation_id: reservationId, ...(takeover ? { takeover: true } : {}), ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) }) as QuotaDecision;
 	clearLocalTask(reservationId);
 	return decision;
 }
 
 export function formatQuotaBanner(status: QuotaStatus): string {
-	const reset = status.reset_at ? new Date(status.reset_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) : "";
 	const reason = status.reason === "browser_quota" ? "浏览器今日次数已用完"
 		: status.reason === "site_quota" ? "全站今日名额已用完"
 		: status.reason === "openalex_budget" ? "OpenAlex 免费用量已用尽"
@@ -133,5 +147,11 @@ export function formatQuotaBanner(status: QuotaStatus): string {
 		: status.reason === "ip_rate" ? "同一网络启动过快，请稍后重试"
 		: status.reason === "session_invalid" ? "会话已失效，请刷新页面"
 		: "";
-	return `浏览器剩余 ${status.browser_remaining}/${status.browser_limit} · 全站剩余 ${status.site_remaining}/${status.site_limit} · 北京时间重置 ${reset}${reason ? ` · ${reason}` : ""}`;
+	return `浏览器剩余 ${status.browser_remaining}/${status.browser_limit} · 全站剩余 ${status.site_remaining}/${status.site_limit}${reason ? ` · ${reason}` : ""}`;
+}
+
+export function formatQuotaDetails(status: QuotaStatus): string[] {
+	const reset = status.reset_at ? new Date(status.reset_at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }) : "暂不可用";
+	const budget = Number.isFinite(status.openalex_budget_remaining_usd) ? `$${status.openalex_budget_remaining_usd.toFixed(4)}` : "暂不可用";
+	return [`北京时间重置 ${reset}`, `OpenAlex 免费预算保守剩余 ${budget}`, `全站每日最多${status.site_limit}次成功操作，另受数据源剩余额度限制。`];
 }

@@ -94,9 +94,9 @@ export function claimBrowserTask(task: Omit<ActiveTask, "tabId" | "startedAt">):
 	return true;
 }
 
-export function clearBrowserTask(reservationId?: string): void {
+export function clearBrowserTask(reservationId?: string, takeover = false): void {
 	const existing = readActiveTask();
-	if (!existing || existing.tabId !== tabId()) return;
+	if (!existing || !takeover && existing.tabId !== tabId()) return;
 	if (reservationId && existing.reservationId !== reservationId) return;
 	window.localStorage.removeItem(TASK_KEY);
 }

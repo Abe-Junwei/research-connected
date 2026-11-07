@@ -126,59 +126,22 @@ export function themeModeLabel(mode: ThemeMode): string {
 	return tr("深色", "Dark");
 }
 
-function themeButtons(group: HTMLElement): HTMLButtonElement[] {
-	const out: HTMLButtonElement[] = [];
-	for (let i = 0; i < group.children.length; i++) {
-		const child = group.children.item(i);
-		if (!child || child.tagName !== "BUTTON") continue;
-		out.push(child as HTMLButtonElement);
-	}
-	return out;
-}
-
 export function syncThemeControls(): void {
-	const group = document.querySelector("#cpo-theme-group");
-	if (!(group instanceof HTMLElement)) return;
-	group.dataset.resolved = resolvedDark(currentMode) ? "dark" : "light";
-	for (const button of themeButtons(group)) {
-		const mode = button.getAttribute("data-theme-mode");
-		const selected = mode === currentMode;
-		button.setAttribute("aria-checked", selected ? "true" : "false");
-		button.tabIndex = selected ? 0 : -1;
-		button.classList.toggle("is-selected", selected);
-	}
+	const toggle = document.querySelector("#cpo-theme-toggle");
+	if (!(toggle instanceof HTMLButtonElement)) return;
+	const dark = resolvedDark();
+	toggle.setAttribute("aria-pressed", String(dark));
+	const label = dark ? tr("切换为浅色", "Switch to light theme") : tr("切换为深色", "Switch to dark theme");
+	toggle.setAttribute("aria-label", label);
+	toggle.title = label;
 }
 
 export function wireThemeControls(): void {
-	const group = document.querySelector("#cpo-theme-group");
-	if (!(group instanceof HTMLElement)) return;
-	group.addEventListener("click", (event) => {
-		const target = event.target;
-		if (!(target instanceof Element)) return;
-		const button = target.closest("[data-theme-mode]");
-		if (!button || button.tagName !== "BUTTON" || !group.contains(button)) return;
-		const mode = button.getAttribute("data-theme-mode");
-		if (mode === "system" || mode === "light" || mode === "dark") applyThemeMode(mode);
-	});
-	group.addEventListener("keydown", (event) => {
-		if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
-		event.preventDefault();
-		const modes: ThemeMode[] = ["system", "light", "dark"];
-		const index = Math.max(0, modes.indexOf(currentMode));
-		let next = index;
-		if (event.key === "ArrowRight") next = (index + 1) % modes.length;
-		if (event.key === "ArrowLeft") next = (index - 1 + modes.length) % modes.length;
-		if (event.key === "Home") next = 0;
-		if (event.key === "End") next = modes.length - 1;
-		const mode = modes[next];
-		if (!mode) return;
-		applyThemeMode(mode);
-		for (const button of themeButtons(group)) {
-			if (button.getAttribute("data-theme-mode") === mode) {
-				button.focus();
-				break;
-			}
-		}
+	const toggle = document.querySelector("#cpo-theme-toggle");
+	if (!(toggle instanceof HTMLButtonElement)) return;
+	toggle.addEventListener("click", () => applyThemeMode(resolvedDark() ? "light" : "dark"));
+	window.addEventListener("storage", (event) => {
+		if (event.key === STORAGE_KEY || event.key === null) applyThemeMode(readThemeMode(), false);
 	});
 	syncThemeControls();
 }

@@ -8,6 +8,8 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
+import concurrent.futures
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -94,6 +96,42 @@ class QuotaLifecycle(unittest.TestCase):
         bad_key = self.store.confirm(self.token, self.nonce, reserved.reservation_id, "other-key")
         self.assertEqual(bad_key.code, "idempotency_mismatch")
 
+    def test_takeover_cancels_only_same_browser_and_rejects_late_confirm(self):
+        reserved = self.reserve(key="takeover")
+        peer = self.store.create_session(self.token)
+        outsider = self.store.create_session()
+        self.assertFalse(self.store.release(outsider["browser_token"], outsider["session_nonce"], reserved.reservation_id, takeover=True).ok)
+        self.assertFalse(self.store.release(self.token, peer["session_nonce"], reserved.reservation_id).ok)
+        self.assertTrue(self.store.release(self.token, peer["session_nonce"], reserved.reservation_id, takeover=True).ok)
+        self.assertEqual(self.store.confirm(self.token, self.nonce, reserved.reservation_id, "takeover").code, "released")
+
+    def test_concurrent_reservations_do_not_oversubscribe(self):
+        self.store.site_daily = 7
+        sessions = [self.store.create_session() for _ in range(20)]
+        def reserve(row):
+            return self.store.reserve(row["browser_token"], row["session_nonce"], "build", "concurrent", row["browser_token"])
+        with concurrent.futures.ThreadPoolExecutor(20) as pool:
+            results = list(pool.map(reserve, sessions))
+        self.assertEqual(sum(result.ok for result in results), 7)
+        reopened = QuotaStore(self.path, clock=self.clock, site_daily=7)
+        self.assertEqual(reopened.status(self.token, self.nonce)["site_remaining"], 0)
+
+    def test_corrupt_state_is_not_silently_reset(self):
+        Path(self.path).write_text("{broken")
+        with self.assertRaisesRegex(RuntimeError, "refusing to reset"):
+            QuotaStore(self.path, clock=self.clock)
+        self.assertEqual(Path(self.path).read_text(), "{broken")
+
+    def test_failed_disk_confirmation_rolls_memory_back(self):
+        reserved = self.reserve(key="disk-failure")
+        with patch("quota.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                self.store.confirm(self.token, self.nonce, reserved.reservation_id, "disk-failure")
+        self.assertEqual(self.store.state["site_success"], 0)
+        self.assertEqual(self.store.state["reservations"][reserved.reservation_id]["status"], "reserved")
+        self.assertTrue(self.store.confirm(self.token, self.nonce, reserved.reservation_id, "disk-failure").ok)
+        self.assertEqual(QuotaStore(self.path, clock=self.clock).state["site_success"], 1)
+
     def test_new_period_does_not_migrate_reservation(self):
         reserved = self.reserve(key="idem-period")
         self.assertTrue(reserved.ok)
@@ -102,6 +140,7 @@ class QuotaLifecycle(unittest.TestCase):
         # Keep the same session alive across the operation-period boundary.
         token_hash = __import__("hashlib").sha256(self.token.encode()).hexdigest()
         self.store.state["sessions"][token_hash]["expires_at"] = self.clock.now + 3600
+        self.store.state["sessions"][token_hash]["nonces"][__import__("hashlib").sha256(self.nonce.encode()).hexdigest()] = self.clock.now + 3600
         self.store.state["reservations"][reserved.reservation_id]["expires_at"] = self.clock.now + 60
         # Rolling must expire rather than migrate the open reservation.
         status = self.store.status(self.token, self.nonce)
@@ -157,8 +196,59 @@ class QuotaLifecycle(unittest.TestCase):
         self.assertNotIn("/works/", raw)
         self.assertNotIn(self.token.lower(), raw)
 
+    def test_tabs_reopen_renewal_preserve_identity_and_reservations(self):
+        a = self.session
+        reserved = self.reserve(key="tabs")
+        b = self.store.create_session(self.token)
+        self.assertEqual(b["browser_token"], self.token)
+        self.assertNotEqual(b["session_nonce"], self.nonce)
+        self.assertEqual(self.store.status(self.token, b["session_nonce"])["reason"], "browser_busy")
+        self.assertTrue(self.store.confirm(self.token, self.nonce, reserved.reservation_id, "tabs").ok)
+        self.assertEqual(self.store.status(self.token, b["session_nonce"])["browser_remaining"], 9)
+        self.clock.advance(12 * 3600 + 1)
+        self.assertEqual(self.store.status(self.token, self.nonce)["code"], "session_invalid")
+        c = self.store.create_session(self.token)
+        self.assertEqual(c["browser_token"], self.token)
+        # This clock crosses the next operation period, but retains browser identity.
+        self.assertTrue(self.store.status(self.token, c["session_nonce"])["ok"])
+        reloaded = QuotaStore(self.path, clock=self.clock)
+        self.assertEqual(reloaded.create_session(self.token)["browser_token"], self.token)
+
+    def test_query_limits_and_abandoned_cost_survive_restart(self):
+        for _ in range(120): self.assertTrue(self.store.allow_request("query", "1.2.3.4", self.token))
+        self.assertFalse(self.store.allow_request("query", "1.2.3.4", self.token))
+        self.assertFalse(QuotaStore(self.path, clock=self.clock).allow_request("query", "1.2.3.4", self.token))
+        self.clock.advance(61)
+        self.assertTrue(self.store.allow_request("query", "1.2.3.4", self.token))
+        ok, _, hold = self.store.hold_openalex(0.4, ttl_sec=1)
+        self.assertTrue(ok)
+        self.clock.advance(2)
+        self.assertAlmostEqual(self.store.status(self.token, self.nonce)["openalex_budget_remaining_usd"], 0.6)
+        self.store.observe_openalex(0.8, 0.2)
+        self.assertAlmostEqual(self.store.status(self.token, self.nonce)["openalex_budget_remaining_usd"], 0.2)
+
 
 class OpenAlexProxyTests(unittest.TestCase):
+    def test_local_proxy_forwards_client_api(self):
+        from local_web_dev import Handler
+        handler = object.__new__(Handler)
+        handler.headers = {"X-Client-Api": "2", "X-Browser-Token": "browser", "X-Session-Nonce": "nonce"}
+        handler.path = "/api/quota/status"
+        handler.command = "POST"
+        handler.rfile = io.BytesIO()
+        handler.wfile = io.BytesIO()
+        handler.send_response = lambda status: None
+        handler.send_header = lambda *args: None
+        handler.end_headers = lambda: None
+        response = unittest.mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b"{}"
+        response.status = 200
+        response.headers = {}
+        with patch("local_web_dev.urllib.request.urlopen", return_value=response) as request:
+            handler._proxy()
+        self.assertEqual(request.call_args.args[0].get_header("X-client-api"), "2")
+
     def test_validation_and_mock_unconfigured(self):
         method, url = validate_openalex({"method": "GET", "path": "/works/W1", "query": {"select": "id", "mailto": "x@y.z"}})
         self.assertEqual(method, "GET")
@@ -203,6 +293,7 @@ class OpenAlexProxyTests(unittest.TestCase):
                 "X-Browser-Token": session["browser_token"],
                 "X-Session-Nonce": session["session_nonce"],
                 "CF-Connecting-IP": "203.0.113.9",
+                "X-Client-Api": "2",
             }
             reserve = urllib.request.Request(base + "/api/quota/reserve", data=json.dumps({"action": "build", "idempotency_key": "local-1"}).encode(), headers=headers)
             with urllib.request.urlopen(reserve) as response:
@@ -222,14 +313,50 @@ class OpenAlexProxyTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 403)
             error.exception.close()
 
+            from unittest.mock import patch
+            payload = json.dumps({"method": "GET", "path": "/works/W1", "query": {"select": "id"}}).encode()
+            for extra, expected in [({}, 401), ({"X-Browser-Token": session["browser_token"], "X-Session-Nonce": session["session_nonce"]}, 426)]:
+                request = urllib.request.Request(base + "/api/openalex", data=payload, headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai", **extra})
+                with self.assertRaises(urllib.error.HTTPError) as error: urllib.request.urlopen(request)
+                self.assertEqual(error.exception.code, expected)
+                error.exception.close()
+            with patch("openalex_proxy.forward_s2", return_value=(200, {}, {"title": "S2 routed"})) as forward:
+                request = urllib.request.Request(base + "/api/semantic-scholar", data=b"{}", headers=headers)
+                with urllib.request.urlopen(request) as response: self.assertEqual(json.load(response)["title"], "S2 routed")
+                forward.assert_called_once()
+            with urllib.request.urlopen(base + "/api/version") as response:
+                self.assertEqual(json.load(response)["minClientApi"], 2)
+
             # Product origin works with mock
-            good = urllib.request.Request(base + "/api/openalex", data=json.dumps({"method": "GET", "path": "/works/W1", "query": {"select": "id"}}).encode(), headers={"Content-Type": "application/json", "Origin": "https://graph.jieyu.ai"})
+            good = urllib.request.Request(base + "/api/openalex", data=json.dumps({"method": "GET", "path": "/works/W1", "query": {"select": "id"}}).encode(), headers={**headers, "Origin": "https://graph.jieyu.ai"})
             with urllib.request.urlopen(good) as response:
                 self.assertEqual(json.load(response)["id"], "https://openalex.org/W1")
         finally:
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+
+    def test_authoritative_pricing_and_ambiguous_failure(self):
+        from unittest.mock import patch
+        class Response(io.BytesIO):
+            headers = {"X-RateLimit-Cost-USD": "0.001"}
+        with tempfile.TemporaryDirectory() as tmp:
+            quota = QuotaStore(os.path.join(tmp, "q.json"))
+            proxy = OpenAlexProxy("test-only", quota)
+            usage = {"rate_limit": {"daily_used_usd": 0.1, "daily_remaining_usd": 0.9, "endpoint_costs_usd": {"singleton": 0, "list": 0.0001, "search": 0.001}}}
+            def opener(req, timeout):
+                if req.full_url.endswith("/rate-limit"): return Response(json.dumps(usage).encode())
+                return Response(b'{"results": []}')
+            proxy.opener = opener
+            status, _, _ = proxy.request({"method": "GET", "path": "/works", "query": {"search": "language"}})
+            self.assertEqual(status, 200)
+            self.assertAlmostEqual(quota.state["openalex"]["spent_micros"] / 1e6, 0.101)
+            proxy.opener = lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError())
+            status, _, _ = proxy.request({"method": "GET", "path": "/works", "query": {"search": "different"}})
+            self.assertEqual(status, 502)
+            self.assertAlmostEqual(quota.state["openalex"]["spent_micros"] / 1e6, 0.102)
+            proxy.usage_check_after = 0
+            self.assertEqual(proxy.request({"method": "GET", "path": "/works/W1", "query": {}})[0], 503)
 
 
 if __name__ == "__main__":

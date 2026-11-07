@@ -1,25 +1,12 @@
 import assert from "node:assert/strict";
 
-class StorageFullError extends Error {
-	constructor(message = "Browser storage is full") {
-		super(message);
-		this.name = "StorageFullError";
-	}
-}
-
-function isQuota(error) {
-	return error instanceof DOMException && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
-}
-
-function writeWebProjectSettings(key, settings, storage) {
-	const payload = JSON.stringify(settings);
-	try {
-		storage.setItem(key, payload);
-	} catch (error) {
-		if (isQuota(error)) throw new StorageFullError();
-		throw error;
-	}
-}
+import vm from "node:vm";
+import { build } from "esbuild";
+const code = (await build({ entryPoints: ["web/storage.ts"], bundle: true, format: "cjs", write: false })).outputFiles[0].text;
+const module = { exports: {} };
+const storageProxy = { setItem: (key, value) => storage.setItem(key, value) };
+vm.runInNewContext(code, { module, exports: module.exports, DOMException, window: { localStorage: storageProxy } });
+const { StorageFullError, writeWebProjectSettings } = module.exports;
 
 const memory = new Map([["keep", JSON.stringify({ researchProjects: { old: { snapshot: { nodes: [1] } } } })]]);
 const storage = {
@@ -32,7 +19,7 @@ const storage = {
 
 assert.ok(storage.getItem("keep"));
 assert.throws(
-	() => writeWebProjectSettings("settings", { researchProjects: { a: { snapshot: { nodes: [1, 2, 3, 4, 5, 6, 7, 8] } } } }, storage),
+	() => writeWebProjectSettings("settings", { researchProjects: { a: { snapshot: { nodes: [1, 2, 3, 4, 5, 6, 7, 8] } } } }),
 	(error) => error instanceof StorageFullError,
 );
 assert.ok(storage.getItem("keep"), "quota failure must not delete existing projects");

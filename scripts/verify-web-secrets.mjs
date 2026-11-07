@@ -1,5 +1,8 @@
 import fs from "node:fs";
-const web = fs.readFileSync("web/dist/web.js", "utf8");
+const html = fs.readFileSync("web/dist/index.html", "utf8");
+const asset = html.match(/src=".\/(web-[^"/]+\.js)"/)?.[1];
+if (!asset) throw new Error("web HTML must reference a versioned bundle");
+const web = fs.readFileSync(`web/dist/${asset}`, "utf8");
 const env = fs.readFileSync("server/research-connected-web.env.example", "utf8");
 if (!/^OPENALEX_API_KEY=$/m.test(env)) throw new Error("env example must keep an empty OPENALEX_API_KEY slot");
 if (/^OPENALEX_API_KEY=.+/m.test(env)) throw new Error("env example must not ship a real key");

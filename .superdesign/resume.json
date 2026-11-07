@@ -144,6 +144,34 @@
         }
       },
       "updatedAt": "2026-10-07T14:53:10Z"
+    },
+    "web-loading-screen": {
+      "targetKind": "existing-ui",
+      "projectId": "03973bb8-06c2-4b1f-977e-b974178b7938",
+      "baselineDraftId": "d0793d66-0a22-4533-aa20-a620bd17d5cc",
+      "activeDraftId": "d0793d66-0a22-4533-aa20-a620bd17d5cc",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "docs-images-logo.svg"
+      ],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "web/index.html",
+        "docs/images/logo.svg"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "50b471caa9c675af6ba2a949917871e369a03b45375af4d7d64a07be1d51366f",
+        "web/index.html": "abc7219730454f944345bba77641ef6bc1e1918405c7d154d9392cfcb4c601b6",
+        "docs/images/logo.svg": "1740fcac3f03eacd994d5b3b3c1a8e4b767efa01ad5e41f7321622e0a2916a09"
+      },
+      "drafts": {
+        "d0793d66-0a22-4533-aa20-a620bd17d5cc": {
+          "title": "Web · branded loading screen",
+          "visualDirection": "文现 continuous loading: no idle phase in flowing links or node pulses; preserve original mark and reduced-motion static state.",
+          "currentVersion": 4
+        }
+      },
+      "updatedAt": "2026-11-07T07:12:33.699872+00:00"
     }
   }
 }

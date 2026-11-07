@@ -26,7 +26,7 @@ class Handler(SimpleHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(length) if length else None
         headers = {}
-        for key in ("Content-Type", "Origin", "X-Browser-Token", "X-Session-Nonce"):
+        for key in ("Content-Type", "Origin", "X-Browser-Token", "X-Session-Nonce", "X-Client-Api"):
             value = self.headers.get(key)
             if value:
                 headers[key] = value

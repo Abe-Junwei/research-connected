@@ -25,10 +25,10 @@ async function request(url: string, init: { headers: Record<string, string>; bod
 	const openalex = target.hostname === OPENALEX_HOST;
 	const s2 = target.hostname === S2_HOST;
 	if (init.body && !s2) throw new Error("Browser POST is only available for Semantic Scholar.");
-	if (openalex) await ensureSession();
+	if (openalex || s2) await ensureSession();
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
-		...(openalex ? sessionHeaders() : {}),
+		...sessionHeaders(),
 	};
 	let endpoint: string;
 	let body: string | undefined;
@@ -52,7 +52,11 @@ async function request(url: string, init: { headers: Record<string, string>; bod
 		}
 		return screenWebResponse(await response.json() as unknown, target, init.body);
 	}
-	const response = await window.fetch(endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(45000) });
+	let response = await window.fetch(endpoint, { method: "POST", headers, body, signal: AbortSignal.timeout(45000) });
+	if (response.status === 401) {
+		await ensureSession(true);
+		response = await window.fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", ...sessionHeaders() }, body, signal: AbortSignal.timeout(45000) });
+	}
 	if (!response.ok) {
 		const service = openalex ? "OpenAlex" : "Semantic Scholar";
 		const message = await readError(response, `${service} request failed (HTTP ${response.status}).`);

@@ -23,7 +23,9 @@
 		"test:web-browser-local": "npm exec --yes --package=playwright@1.48.2 -- node scripts/verify-web-browser-local.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint src preview web --max-warnings 0",
-		"test:browser:build": "node esbuild.config.mjs review-browser"
+		"test:browser:build": "node esbuild.config.mjs review-browser",
+		"test:web-session": "node scripts/verify-web-session.mjs",
+		"test:web-theme": "node scripts/verify-web-theme.mjs"
 	},
 	"license": "AGPL-3.0",
 	"devDependencies": {

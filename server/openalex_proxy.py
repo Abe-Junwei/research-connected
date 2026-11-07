@@ -9,6 +9,8 @@ from __future__ import annotations
 import collections
 import ipaddress
 import json
+import math
+from pathlib import Path
 import os
 import re
 import threading
@@ -236,7 +238,35 @@ class OpenAlexProxy:
                     return 429, {"Retry-After": str(max(1, int(delay + 1)))}, {"error": "OpenAlex is cooling down. Try again later.", "code": "openalex_rate"}
                 if delay > 0:
                     time.sleep(delay)
-                ok, code, hold_id = self.quota.hold_openalex()
+                if not self.allow_mock:
+                    if time.monotonic() >= getattr(self, "usage_check_after", 0):
+                        try:
+                            usage_req = urllib.request.Request("https://api.openalex.org/rate-limit", headers={"Authorization": f"Bearer {self.key}"})
+                            with self.opener(usage_req, timeout=15) as usage_response:
+                                usage_raw = usage_response.read(MAX_RESPONSE + 1)
+                            if len(usage_raw) > MAX_RESPONSE: raise ValueError("Usage response too large")
+                            usage = json.loads(usage_raw)["rate_limit"]
+                            used = float(usage["daily_used_usd"])
+                            remaining = float(usage["daily_remaining_usd"])
+                            costs = usage["endpoint_costs_usd"]
+                            if not all(math.isfinite(x) and x >= 0 for x in (used, remaining)):
+                                raise ValueError("Invalid usage")
+                            self.quota.observe_openalex(used, remaining)
+                            self.upstream_costs = costs
+                            self.usage_check_after = time.monotonic() + 60
+                        except (OSError, ValueError, KeyError, TypeError):
+                            return 503, {"Retry-After": "30"}, {"error": "Cannot verify OpenAlex free allowance. Try again later.", "code": "openalex_usage_unavailable"}
+                    kind = "singleton" if path != "/works" else "search" if "search" in payload.get("query", {}) else "list"
+                    try:
+                        cost = float(self.upstream_costs[kind])
+                        if not math.isfinite(cost) or cost < 0: raise ValueError("Invalid cost")
+                    except (KeyError, TypeError, ValueError):
+                        return 503, {}, {"error": "OpenAlex pricing is unavailable.", "code": "openalex_usage_unavailable"}
+                else:
+                    cost = self.quota.request_cost_usd
+                if not self.quota.openalex_allowed():
+                    return 429, {"Retry-After": "3600"}, {"error": "OpenAlex daily free budget is exhausted.", "code": "openalex_budget"}
+                ok, code, hold_id = self.quota.hold_openalex(cost)
                 if not ok:
                     return 429, {"Retry-After": "3600"}, {"error": "OpenAlex daily free budget is exhausted.", "code": code}
                 self.next_request = time.monotonic() + self.interval
@@ -254,6 +284,7 @@ class OpenAlexProxy:
                 try:
                     with self.opener(req, timeout=20) as response:
                         raw = response.read(MAX_RESPONSE + 1)
+                        actual_header = response.headers.get("X-RateLimit-Cost-USD")
                     if len(raw) > MAX_RESPONSE:
                         raise ValueError("Response too large.")
                     data = json.loads(raw)
@@ -261,7 +292,7 @@ class OpenAlexProxy:
                         raise ValueError("Invalid OpenAlex payload.")
                 except urllib.error.HTTPError as error:
                     if hold_id:
-                        self.quota.refund_openalex(hold_id)
+                        self.quota.settle_openalex(hold_id)
                         hold_id = None
                     headers = {}
                     body = {"error": f"OpenAlex request failed (HTTP {error.code}).", "code": "openalex_upstream"}
@@ -275,11 +306,19 @@ class OpenAlexProxy:
                     return error.code, headers, body
                 except (OSError, ValueError, json.JSONDecodeError):
                     if hold_id:
-                        self.quota.refund_openalex(hold_id)
+                        self.quota.settle_openalex(hold_id)
                         hold_id = None
                     return 502, {}, {"error": "OpenAlex returned unavailable or invalid data.", "code": "openalex_upstream"}
                 if hold_id:
-                    self.quota.settle_openalex(hold_id)
+                    try:
+                        actual = float(actual_header) if actual_header is not None else cost
+                        if not math.isfinite(actual) or actual < 0: actual = cost
+                    except ValueError:
+                        actual = cost
+                    # Reserve authoritative endpoint cost; settle a lower known actual cost.
+                    if actual > cost:
+                        self.quota.observe_openalex(self.quota.openalex_budget_usd, 0)
+                    self.quota.settle_openalex(hold_id, actual)
                     hold_id = None
                 ttl = 300
                 if cache_key in self.cache:
@@ -293,7 +332,7 @@ class OpenAlexProxy:
                 self.lock.release()
         finally:
             if hold_id:
-                self.quota.refund_openalex(hold_id)
+                self.quota.settle_openalex(hold_id)
             self.slots.release()
 
 
@@ -316,6 +355,35 @@ def decision_payload(decision) -> dict:
     return payload
 
 
+def version_info():
+    try:
+        data = json.loads(Path(os.environ.get("WEB_VERSION_PATH", "/var/www/graph.jieyu.ai/version.json")).read_text())
+        return {"build": str(data["build"]), "api": 2, "minClientApi": 2}
+    except (OSError, ValueError, KeyError):
+        return {"build": "development", "api": 2, "minClientApi": 2}
+
+
+def forward_s2(payload: dict, origin: str):
+    # The S2 service owns validation, bounded queue, caching and upstream cooldown.
+    req = urllib.request.Request("http://127.0.0.1:9185/api/semantic-scholar", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Origin": origin}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=40) as response:
+            raw = response.read(MAX_RESPONSE + 1)
+            if len(raw) > MAX_RESPONSE: raise ValueError("Response too large")
+            return response.status, {}, json.loads(raw)
+    except urllib.error.HTTPError as error:
+        raw = error.read(MAX_RESPONSE + 1)
+        retry = error.headers.get("Retry-After")
+        status = error.code
+        error.close()
+        try: data = json.loads(raw) if len(raw) <= MAX_RESPONSE else {}
+        except ValueError: data = {"error": "Semantic Scholar unavailable."}
+        return status, {"Retry-After": retry} if retry else {}, data
+    except (OSError, ValueError):
+        return 502, {}, {"error": "Semantic Scholar unavailable.", "code": "s2_upstream"}
+
+
 def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = False, trusted_proxies: list | None = None, expose_debug: bool = False):
     trusted = trusted_proxies or []
 
@@ -334,7 +402,7 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
             if ok and origin:
                 headers["Access-Control-Allow-Origin"] = origin
                 headers["Vary"] = "Origin"
-                headers["Access-Control-Allow-Headers"] = "Content-Type, X-Browser-Token, X-Session-Nonce"
+                headers["Access-Control-Allow-Headers"] = "Content-Type, X-Browser-Token, X-Session-Nonce, X-Client-Api"
                 headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
             return headers
 
@@ -390,6 +458,9 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
             self.reply(204, {}, {}, origin)
 
         def do_GET(self):
+            if self.path == "/api/version":
+                self.reply(200, {}, version_info())
+                return
             if self.path == "/health":
                 # Loopback health may omit Origin; never include secrets.
                 peer = peer_ip(self)
@@ -414,6 +485,7 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
             if path not in {
                 "/api/session",
                 "/api/openalex",
+                "/api/semantic-scholar",
                 "/api/quota/status",
                 "/api/quota/reserve",
                 "/api/quota/confirm",
@@ -427,20 +499,32 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
                 self.reply(403, {}, {"error": "Unsupported origin.", "code": str(error) or "origin_forbidden"})
                 return
             try:
+                ip = client_ip(self, trusted)
                 if path == "/api/session":
-                    # Empty body optional.
-                    length = int(self.headers.get("Content-Length", "0") or 0)
-                    if length:
-                        self.read_json()
-                    session = quota.create_session()
+                    self.read_json()
+                    if not quota.allow_request("session", ip):
+                        self.reply(429, {"Retry-After": "60"}, {"error": "Session requests too frequent.", "code": "query_rate"}, origin)
+                        return
+                    session = quota.create_session((self.headers.get("X-Browser-Token") or "").strip())
                     self.reply(200, {}, session, origin)
                     return
-                if path == "/api/openalex":
-                    payload = self.read_json()
-                    status, headers, data = proxy.request(payload)
-                    self.reply(status, headers, data, origin)
+                token = (self.headers.get("X-Browser-Token") or "").strip()
+                nonce = (self.headers.get("X-Session-Nonce") or "").strip()
+                if not quota.status(token, nonce).get("ok"):
+                    self.reply(401, {}, {"error": "Session expired. Refresh the page.", "code": "session_invalid"}, origin)
                     return
-                token, nonce = self.session_creds()
+                if path in {"/api/openalex", "/api/semantic-scholar", "/api/quota/reserve"}:
+                    if self.headers.get("X-Client-Api") != "2":
+                        self.reply(426, {}, {"error": "A new version is required. Save your work and refresh; local viewing and copying remain available.", "code": "client_outdated"}, origin)
+                        return
+                if path in {"/api/openalex", "/api/semantic-scholar"}:
+                    payload = self.read_json()
+                    if not quota.allow_request("query", ip, token):
+                        self.reply(429, {"Retry-After": "60"}, {"error": "Queries too frequent. Try again later.", "code": "query_rate"}, origin)
+                        return
+                    result = proxy.request(payload) if path == "/api/openalex" else forward_s2(payload, origin)
+                    self.reply(*result, origin)
+                    return
                 if path == "/api/quota/status":
                     self.reply(200, {}, quota.status(token, nonce), origin)
                     return
@@ -462,7 +546,7 @@ def handler_for(proxy: OpenAlexProxy, quota: QuotaStore, allow_local: bool = Fal
                     self.reply(200 if decision.ok else 409, {}, decision_payload(decision), origin)
                     return
                 if path == "/api/quota/release":
-                    decision = quota.release(token, nonce, reservation_id, idempotency_key or None)
+                    decision = quota.release(token, nonce, reservation_id, idempotency_key or None, takeover=body.get("takeover") is True)
                     self.reply(200 if decision.ok else 409, {}, decision_payload(decision), origin)
                     return
             except ValueError as error:

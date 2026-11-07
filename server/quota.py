@@ -26,6 +26,7 @@ IP_STARTS_PER_MINUTE = 10
 OPENALEX_DAILY_BUDGET_USD = 1.0
 DEFAULT_REQUEST_COST_USD = 0.0001
 SESSION_TTL_SEC = 12 * 60 * 60
+BROWSER_TTL_SEC = 30 * 86400
 
 
 def operation_period_id(now: float | None = None) -> str:
@@ -119,25 +120,37 @@ class QuotaStore:
         try:
             with open(self.path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
-            if isinstance(raw, dict) and isinstance(raw.get("period"), str):
-                self.state = raw
-                self.state.setdefault("sessions", {})
-                self.state.setdefault("openalex", {})
+            if not isinstance(raw, dict) or not isinstance(raw.get("period"), str):
+                raise ValueError("Invalid quota state")
+            datetime.fromisoformat(raw["period"])
+            if any(not isinstance(raw.get(key), dict) for key in ("browsers", "reservations", "ip_starts", "active")) or type(raw.get("site_success")) is not int or raw["site_success"] < 0:
+                raise ValueError("Invalid quota state")
+            self.state = raw
+            self.state.setdefault("sessions", {})
+            self.state.setdefault("openalex", {})
         except FileNotFoundError:
-            pass
-        except (OSError, ValueError, json.JSONDecodeError):
             self.state = self._empty(operation_period_id(self.clock()))
+        except (OSError, ValueError, json.JSONDecodeError):
+            raise RuntimeError("Quota state cannot be read; refusing to reset existing usage.") from None
         self._roll_periods(self.clock())
 
     def _save(self) -> None:
         directory = os.path.dirname(self.path) or "."
-        os.makedirs(directory, exist_ok=True)
         tmp = f"{self.path}.{os.getpid()}.tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(self.state, handle, separators=(",", ":"), ensure_ascii=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, self.path)
+        try:
+            os.makedirs(directory, exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as handle:
+                json.dump(self.state, handle, separators=(",", ":"), ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, self.path)
+        except OSError:
+            # A failed confirmation must not remain "confirmed" only in memory.
+            try:
+                self._load()
+            except RuntimeError:
+                self.failed = True
+            raise
 
     def _roll_budget(self, now: float) -> None:
         current = budget_period_id(now)
@@ -180,6 +193,8 @@ class QuotaStore:
         self.state = fresh
 
     def _cleanup(self, now: float) -> None:
+        if getattr(self, "failed", False):
+            raise RuntimeError("Quota persistence is unavailable.")
         self._roll_periods(now)
         reservations = self.state["reservations"]
         active = self.state["active"]
@@ -208,46 +223,74 @@ class QuotaStore:
         openalex = self.state.setdefault("openalex", {})
         holds = openalex.setdefault("holds", {})
         for hold_id, hold in list(holds.items()):
+            if hold.get("status") != "held" and float(hold.get("expires_at", 0)) < now - 60:
+                holds.pop(hold_id, None)
+                continue
             if float(hold.get("expires_at", 0)) <= now and hold.get("status") == "held":
-                # Auto-refund abandoned holds so pre-charges cannot stick past TTL.
+                # A lost response may have consumed upstream credit; keep its reserved cost.
                 micros = int(hold.get("micros") or 0)
                 openalex["held_micros"] = max(0, int(openalex.get("held_micros") or 0) - micros)
-                hold["status"] = "refunded"
+                openalex["spent_micros"] = int(openalex.get("spent_micros") or 0) + micros
+                hold["status"] = "settled"
 
-    def create_session(self) -> dict[str, Any]:
+    def create_session(self, browser_token: str = "") -> dict[str, Any]:
         with self.lock:
             now = self.clock()
             self._cleanup(now)
-            token = secrets.token_urlsafe(32)
-            nonce = secrets.token_urlsafe(32)
+            sessions = self.state.setdefault("sessions", {})
+            token = browser_token if len(browser_token) <= 256 and _hash(browser_token) in sessions else secrets.token_urlsafe(32)
             token_hash = _hash(token)
-            self.state.setdefault("sessions", {})[token_hash] = {
-                "nonce_hash": _hash(nonce),
-                "created_at": now,
-                "expires_at": now + SESSION_TTL_SEC,
-            }
+            nonce = secrets.token_urlsafe(32)
+            row = sessions.setdefault(token_hash, {"created_at": now})
+            nonces = row.setdefault("nonces", {})
+            if row.get("nonce_hash") and float(row.get("expires_at", 0)) > now:
+                nonces.setdefault(row["nonce_hash"], row["expires_at"])
+            nonces = {key: expiry for key, expiry in nonces.items() if expiry > now}
+            nonces[_hash(nonce)] = now + SESSION_TTL_SEC
+            row["nonces"] = nonces
+            row.pop("nonce_hash", None)
+            row["expires_at"] = now + BROWSER_TTL_SEC
             self._save()
-            return {
-                "browser_token": token,
-                "session_nonce": nonce,
-                "expires_at": now + SESSION_TTL_SEC,
-            }
+            return {"browser_token": token, "session_nonce": nonce, "expires_at": now + SESSION_TTL_SEC}
 
     def _session(self, browser_token: str, session_nonce: str) -> dict[str, Any] | None:
         now = self.clock()
         self._cleanup(now)
-        if not browser_token or not session_nonce:
-            return None
-        if len(browser_token) > 256 or len(session_nonce) > 256:
+        if not browser_token or not session_nonce or len(browser_token) > 256 or len(session_nonce) > 256:
             return None
         row = self.state.get("sessions", {}).get(_hash(browser_token))
-        if not row:
+        if not row or float(row.get("expires_at", 0)) <= now:
             return None
-        if float(row.get("expires_at", 0)) <= now:
-            return None
-        if row.get("nonce_hash") != _hash(session_nonce):
-            return None
-        return row
+        nonce_hash = _hash(session_nonce)
+        valid = row.get("nonce_hash") == nonce_hash or float(row.get("nonces", {}).get(nonce_hash, 0)) > now
+        return row if valid else None
+
+    def allow_request(self, scope: str, ip: str, token: str = "") -> bool:
+        """Short-lived hashed rate buckets; never store query payloads."""
+        with self.lock:
+            now = self.clock()
+            buckets = self.state.setdefault("request_rates", {})
+            for key, stamps in list(buckets.items()):
+                kept = [stamp for stamp in stamps if stamp > now - 60]
+                if kept: buckets[key] = kept
+                else: buckets.pop(key, None)
+            limits = [(scope + ":ip:" + _hash(ip), 30 if scope == "session" else 600)]
+            if token: limits.append((scope + ":browser:" + _hash(token), 120))
+            limits.append((scope + ":global", 300 if scope == "session" else 3000))
+            if any(len(buckets.get(key, [])) >= limit for key, limit in limits):
+                return False
+            for key, _ in limits: buckets.setdefault(key, []).append(now)
+            self._save()
+            return True
+
+    def observe_openalex(self, used: float, remaining: float) -> None:
+        with self.lock:
+            self._cleanup(self.clock())
+            usage = self.state["openalex"]
+            usage["spent_micros"] = max(int(usage.get("spent_micros", 0)), int(round(used * 1_000_000)))
+            usage["upstream_remaining_usd"] = remaining
+            usage["upstream_checked_at"] = self.clock()
+            self._save()
 
     def _browser_key(self, browser_token: str) -> str:
         return _hash(browser_token)
@@ -310,6 +353,9 @@ class QuotaStore:
                 "site_limit": self.site_daily,
                 "openalex_budget_remaining_usd": max(0.0, self.openalex_budget_usd - spent_usd),
                 "openalex_budget_usd": self.openalex_budget_usd,
+                "openalex_budget_basis": "conservative_local_with_upstream",
+                "openalex_upstream_remaining_usd": self.state["openalex"].get("upstream_remaining_usd"),
+                "openalex_upstream_checked_at": self.state["openalex"].get("upstream_checked_at"),
                 "active_reservation": self.state.get("active", {}).get(key),
                 "reason": self._reason(key, held, site),
             }
@@ -362,7 +408,6 @@ class QuotaStore:
                 "created_at": now,
                 "expires_at": expires,
                 "status": "reserved",
-                "ip": ip or "unknown",
             }
             self.state["active"][key] = reservation_id
             self.state["ip_starts"][ip or "unknown"] = recent + [now]
@@ -456,7 +501,7 @@ class QuotaStore:
                 idempotency_key=idempotency_key,
             )
 
-    def release(self, browser_token: str, session_nonce: str, reservation_id: str, idempotency_key: str | None = None) -> QuotaDecision:
+    def release(self, browser_token: str, session_nonce: str, reservation_id: str, idempotency_key: str | None = None, takeover: bool = False) -> QuotaDecision:
         with self.lock:
             now = self.clock()
             self._cleanup(now)
@@ -469,7 +514,7 @@ class QuotaStore:
                 return self._deny("unknown_reservation", "Unknown reservation.", status)
             if reservation.get("browser_token_hash") != key:
                 return self._deny("browser_mismatch", "Reservation belongs to another browser.", status)
-            if reservation.get("nonce_hash") != _hash(session_nonce):
+            if not takeover and reservation.get("nonce_hash") != _hash(session_nonce):
                 return self._deny("nonce_mismatch", "Session nonce does not match the reservation.", status)
             if idempotency_key is not None and reservation.get("idempotency_key") != idempotency_key:
                 return self._deny("idempotency_mismatch", "Idempotency key does not match the reservation.", status)
