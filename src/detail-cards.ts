@@ -540,6 +540,7 @@ export interface PaperDetailOptions {
 	isClassic?: boolean;
 	abstractText: (paper: PaperNode) => string;
 	onRetryAbstract?: () => void;
+	retryAbstractLabel?: string;
 	openExternal: (url: string) => void;
 	separate: () => void;
 	conflict: boolean;
@@ -618,7 +619,7 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 	paintAbstractCard(parent, paper, options.abstractText);
 	if (options.onRetryAbstract) {
 		const host = parent.querySelector<HTMLElement>(".cpo-abstract-wrap") ?? parent;
-		const retry = el(host, "button", "cpo-text-btn", tr("重试获取摘要", "Retry abstract lookup"));
+		const retry = el(host, "button", "cpo-text-btn", options.retryAbstractLabel ?? tr("重试获取摘要", "Retry abstract lookup"));
 		retry.type = "button";
 		retry.onclick = options.onRetryAbstract;
 	}

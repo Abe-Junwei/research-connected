@@ -31,6 +31,8 @@ export interface EmbedDeps extends Partial<ReadingWorkflowDeps> {
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
 	postJson?: PostJson;
+	/** Hosts may require explicit user actions for all network fetching. */
+	autoFetch?: boolean;
 	checkMetadata?: (paper: PaperNode) => Promise<string | null>;
 	prepareGraph?: (graph: SimilarityGraph) => string | null;
 	decorateExport?: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => string;
@@ -628,7 +630,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 	placeDetailPlaceholder();
 
-	const showDetail = (paper: PaperNode | null, graph: SimilarityGraph, link: GraphEdge | null, reveal = false): void => {
+	const showDetail = (paper: PaperNode | null, graph: SimilarityGraph, link: GraphEdge | null, reveal = false, fetchAbstract = deps.autoFetch !== false): void => {
 		if (!paper) {
 			placeDetailPlaceholder();
 			return;
@@ -663,11 +665,13 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		paintPaperDetail(detail, graph, paper, {
 			checkMetadata: deps.checkMetadata,
 			isClassic: !!map.classicEvidence(paper.id),
-			abstractText: embedAbstractText,
-			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
+			abstractText: value => deps.autoFetch === false && !fetchAbstract && !value.abstract && !abstractRequested.has(abstractKey) ? tr("本地暂无摘要，点击“获取摘要”手动查询。", "No local abstract. Click Fetch abstract to query it manually.") : embedAbstractText(value),
+			retryAbstractLabel: deps.autoFetch === false ? tr("获取摘要", "Fetch abstract") : undefined,
+			onRetryAbstract: abstractErrors.has(abstractKey) || deps.autoFetch === false && !paper.abstract && !abstractRequested.has(abstractKey) ? () => {
+				if (abstractRequested.has(abstractKey) && !abstractErrors.has(abstractKey)) return;
 				abstractErrors.delete(abstractKey);
 				abstractRequested.delete(abstractKey);
-				showDetail(paper, graph, link);
+				showDetail(paper, graph, link, false, true);
 			} : undefined,
 			openExternal: deps.openExternal,
 			separate: () => {
@@ -717,7 +721,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			button.onclick = () => locate(paper);
 			detail.append(hint, button);
 		}
-		if (!paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
+		if (fetchAbstract && !paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
 			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
 				semanticScholarApiKey: deps.getSettings().semanticScholarApiKey,
@@ -827,7 +831,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (savedProject) reconcileProjectIdentity(savedProject, graph);
 		graph = projectVersionGraph(graph, savedProject);
 		const quality = deps.prepareGraph?.(graph);
-		const excluded = Object.entries(savedProject?.versionStates ?? savedProject?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
+		const excluded = savedProject ? Object.entries(savedProject.versionStates ?? savedProject.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id) : graph.excludedIds ?? [];
 		graph.excludedIds = excluded;
 		currentGraph = graph;
 		diagnoseButton.disabled = false;
@@ -964,7 +968,23 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		cache.delete(embedDataCacheKey(spec.target, spec.maxNodes ?? settings.maxNodes, spec.depth, settings));
 		void load(true);
 	});
-	void load(false);
+	if (deps.autoFetch !== false) void load(false);
+	else {
+		reload.disabled = false;
+		const settings = deps.getSettings();
+		const cached = cache.get(embedDataCacheKey(spec.target, spec.maxNodes ?? settings.maxNodes, spec.depth, settings));
+		const project = associatedProject() ?? Object.values(settings.researchProjects).filter(project => {
+			const seed = project.snapshot?.nodes.find(paper => paper.isSeed);
+			return seed && (spec.target.kind === "openalex" ? seed.id === spec.target.value : doiFromPaper(seed)?.toLowerCase() === spec.target.value.toLowerCase());
+		}).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+		const saved = cached ? cloneGraph(cached) : restoreGraphSnapshot(project?.snapshot);
+		if (saved) renderGraph(saved, tr("已读取本地图谱；点击重新加载才联网更新", "Loaded local graph; reload manually to fetch updates"));
+		else {
+			message.hidden = false;
+			messageText.textContent = tr("暂无本地图谱。点击“重新加载”手动获取。", "No local graph. Click Reload to fetch it manually.");
+			status.textContent = tr("等待手动加载", "Waiting for manual loading");
+		}
+	}
 
 	const onTheme = (): void => {
 		map.resize();

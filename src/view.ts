@@ -59,6 +59,7 @@ export class ConnectedPapersView extends ItemView {
 		this.appHandle = mountGraphApp(this.contentEl, {
 			...this.host.readingWorkflow,
 			...this.host.sourceQuality,
+			autoFetch: false,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,

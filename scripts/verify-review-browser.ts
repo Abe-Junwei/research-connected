@@ -6,6 +6,7 @@ import { mountEmbed } from "../src/embed-mount";
 import { paintWorkflowLibrary } from "../src/workflow-library";
 import { paintMetadataCard, paintAbstractCard, paintIdentityDecisionActions, paintPaperWorkflowState, paintRelationSection } from "../src/detail-cards";
 import { paintPaperActions, paintPaperActionFeedback } from "../src/paper-actions";
+import { saveGraphSnapshot } from "../src/project-state";
 import type { ProjectPaperState, ResearchProject } from "../src/project-state";
 import { createChromeIcon } from "../src/graph-chrome";
 import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../src/settings-model";
@@ -66,6 +67,12 @@ function readableContrast(element: HTMLElement): number {
 }
 
 async function verify(): Promise<void> {
+	if (new URLSearchParams(location.search).has("manual-only")) {
+		await verifyManualFetch();
+		document.body.textContent = "PASS: plugin pane and embeds restore locally without network; abstract fetch and reload remain manual";
+		document.body.dataset.result = "passed";
+		return;
+	}
 	if (new URLSearchParams(location.search).has("quality-only")) {
 		await verifyQualityUi();
 		document.body.textContent = "PASS: Web directory filtering, metadata review, source-check actions, pane and embed";
@@ -1183,12 +1190,51 @@ async function verify(): Promise<void> {
 	window.dispatchEvent(new Event("research-connected-settings"));
 	check(projectWrites === writesAtClose, "a project or settings notice does not save");
 	reopened.destroy();
+	await verifyManualFetch();
 	await verifyProjectBrowser();
 	await verifyExportBrowser();
 	await verifyQualityUi();
 	check(uncaught.length === 0, `no uncaught browser errors: ${uncaught.map(String).join(", ")}`);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, rename exit, abstract clamp, empty export, full graph, continuous star motion, node labels, rapid zoom, narrow return, reopen, cleanup";
 	document.body.dataset.result = "passed";
+}
+
+async function verifyManualFetch(): Promise<void> {
+	const graph = syntheticGraph(6);
+	const seed = graph.nodes.find(paper => paper.isSeed)!;
+	seed.abstract = "";
+	seed.doiUrl = "https://doi.org/10.1234/manual-fetch";
+	const settings = structuredClone(DEFAULT_SETTINGS);
+	const project: ResearchProject = { version: 1, seedId: seed.id, name: "Local project", updatedAt: 1, views: [], snapshot: saveGraphSnapshot(graph) };
+	settings.researchProjects = { [seed.id]: project };
+	let requests = 0;
+	const get: GetJson = async (url, init) => { requests++; return url.includes("semanticscholar") ? { abstract: "Fetched only after a click." } : fixtureGet(url, init); };
+	const host = document.createElement("div");
+	host.style.cssText = "width:900px;height:600px";
+	document.body.append(host);
+	const app = mountGraphApp(host, { getSettings: () => settings, getJson: get, autoFetch: false, openExternal() {}, loadSavedProject: () => project });
+	await new Promise(resolve => window.setTimeout(resolve, 0));
+	check(host.querySelector("canvas") && requests === 0, "restoring a pane with a missing abstract must make zero remote requests");
+	const fetch = Array.from(host.querySelectorAll("button")).find(button => /获取摘要|Fetch abstract/.test(button.textContent ?? ""));
+	check(fetch, "manual abstract action is available");
+	fetch.click();
+	await new Promise(resolve => window.setTimeout(resolve, 1500));
+	check(Number(requests) > 0, "explicit abstract action requests the source");
+	app.destroy(); host.remove();
+	for (const saved of [true, false]) {
+		requests = 0;
+		const root = document.createElement("div"); document.body.append(root);
+		const destroy = mountEmbed(root, { source: `id: ${saved ? seed.id : "W999998877"}\n${saved ? `project: ${seed.id}` : ""}`, getSettings: () => settings, getJson: get, autoFetch: false, openExternal() {} });
+		await new Promise(resolve => window.setTimeout(resolve, 0));
+		check(requests === 0, "mounting an embed must not request any source, with or without a snapshot");
+		if (!saved) {
+			const reload = root.querySelector<HTMLButtonElement>('button[title="重新加载"], button[title="Reload"]');
+			check(reload && !reload.disabled, "empty local embeds offer manual loading");
+			reload.click(); await new Promise(resolve => window.setTimeout(resolve, 0));
+			check(Number(requests) > 0, "explicit embed reload can fetch data");
+		}
+		destroy(); root.remove();
+	}
 }
 
 async function verifyQualityUi(): Promise<void> {

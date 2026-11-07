@@ -73,6 +73,8 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	getJson: GetJson;
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	/** Optional host-specific metadata review; absent in Obsidian. */
+	/** Hosts may require explicit user actions for all network fetching. */
+	autoFetch?: boolean;
 	checkMetadata?: (paper: PaperNode) => Promise<string | null>;
 	prepareGraph?: (graph: SimilarityGraph) => string | null;
 	decorateExport?: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => string;
@@ -744,7 +746,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const getEvidence = (citingId: string, citedId: string) => graph?.citationEvidence?.get(citingId, citedId) ?? null;
 	const edgeSources = (edge: GraphEdge): string => edgeSourcesText(edge, getEvidence);
 
-	const showDetail = (paper: PaperNode | null, reveal = false): void => {
+	const showDetail = (paper: PaperNode | null, reveal = false, fetchAbstract = deps.autoFetch !== false): void => {
 		if (reveal && paper) {
 			void deps.readingOpened?.(paper).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : tr("阅读状态加载失败", "Could not load reading status"); });
 			tab = "graph";
@@ -802,11 +804,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		paintPaperDetail(detail, graph, paper, {
 			checkMetadata: deps.checkMetadata,
 			isClassic: !!map.classicEvidence(paper.id),
-			abstractText,
-			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
+			abstractText: value => deps.autoFetch === false && !fetchAbstract && !value.abstract && !abstractRequested.has(abstractKey) ? tr("本地暂无摘要，点击“获取摘要”手动查询。", "No local abstract. Click Fetch abstract to query it manually.") : abstractText(value),
+			retryAbstractLabel: deps.autoFetch === false ? tr("获取摘要", "Fetch abstract") : undefined,
+			onRetryAbstract: abstractErrors.has(abstractKey) || deps.autoFetch === false && !paper.abstract && !abstractRequested.has(abstractKey) ? () => {
+				if (abstractRequested.has(abstractKey) && !abstractErrors.has(abstractKey)) return;
 				abstractErrors.delete(abstractKey);
 				abstractRequested.delete(abstractKey);
-				showDetail(paper);
+				showDetail(paper, false, true);
 			} : undefined,
 			openExternal: deps.openExternal,
 			separate: () => {
@@ -843,7 +847,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (!deps.persistSettings) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, deps.persistSettings);
 		});
-		if (!paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
+		if (fetchAbstract && !paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
 			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
 				semanticScholarApiKey: deps.getSettings().semanticScholarApiKey,

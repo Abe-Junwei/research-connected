@@ -1,5 +1,5 @@
 import "./host-language";
-import { addIcon, Notice, Plugin } from "obsidian";
+import { addIcon, Plugin } from "obsidian";
 import { LOGO_ICON, UI_ICON_SVG } from "./logo";
 import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
@@ -16,9 +16,7 @@ import { clamp } from "./visual";
 import { invalidateLiteratureIndex, listReadingNotes, listReadingPapers, writeReadingNote } from "./vault-note";
 import { createReadingWorkflow, normalizeReadingWorkflow } from "./reading-workflow";
 import { ConnectedPapersView } from "./view";
-import { obsidianGetJson } from "./obsidian-http";
-import { checkWebMetadata, prepareWebGraph, decorateWebExport, prepareWebSettings } from "./source-quality";
-import { revalidateWebSettings } from "./source-revalidation";
+import { prepareWebGraph, decorateWebExport, prepareWebSettings } from "./source-quality";
 import type { SimilarityGraph } from "./neighborhood";
 import type { PaperNode } from "./types";
 import { validSourceVersionRelations } from "./work-identity";
@@ -34,11 +32,9 @@ export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
 	private pendingSave: Promise<void> = Promise.resolve();
 	private migrationWriteStopped = false;
-	private sourceReview: Awaited<ReturnType<typeof revalidateWebSettings>> = null;
 	readonly sourceQuality = {
-		checkMetadata: (paper: PaperNode) => checkWebMetadata(paper, obsidianGetJson),
-		prepareGraph: (graph: SimilarityGraph) => [this.sourceReview?.notice, prepareWebGraph(graph)].filter(Boolean).join("\n") || null,
-		decorateExport: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => decorateWebExport(papers, text, format, this.sourceReview?.complete === false),
+		prepareGraph: (graph: SimilarityGraph) => prepareWebGraph(graph),
+		decorateExport: (papers: readonly PaperNode[], text: string, format: "bibtex" | "yaml" | "markdown") => decorateWebExport(papers, text, format),
 	};
 	readonly readingWorkflow = createReadingWorkflow({
 		getSettings: () => this.settings,
@@ -50,9 +46,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
-		this.sourceReview = await revalidateWebSettings(this.settings, obsidianGetJson, next => this.saveSourceReview(next));
 		prepareWebSettings(this.settings);
-		if (this.sourceReview && !this.sourceReview.complete) new Notice(this.sourceReview.notice, 10000);
 
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));
@@ -172,31 +166,6 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.migrationWriteStopped = false;
 	}
 
-	/** Source corrections are staged before views can edit, with a verified local rollback copy. */
-	private async saveSourceReview(next: ConnectedPapersSettings): Promise<void> {
-		if (this.migrationWriteStopped) throw new Error(tr("迁移未完成，已保留原数据", "Migration incomplete; original data retained"));
-		if (!this.manifest.dir) throw new Error(tr("来源复核需要插件目录来保存备份", "Source review requires a plugin directory for backup"));
-		const original: unknown = await this.loadData();
-		const base = `${this.manifest.dir}/data-before-source-review`;
-		let backup = `${base}.json`;
-		for (let suffix = 1; await this.app.vault.adapter.exists(backup); suffix++) backup = `${base}-${suffix}.json`;
-		await this.app.vault.adapter.write(backup, JSON.stringify(original));
-		if (!migrationRereadAccepted(original, JSON.parse(await this.app.vault.adapter.read(backup)) as unknown)) throw new Error(tr("来源备份重读不一致，已保留原数据", "Source backup reread did not match; original data retained"));
-		try {
-			const written = persistedSettings(next);
-			await this.saveData(written);
-			if (!migrationRereadAccepted(written, await this.loadData() as unknown)) throw new Error("Source review reread did not match");
-		} catch (error) {
-			try {
-				await this.saveData(original);
-				if (!migrationRereadAccepted(original, await this.loadData() as unknown)) throw new Error("Source rollback reread did not match");
-			} catch {
-				this.migrationWriteStopped = true;
-				throw new Error(tr(`来源更新和恢复失败，已停止写入，请用 ${backup} 恢复`, `Source update and rollback failed; writes stopped. Restore ${backup}`));
-			}
-			throw error;
-		}
-	}
 
 	async saveSettings(notify = true): Promise<void> {
 		if (this.migrationWriteStopped) {
