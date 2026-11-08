@@ -155,7 +155,10 @@ export function applyWebSourceRecord(paper: PaperRecord, fresh: PaperNode, reque
 	const changed = paper.id !== fresh.id || paper.title !== fresh.title || paper.authors !== fresh.authors || paper.doiUrl !== fresh.doiUrl || paper.abstract !== fresh.abstract || paper.year !== fresh.year || paper.citedByCount !== fresh.citedByCount || paper.workType !== fresh.workType || JSON.stringify([paper.authorList, paper.concepts, paper.topicTags, paper.primaryTopic]) !== JSON.stringify([fresh.authorList, fresh.concepts, fresh.topicTags, fresh.primaryTopic]);
 	const sourceAliases = [...new Set([...(paper.sourceAliases ?? []), ...(old.id !== fresh.id ? [old.id] : [])])];
 	const { isSeed, origin } = paper;
-	Object.assign(paper, fresh, { isSeed, origin, ...(sourceAliases.length ? { sourceAliases } : {}), abstractSource: fresh.abstract ? "openalex" : undefined });
+	const sameDoi = normalizeDoi(paper.doiUrl) && normalizeDoi(paper.doiUrl) === normalizeDoi(fresh.doiUrl);
+	const supplementalAuthors = sameDoi && paper.contributorSource === "crossref" && !fresh.authorList.length ? { authors: paper.authors, authorList: paper.authorList } : {};
+	if (!sameDoi) { delete paper.editorList; delete paper.contributorSource; delete paper.contributorLookup; }
+	Object.assign(paper, fresh, supplementalAuthors, ...(sameDoi && paper.contributorSource ? [{ editorList: paper.editorList, contributorSource: paper.contributorSource }] : []), { isSeed, origin, ...(sourceAliases.length ? { sourceAliases } : {}), abstractSource: fresh.abstract ? "openalex" : undefined });
 	const problem = currentProblems.get(fresh.id);
 	if (!problem && previous?.identity !== "conflict") {
 		delete web.webMetadataReview;

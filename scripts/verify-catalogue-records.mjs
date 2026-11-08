@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+const code=(await build({stdin:{contents:'export {isCatalogueRecord} from "./src/openalex";',resolveDir:process.cwd()},bundle:true,platform:'node',format:'esm',write:false})).outputFiles[0].text;
+const {isCatalogueRecord}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const record={display_name:'aspects of the theory of syntax / by Noam Chomsky',primary_location:{landing_page_url:'http://library.um.ac.id/free-contents/index.php/buku/detail/aspects-26994.html'}};
+assert.equal(isCatalogueRecord(record),true);
+assert.equal(isCatalogueRecord({...record,doi:'https://doi.org/10.1234/book'}),false);
+assert.equal(isCatalogueRecord({...record,primary_location:{landing_page_url:'https://publisher.org/book',source:{display_name:'Publisher'}}}),false);
+assert.equal(isCatalogueRecord({display_name:'Aspects of the Theory of Syntax',type:'book'}),false);
+console.log('PASS catalogue records excluded without rejecting publisher works');
