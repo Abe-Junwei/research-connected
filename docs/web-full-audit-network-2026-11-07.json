@@ -1,0 +1,117 @@
+{
+  "target": "https://graph.jieyu.ai/?v=6aa4eb62e83d1624",
+  "results": [
+    {
+      "visit": "cold",
+      "ttfb": 1698,
+      "dns": 0,
+      "connect": 870,
+      "tls": 841,
+      "wait": 429,
+      "download": 436,
+      "html": 2134,
+      "ready": 5107,
+      "paint": 2164,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "wait": 695,
+          "download": 2245,
+          "start": 2135,
+          "end": 5079,
+          "bytes": 101639
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "5",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "87",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 1,
+      "dns": 0,
+      "connect": 0,
+      "tls": 0,
+      "wait": 0,
+      "download": 0,
+      "html": 2,
+      "ready": 18,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "wait": 0,
+          "download": 0,
+          "start": 6,
+          "end": 6,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "5",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "87",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "visit": "warm",
+      "ttfb": 2,
+      "dns": 0,
+      "connect": 0,
+      "tls": 0,
+      "wait": 0,
+      "download": 0,
+      "html": 2,
+      "ready": 16,
+      "assets": [
+        {
+          "name": "/web-WB2ZQTMN.js",
+          "wait": 0,
+          "download": 0,
+          "start": 5,
+          "end": 5,
+          "bytes": 0
+        }
+      ],
+      "responses": [
+        {
+          "path": "/",
+          "status": 200,
+          "cache": "HIT",
+          "age": "5",
+          "policy": "public, max-age=60, stale-while-revalidate=300"
+        },
+        {
+          "path": "/web-WB2ZQTMN.js",
+          "status": 200,
+          "cache": "HIT",
+          "age": "87",
+          "policy": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

@@ -7,8 +7,14 @@ import { abstractCaption, semanticHintFor } from "../src/detail-cards";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
 import { fixturePost } from "../preview/fixture";
+import { verifyBrowserHttp } from "./verify-browser-http";
+import { verifyWebRevalidation } from "./verify-web-revalidation";
+import { verifyWebQuality } from "./verify-web-quality";
 
 export async function verifyS2Pipeline(): Promise<void> {
+	await verifyBrowserHttp();
+	await verifyWebQuality();
+	await verifyWebRevalidation();
 	const options = { semanticScholarApiKey: "", contactEmail: "" };
 	let abstractRequests = 0;
 	assert.deepEqual(await fallbackAbstract(async () => { abstractRequests++; throw new Error("unexpected request"); }, { doiUrl: null }, options), { status: "no-doi" });

@@ -1,25 +1,20 @@
 import "../src/host-language";
 import { tr } from "../src/i18n";
 import { mountEmbed } from "../src/embed-mount";
-import { explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
+import { browserGetJson, browserPostJson } from "./http";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../src/settings-model";
 import { nicholsSnapshot, workIdentityFixtureGet } from "./work-identity-fixture";
 import { normalizeProjects } from "../src/project-state";
-import { fixtureGet } from "./fixture";
+import { fixtureGet, fixturePost } from "./fixture";
 import { createReadingWorkflow, normalizeReadingWorkflow } from "../src/reading-workflow";
-import { writePreviewSettings } from "./storage";
+import { revalidateWebSettings, writeWebSettings, commitWebRevalidation } from "./revalidate";
+import { prepareWebSettings, checkWebMetadata, prepareWebGraph, decorateWebExport } from "./quality";
 
 const root = document.querySelector("#embed");
 if (!(root instanceof HTMLElement)) {
 	throw new Error("Missing #embed");
 }
-
-const getJson: GetJson = async (url, init) => {
-	const response = await window.fetch(url, { headers: init.headers });
-	if (!response.ok) throw new OpenAlexError(explainStatus(response.status), response.status);
-	return (await response.json()) as unknown;
-};
 
 const params = new URLSearchParams(window.location.search);
 const identity = params.has("identity");
@@ -56,19 +51,32 @@ try {
 	settings.readingWorkflow = normalizeReadingWorkflow(settings.readingWorkflow);
 } catch { /* Invalid preview storage does not prevent opening a graph. */ }
 if (identity && !Object.keys(settings.researchProjects).length) settings.researchProjects = normalizeProjects({ W4245234602: { version: 1, seedId: "W4245234602", name: "Nichols 1986", updatedAt: 1, views: [], snapshot: nicholsSnapshot() } });
+if (!offline && !identity) prepareWebSettings(settings);
 const persistSettings = (): void => {
-	writePreviewSettings(storageKey, settings, legacyStorageKey);
+	if (!offline && !identity) prepareWebSettings(settings);
+	writeWebSettings(storageKey, settings);
 	window.dispatchEvent(new Event("research-connected-project"));
 };
 
-mountEmbed(root, {
-	...createReadingWorkflow({ getSettings: () => settings, persist: persistSettings }),
-	source: lines.join("\n"),
-	getSettings: () => settings,
-	stagePaper: persistSettings,
-	getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : getJson,
-	openExternal: (url) => {
-		const safe = allowedExternalUrl(url);
-		if (safe) window.open(safe, "_blank", "noopener,noreferrer");
-	},
-});
+async function start(): Promise<void> {
+	const host = root as HTMLElement;
+	if (!offline && !identity) host.textContent = "正在核对本地项目的文献来源… / checking saved sources…";
+	const review = !offline && !identity ? await revalidateWebSettings(settings, browserGetJson, next => commitWebRevalidation(storageKey, next)) : null;
+	host.replaceChildren();
+	mountEmbed(host, {
+		...createReadingWorkflow({ getSettings: () => settings, persist: persistSettings }),
+		source: lines.join("\n"),
+		getSettings: () => settings,
+		stagePaper: persistSettings,
+		getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : browserGetJson,
+		postJson: offline || identity ? fixturePost : browserPostJson,
+		prepareGraph: offline || identity ? undefined : graph => [review?.notice, prepareWebGraph(graph)].filter(Boolean).join("\n") || null,
+		decorateExport: offline || identity ? undefined : (papers, text, format) => decorateWebExport(papers, text, format, review?.complete === false),
+		checkMetadata: offline || identity ? undefined : paper => checkWebMetadata(paper, browserGetJson),
+		openExternal: (url) => {
+			const safe = allowedExternalUrl(url);
+			if (safe) window.open(safe, "_blank", "noopener,noreferrer");
+		},
+	});
+}
+void start();

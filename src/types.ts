@@ -16,6 +16,8 @@ export interface AdmissionDecision {
 
 export interface PaperRecord {
 	id: string;
+	/** Previous IDs explicitly resolved to this canonical work by OpenAlex; keeps existing notes linked. */
+	sourceAliases?: string[];
 	title: string;
 	year: number | null;
 	citedByCount: number;
@@ -25,6 +27,9 @@ export interface PaperRecord {
 	authors: string;
 	/** Structured author display names in authorship order; empty when unknown. */
 	authorList: string[];
+	editorList?: string[];
+	contributorSource?: "crossref";
+	contributorLookup?: "missing";
 	abstract: string;
 	abstractSource?: "openalex" | "s2" | "crossref";
 	doiUrl: string | null;

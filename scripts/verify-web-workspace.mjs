@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { build } from "esbuild";
+const code = (await build({ entryPoints: ["web/workspace.ts"], bundle: true, format: "esm", write: false })).outputFiles[0].text;
+const { removeLegacyWorkspace, clearWorkspaceRecords, WORKSPACE_STORAGE_KEY, LEGACY_STORAGE_KEY } = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+const values = new Map([[LEGACY_STORAGE_KEY, "old"], [LEGACY_STORAGE_KEY + "-before-source-review", "backup"], [WORKSPACE_STORAGE_KEY, "current"], ["theme", "dark"], ["quota", "keep"]]);
+const storage = { removeItem: key => values.delete(key) };
+removeLegacyWorkspace(storage);
+assert.equal(values.has(LEGACY_STORAGE_KEY), false);
+assert.equal(values.has(LEGACY_STORAGE_KEY + "-before-source-review"), false);
+assert.equal(values.get(WORKSPACE_STORAGE_KEY), "current");
+values.set(LEGACY_STORAGE_KEY, "late old-tab write"); removeLegacyWorkspace(storage);
+assert.equal(values.get(WORKSPACE_STORAGE_KEY), "current");
+assert.equal(values.get("quota"), "keep"); assert.equal(values.get("theme"), "dark");
+const settings = { researchProjects: { old: {} }, stagedPapers: [1], graftedBySeed: { seed: [] }, readingWorkflow: {}, workflowMigration: {}, workIdentityDecisions: [1], sourceVersionRelations: [1], maxNodes: 50 };
+clearWorkspaceRecords(settings);
+assert.deepEqual(settings, { researchProjects: {}, stagedPapers: [], graftedBySeed: {}, maxNodes: 50 });
+console.log("PASS: workspace isolation, retired backups, late legacy writes, complete clear, preferences retained");

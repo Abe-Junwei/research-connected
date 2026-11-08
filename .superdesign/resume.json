@@ -144,6 +144,70 @@
         }
       },
       "updatedAt": "2026-10-07T14:53:10Z"
+    },
+    "web-loading-screen": {
+      "targetKind": "existing-ui",
+      "projectId": "03973bb8-06c2-4b1f-977e-b974178b7938",
+      "baselineDraftId": "d0793d66-0a22-4533-aa20-a620bd17d5cc",
+      "activeDraftId": "d0793d66-0a22-4533-aa20-a620bd17d5cc",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "docs-images-logo.svg"
+      ],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "web/index.html",
+        "docs/images/logo.svg"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "50b471caa9c675af6ba2a949917871e369a03b45375af4d7d64a07be1d51366f",
+        "web/index.html": "abc7219730454f944345bba77641ef6bc1e1918405c7d154d9392cfcb4c601b6",
+        "docs/images/logo.svg": "1740fcac3f03eacd994d5b3b3c1a8e4b767efa01ad5e41f7321622e0a2916a09"
+      },
+      "drafts": {
+        "d0793d66-0a22-4533-aa20-a620bd17d5cc": {
+          "title": "Web · branded loading screen",
+          "visualDirection": "文现 continuous loading: no idle phase in flowing links or node pulses; preserve original mark and reduced-motion static state.",
+          "currentVersion": 4
+        }
+      },
+      "updatedAt": "2026-11-07T07:12:33.699872+00:00"
+    },
+    "export-backup-clarity": {
+      "targetKind": "existing-ui",
+      "projectId": "03973bb8-06c2-4b1f-977e-b974178b7938",
+      "baselineDraftId": "69fe2811-5db0-4ec4-bff3-81ef8682de55",
+      "baselineVersion": 1,
+      "activeDraftId": "69fe2811-5db0-4ec4-bff3-81ef8682de55",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "84e378b9-ba8d-4ee7-b185-eb05ff0474ca"
+      ],
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        ".superdesign/tmp/export-redesign-brief.md",
+        "src/graph-chrome.ts",
+        "web/workspace-menu.ts",
+        "styles.css:1:40",
+        "styles.css:2120:2170",
+        "styles.css:4321:4371",
+        "styles.css:4860:4905"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "50b471caa9c675af6ba2a949917871e369a03b45375af4d7d64a07be1d51366f",
+        ".superdesign/tmp/export-redesign-brief.md": "15bbd87da0b9fc36036d569a48630e2d9b2a421872ec5f115da775630dc769b7",
+        "src/graph-chrome.ts": "057e62f70b3b5469087f41e7d5f168e503e741cb42ca56b2b1282dc310c44925",
+        "web/workspace-menu.ts": "09956c11d84cdc10d1d837a498c2a84ac948db6a9710faf23b9415007ece351a",
+        "styles.css": "3e052d96a7f3ff8b7403790366edb039b48a595706ad14fcb14451b22ff1a170"
+      },
+      "drafts": {
+        "69fe2811-5db0-4ec4-bff3-81ef8682de55": {
+          "title": "Export and Backup Prototype",
+          "visualDirection": "Desktop compact 440x525 export panel and 440x398 backup panel; table row only Download CSV and Copy; unchanged mobile touch layout",
+          "currentVersion": 5
+        }
+      },
+      "updatedAt": "2026-11-08T03:24:25.902086+00:00"
     }
   }
 }

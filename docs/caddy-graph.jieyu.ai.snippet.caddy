@@ -1,0 +1,74 @@
+# Cloudflare origin uses 9443 (8443 disables edge caching); 443 remains Xray.
+# Keep 8443 during rollout/rollback; firewall permits 9443 from Cloudflare only.
+# All product APIs enter the session/rate gateway; its S2 branch forwards to 9185.
+graph.jieyu.ai:8443, graph.jieyu.ai:9443 {
+	# Only the Cloudflare edge may assert visitor IPs to the product API.
+	@untrustedGraphApi {
+		path /api/*
+		not remote_ip 127.0.0.1 ::1 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	}
+	handle @untrustedGraphApi {
+		respond "Forbidden" 403
+	}
+	log {
+		output file /var/log/caddy/graph.jieyu.ai.log
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+				request>uri_query delete
+				request>headers delete
+				request>body delete
+			}
+		}
+	}
+
+	header {
+		# Public shell contains no user data; APIs and the version manifest never cache.
+		-Server
+	}
+	encode zstd gzip
+
+	@api path /api/* /health
+	handle @api {
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:9186 {
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+			header_up CF-Connecting-IP {http.request.header.CF-Connecting-IP}
+			header_up Origin {http.request.header.Origin}
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	@version path /version.json
+	handle @version {
+		header Cache-Control "no-store"
+		root * /var/www/graph.jieyu.ai
+		file_server
+	}
+
+	@staticAssets path_regexp immutable ^/(web-[A-Za-z0-9]+\.js|styles-[a-f0-9]+\.css)$
+	handle @staticAssets {
+		header Cache-Control "public, max-age=31536000, immutable"
+		root * /var/www/graph.jieyu.ai
+		file_server {
+			precompressed br gzip
+		}
+	}
+
+	@otherAssets path *.js *.css *.svg *.png *.woff2
+	handle @otherAssets {
+		header Cache-Control "no-cache"
+		root * /var/www/graph.jieyu.ai
+		file_server
+	}
+
+	handle {
+		header Cache-Control "public, max-age=60, stale-while-revalidate=300"
+		root * /var/www/graph.jieyu.ai
+		try_files {path} /index.html
+		file_server
+	}
+}

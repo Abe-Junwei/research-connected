@@ -1,0 +1,215 @@
+{
+  "tencent_private": {
+    "html": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.095001,
+        "time_total": 0.095079,
+        "size_download": 2874
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.128093,
+        "time_total": 0.128304,
+        "size_download": 2874
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.120177,
+        "time_total": 0.12039,
+        "size_download": 2874
+      }
+    ],
+    "js": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.139455,
+        "time_total": 0.425059,
+        "size_download": 123458
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.165742,
+        "time_total": 0.403959,
+        "size_download": 123458
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.118962,
+        "time_total": 0.1728,
+        "size_download": 123458
+      }
+    ],
+    "css": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.122367,
+        "time_total": 0.169751,
+        "size_download": 21098
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.114362,
+        "time_total": 0.160272,
+        "size_download": 21098
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 0.112269,
+        "time_total": 0.157942,
+        "size_download": 21098
+      }
+    ]
+  },
+  "us_private": {
+    "html": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 10.415105,
+        "time_total": 10.415335,
+        "size_download": 2874
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 2.237244,
+        "time_total": 2.23754,
+        "size_download": 2874
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 2.559884,
+        "time_total": 2.560162,
+        "size_download": 2874
+      }
+    ],
+    "js": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 1.101838,
+        "time_total": 2.908586,
+        "size_download": 123458
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 2.30605,
+        "time_total": 4.361716,
+        "size_download": 123458
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 1.937202,
+        "time_total": 3.210998,
+        "size_download": 123458
+      }
+    ],
+    "css": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 1.096524,
+        "time_total": 1.774361,
+        "size_download": 21098
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 1.463328,
+        "time_total": 1.518983,
+        "size_download": 21098
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.0,
+        "time_starttransfer": 1.234991,
+        "time_total": 1.435525,
+        "size_download": 21098
+      }
+    ]
+  },
+  "production_cf": {
+    "html": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.510273,
+        "time_starttransfer": 1.87708,
+        "time_total": 1.877245,
+        "size_download": 2791
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 1.579081,
+        "time_starttransfer": 2.212488,
+        "time_total": 2.21318,
+        "size_download": 2791
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 3.965326,
+        "time_starttransfer": 6.276587,
+        "time_total": 6.276942,
+        "size_download": 2791
+      }
+    ],
+    "js": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.80088,
+        "time_starttransfer": 2.667825,
+        "time_total": 3.93117,
+        "size_download": 118186
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 1.285011,
+        "time_starttransfer": 2.032629,
+        "time_total": 2.379094,
+        "size_download": 118153
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.708397,
+        "time_starttransfer": 1.254769,
+        "time_total": 1.826998,
+        "size_download": 118218
+      }
+    ],
+    "css": [
+      {
+        "http_code": 200,
+        "time_appconnect": 0.915735,
+        "time_starttransfer": 1.367663,
+        "time_total": 2.278019,
+        "size_download": 18757
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.712209,
+        "time_starttransfer": 1.471562,
+        "time_total": 1.903332,
+        "size_download": 18704
+      },
+      {
+        "http_code": 200,
+        "time_appconnect": 0.438609,
+        "time_starttransfer": 1.272512,
+        "time_total": 1.512847,
+        "size_download": 18665
+      }
+    ]
+  }
+}

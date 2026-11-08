@@ -1,0 +1,63 @@
+import { bindLanguage } from "../src/i18n";
+import { readHostLanguage } from "../src/host-language";
+import assert from "node:assert/strict";
+import { applyContributors, lookupContributors } from "../src/contributors";
+import { toPaper, type GetJson } from "../src/openalex";
+import { contributorText } from "../src/paper";
+import { authorYear } from "../src/labels";
+import { literatureMarkdown, toBibTeX, toYamlList } from "../src/export-graph";
+import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
+import { applyWebSourceRecord } from "../src/source-quality";
+import { nicholsSnapshot } from "../preview/work-identity-fixture";
+
+export async function verifyContributors(): Promise<void> {
+	const doi = "10.1515/9783110473742";
+	const book = toPaper({ id: "https://openalex.org/W2596888301", display_name: "Evidential Systems of Tibetan Languages", doi, publication_year: 2017, type: "book", authorships: [] }, "seed")!;
+	assert.equal(book.authors, "作者信息缺失");
+	assert.equal(authorYear(book), "署名待查 2017", "unqueried empty OpenAlex authorship does not establish missing contributors");
+	const get: GetJson = async () => ({ message: { DOI: doi, type: "edited-book", editor: [{ given: "Lauren", family: "Gawne" }, { given: "Nathan W.", family: "Hill" }] } });
+	const metadata = await lookupContributors(get, "", book, true);
+	assert.deepEqual(metadata, { authors: [], editors: ["Lauren Gawne", "Nathan W. Hill"] });
+	const graph = restoreGraphSnapshot(nicholsSnapshot())!;
+	graph.nodes = [{ ...book }]; graph.catalog = [{ ...book }];
+	graph.workIdentity = { version: 1, records: [{ ...book }], referenceLists: [], evidence: [], directEdges: [], canonicalIds: [[book.id, book.id]], separatedIds: [] };
+	applyContributors(graph, book, metadata);
+	assert.deepEqual(book.authorList, [], "editors never enter author identity matching");
+	assert.equal(contributorText(book), "Lauren Gawne, Nathan W. Hill（编）");
+	assert.equal(authorYear(book), "Gawne and Hill (eds.) 2017");
+	bindLanguage(() => "en");
+	try {
+		assert.equal(authorYear(book), "Gawne and Hill (eds.) 2017");
+		assert.equal(authorYear({ ...book, language: "zh", editorList: ["张三", "李四"] }), "张三和李四（编） 2017", "Chinese work stays Chinese in an English interface");
+		assert.equal(authorYear({ ...book, language: "zh", editorList: ["张三", "李四", "王五"] }), "张三，李四 等（编） 2017");
+		assert.equal(authorYear({ ...book, language: null, title: "中文文献", editorList: ["张三", "李四"] }), "张三和李四（编） 2017");
+		assert.equal(authorYear({ ...book, editorList: ["Lauren Gawne", "Nathan W. Hill", "Third Editor"] }), "Gawne, Hill et al. (eds.) 2017");
+	} finally { bindLanguage(readHostLanguage); }
+	assert.equal(authorYear({ ...book, editorList: undefined, contributorLookup: "missing" }), "署名缺失 2017");
+	assert.match(toBibTeX([book]), /editor = \{Lauren Gawne and Nathan W. Hill\}/);
+	assert.doesNotMatch(toBibTeX([book]), /\bauthor =|作者信息缺失/);
+	assert.doesNotMatch(toBibTeX([{ ...book, editorList: undefined, authors: "作者不详" }]), /\bauthor =/);
+	assert.match(toYamlList([book]), /editors: \["Lauren Gawne","Nathan W. Hill"\]/);
+	assert.match(literatureMarkdown(book, "{{authors}}", { project: "Test", relation: "seed", status: "unread" }), /editors: \[.*\][\s\S]*Lauren Gawne, Nathan W. Hill（编）/);
+	const restored = restoreGraphSnapshot(saveGraphSnapshot(graph))!;
+	assert.deepEqual(restored.nodes[0]!.editorList, metadata.editors, "snapshot and identity projection retain editor roles");
+	assert.equal(restored.nodes[0]!.contributorSource, "crossref");
+	const authored = { ...book, authorList: ["Original Author"], authors: "Original Author" };
+	applyContributors(graph, authored, { authors: ["Replacement"], editors: metadata.editors });
+	assert.deepEqual(authored.authorList, ["Original Author"], "fallback never overwrites known authors");
+	assert.equal(contributorText(authored), "Original Author · Lauren Gawne, Nathan W. Hill（编）");
+	assert.match(toBibTeX([authored]), /author = \{Original Author\}/);
+	assert.deepEqual(await lookupContributors(async () => ({ message: { DOI: doi } }), "", book, true), { authors: [], editors: [] });
+	await assert.rejects(lookupContributors(async () => { throw new Error("offline"); }, "", book, true), /offline/, "network failure is not a metadata miss");
+	await assert.rejects(lookupContributors(async () => ({ message: { DOI: doi, editor: "bad" } }), "", book, true), /格式错误/);
+	await assert.rejects(lookupContributors(async () => ({ message: { DOI: "10.1234/other", editor: [] } }), "", book, true), /DOI/);
+	const authorMetadata = await lookupContributors(async () => ({ message: { DOI: doi, author: [{ name: "Research Group" }] } }), "", book, true);
+	const supplemented = { ...book, editorList: undefined };
+	applyContributors(graph, supplemented, authorMetadata);
+	assert.deepEqual(supplemented.authorList, ["Research Group"]);
+	const fresh = { ...book, editorList: undefined, contributorSource: undefined };
+	applyWebSourceRecord(supplemented, fresh, book.id, Date.now());
+	assert.deepEqual(supplemented.authorList, ["Research Group"], "OpenAlex refresh preserves supplemental authors for the same DOI");
+	applyWebSourceRecord(book, { ...fresh, doiUrl: "https://doi.org/10.1234/other" }, book.id, Date.now());
+	assert.equal(book.editorList, undefined, "a changed DOI cannot inherit the old book's editors");
+}

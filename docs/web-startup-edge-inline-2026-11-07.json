@@ -1,0 +1,286 @@
+[
+  {
+    "target": "https://graph.jieyu.ai/?fixture=1&v=874aaed91ae83a37",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1865,
+        "html": 1869,
+        "ready": 2421,
+        "paint": 1932,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 1877,
+            "end": 2394,
+            "bytes": 98563
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 2,
+        "html": 2,
+        "ready": 16,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 6,
+            "end": 6,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 2,
+        "ready": 15,
+        "paint": 32,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 5,
+            "end": 5,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "MISS",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "target": "https://graph.jieyu.ai/?fixture=1&v=874aaed91ae83a37",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 2411,
+        "html": 2466,
+        "ready": 3308,
+        "paint": 2500,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 2466,
+            "end": 3281,
+            "bytes": 98563
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 13,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 1,
+        "ready": 13,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 4,
+            "end": 4,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "5",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "target": "https://graph.jieyu.ai/?fixture=1&v=874aaed91ae83a37",
+    "results": [
+      {
+        "visit": "cold",
+        "ttfb": 1520,
+        "html": 1552,
+        "ready": 2591,
+        "paint": 1588,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 1553,
+            "end": 2557,
+            "bytes": 98563
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 2,
+        "ready": 15,
+        "paint": 32,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 5,
+            "end": 5,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "visit": "warm",
+        "ttfb": 1,
+        "html": 2,
+        "ready": 15,
+        "assets": [
+          {
+            "name": "/web-KU3YU37L.js",
+            "start": 5,
+            "end": 5,
+            "bytes": 0
+          }
+        ],
+        "responses": [
+          {
+            "path": "/",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=60, stale-while-revalidate=300"
+          },
+          {
+            "path": "/web-KU3YU37L.js",
+            "status": 200,
+            "cache": "HIT",
+            "age": "10",
+            "policy": "public, max-age=31536000, immutable"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -2,7 +2,7 @@ import { tr } from "./i18n";
 import { classicCandidates, classicInfluence, type ClassicEvidence } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import { edgeVisible, focusNodes, nodeVisible, type GraphFilter } from "./graph-filter";
-import { citationLabelAlpha, nodeLabel, type LabelMode } from "./labels";
+import { authorYear, citationLabelAlpha, nodeLabel, type LabelMode } from "./labels";
 import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
@@ -84,6 +84,7 @@ export class SimilarityMap {
 	private filterNodes = new Map<string, PaperNode>();
 	private labelMode: LabelMode = "author-year";
 	private labelOpacity = new Map<string, { value: number; at: number }>();
+	private starCores = new WeakMap<DrawNode, { color: string; radius: number; dpr: number; canvas: HTMLCanvasElement; extent: number }>();
 	private dragging: Drag | null = null;
 	private moved = false;
 	private downX = 0;
@@ -199,7 +200,8 @@ export class SimilarityMap {
 		return classicCandidates(this.nodes, this.edges, undefined, this.referenceLists).get(id);
 	}
 
-	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, referenceLists?: ReadonlyMap<string, readonly string[]>): void {
+	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, referenceLists?: ReadonlyMap<string, readonly string[]>, options?: { layout?: LayoutMode; animate?: boolean }): void {
+		if (options?.layout) this.layoutMode = options.layout;
 		this.referenceLists = referenceLists;
 		this.simAlpha = 0;
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
@@ -215,7 +217,7 @@ export class SimilarityMap {
 		this.introAt = 0;
 		this.introSpread = INTRO_SPREAD;
 		this.introFade = INTRO_FADE;
-		this.introHold = !this.reducedMotion && nodes.length >= 2;
+		this.introHold = options?.animate !== false && !this.reducedMotion && nodes.length >= 2;
 		this.rebuild(nodes, true);
 		if (this.introHold) this.armIntro();
 		this.ensurePulse();
@@ -233,7 +235,8 @@ export class SimilarityMap {
 		this.communities = detectCommunities(nodes.map((node) => node.id), edges);
 		this.classicGlow = classicInfluence(nodes, edges, undefined, this.referenceLists);
 		const host = nearId ? prev.get(nearId) : null;
-		const placed = reflow || !host && nodes.some(node => !prev.has(node.id))
+		const added = nodes.some(node => !prev.has(node.id));
+		const placed = reflow || !host && added
 			? new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]))
 			: null;
 		const radii = citationRadii(nodes);
@@ -264,7 +267,7 @@ export class SimilarityMap {
 		this.refreshFocus();
 		if (reflow) this.fit(true);
 		else {
-			this.reheat(0.28);
+			if (added) this.reheat(0.28);
 			this.draw();
 		}
 	}
@@ -294,6 +297,7 @@ export class SimilarityMap {
 
 	setLayout(mode: LayoutMode): void {
 		this.simAlpha = 0;
+		if (mode === this.layoutMode) return;
 		this.layoutMode = mode;
 		this.readTheme();
 		this.rebuild(this.nodes, false);
@@ -536,8 +540,9 @@ export class SimilarityMap {
 				const min = a.radius + b.radius + 10;
 				let dx = b.x - a.x;
 				let dy = b.y - a.y;
-				const dist = Math.hypot(dx, dy) || 0.01;
-				if (dist >= min) continue;
+				const dist2 = dx * dx + dy * dy;
+				if (dist2 >= min * min) continue;
+				const dist = Math.sqrt(dist2) || 0.01;
 				dx /= dist;
 				dy /= dist;
 				const push = ((min - dist) / 2) * alpha;
@@ -619,6 +624,7 @@ export class SimilarityMap {
 	private readTheme(): void {
 		if (typeof getComputedStyle !== "function") return;
 		clearThemeColorCache();
+		this.starCores = new WeakMap();
 		const canvasStyles = getComputedStyle(this.canvas);
 		const text = canvasStyles.getPropertyValue("--text-normal") || canvasStyles.color;
 		const accent = canvasStyles.getPropertyValue("--interactive-accent");
@@ -645,6 +651,7 @@ export class SimilarityMap {
 
 	destroy(): void {
 		this.alive = false;
+		this.starCores = new WeakMap();
 		this.pulsing = false;
 		if (this.drawFrame !== null) this.caf(this.drawFrame);
 		this.drawFrame = null;
@@ -1168,11 +1175,12 @@ export class SimilarityMap {
 		const span = Math.max(1, yearSpan);
 		const yearBand = this.stage.parentElement?.querySelector<HTMLElement>(".cpo-year-band:not([hidden])");
 		const bars = yearBand?.querySelector<HTMLElement>(".cpo-year-bars");
+		const canvasRect = yearBand ? this.canvas.getBoundingClientRect() : null;
 		const labelY = yearBand
-			? Math.min(this.cssHeight - 7, yearBand.getBoundingClientRect().top - this.canvas.getBoundingClientRect().top - 6)
+			? Math.min(this.cssHeight - 7, yearBand.getBoundingClientRect().top - canvasRect!.top - 6)
 			: this.cssHeight - 7;
 		if (bars) {
-			const offset = bars.getBoundingClientRect().left - this.canvas.getBoundingClientRect().left;
+			const offset = bars.getBoundingClientRect().left - canvasRect!.left;
 			bars.style.setProperty("--year-origin", `${(yearSpan === 0 ? 0 : -width / 2) * this.k + this.tx - offset}px`);
 			bars.style.setProperty("--year-step", `${yearSpan === 0 ? 0 : width / span * this.k}px`);
 			bars.style.setProperty("--year-min", String(this.minYear));
@@ -1218,6 +1226,49 @@ export class SimilarityMap {
 		ctx.restore();
 	}
 
+	private paintStarCore(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {
+		const tint = channelsFromCss(color, this.accent);
+		// Artistic warm/cool tint, not a temperature inferred from paper data.
+		const warmth = clamp((tint.r - tint.b) / 160, -1, 1);
+		const stellar = warmth < 0
+			? { r: 255 + 95 * warmth, g: 245 + 45 * warmth, b: 235 - 20 * warmth }
+			: { r: 255, g: 245 - 65 * warmth, b: 235 - 115 * warmth };
+		const violet = clamp((Math.min(tint.r, tint.b) - tint.g) / 60, 0, 1);
+		stellar.r += (207 - stellar.r) * violet;
+		stellar.g += (164 - stellar.g) * violet;
+		stellar.b += (255 - stellar.b) * violet;
+		const core = ctx.createRadialGradient(x, y, 0, x, y, radius);
+		const nucleus = clamp(1.2 / radius, 0.05, 0.24);
+		core.addColorStop(0, rgba({ r: 235 + stellar.r * 0.08, g: 235 + stellar.g * 0.08, b: 235 + stellar.b * 0.08 }, 1));
+		core.addColorStop(nucleus * 0.5, rgba(stellar, 1));
+		core.addColorStop(nucleus, rgba({ r: stellar.r * 0.55 + tint.r * 0.45, g: stellar.g * 0.55 + tint.g * 0.45, b: stellar.b * 0.55 + tint.b * 0.45 }, 1));
+		core.addColorStop(0.35, withAlpha(color, 0.85));
+		core.addColorStop(0.7, withAlpha(color, 0.25));
+		core.addColorStop(1, withAlpha(color, 0));
+		ctx.fillStyle = core;
+		ctx.beginPath();
+		ctx.arc(x, y, radius, 0, Math.PI * 2);
+		ctx.fill();
+	}
+
+	/** Only the core is static; halo geometry, twinkle and focus opacity stay live. */
+	private drawStarCore(ctx: CanvasRenderingContext2D, node: DrawNode, sx: number, sy: number, radius: number, color: string): void {
+		const dpr = Math.max(1, this.canvas.width / this.cssWidth);
+		let cached = this.starCores.get(node);
+		if (!cached || cached.color !== color || cached.radius !== radius || cached.dpr !== dpr) {
+			const extent = Math.ceil(radius + 1);
+			const canvas = createEl("canvas");
+			canvas.width = canvas.height = Math.ceil(extent * 2 * dpr);
+			const paint = canvas.getContext("2d");
+			if (!paint) { this.paintStarCore(ctx, sx, sy, radius, color); return; }
+			paint.scale(canvas.width / (extent * 2), canvas.height / (extent * 2));
+			this.paintStarCore(paint, extent, extent, radius, color);
+			cached = { color, radius, dpr, canvas, extent };
+			this.starCores.set(node, cached);
+		}
+		ctx.drawImage(cached.canvas, sx - cached.extent, sy - cached.extent, cached.extent * 2, cached.extent * 2);
+	}
+
 	private drawNode(ctx: CanvasRenderingContext2D, node: DrawNode): void {
 		const x = node.x * this.k + this.tx;
 		const y = node.y * this.k + this.ty;
@@ -1259,27 +1310,11 @@ export class SimilarityMap {
 		ctx.beginPath();
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
 		if (this.night) {
-			const tint = channelsFromCss(color, this.accent);
-			// Artistic warm/cool tint, not a temperature inferred from paper data.
-			const warmth = clamp((tint.r - tint.b) / 160, -1, 1);
-			const stellar = warmth < 0
-				? { r: 255 + 95 * warmth, g: 245 + 45 * warmth, b: 235 - 20 * warmth }
-				: { r: 255, g: 245 - 65 * warmth, b: 235 - 115 * warmth };
-			const violet = clamp((Math.min(tint.r, tint.b) - tint.g) / 60, 0, 1);
-			stellar.r += (207 - stellar.r) * violet;
-			stellar.g += (164 - stellar.g) * violet;
-			stellar.b += (255 - stellar.b) * violet;
-			const core = ctx.createRadialGradient(x, y, 0, x, y, radius);
-			const nucleus = clamp(1.2 / radius, 0.05, 0.24);
-			core.addColorStop(0, rgba({ r: 235 + stellar.r * 0.08, g: 235 + stellar.g * 0.08, b: 235 + stellar.b * 0.08 }, 1));
-			core.addColorStop(nucleus * 0.5, rgba(stellar, 1));
-			core.addColorStop(nucleus, rgba({ r: stellar.r * 0.55 + tint.r * 0.45, g: stellar.g * 0.55 + tint.g * 0.45, b: stellar.b * 0.55 + tint.b * 0.45 }, 1));
-			core.addColorStop(0.35, withAlpha(color, 0.85));
-			core.addColorStop(0.7, withAlpha(color, 0.25));
-			core.addColorStop(1, withAlpha(color, 0));
-			ctx.fillStyle = core;
-		} else ctx.fillStyle = color;
-		ctx.fill();
+			this.drawStarCore(ctx, node, x, y, radius, color);
+		} else {
+			ctx.fillStyle = color;
+			ctx.fill();
+		}
 		if (this.night && node.isSeed) {
 			// Optical diffraction detail belongs to bright stars, not every data point.
 			const axes = importance >= 0.7 ? 4 : 2;
@@ -1453,7 +1488,7 @@ export class SimilarityMap {
 	}
 
 	private introOf(node: DrawNode): number {
-		if (this.reducedMotion || !this.nodes.includes(node)) return 1;
+		if (this.reducedMotion || !this.introAt && !this.introHold || !this.nodes.includes(node)) return 1;
 		if (this.introHold) return node.isSeed ? 1 : 0;
 		if (!this.introAt) return 1;
 		const elapsed = performance.now() - this.introAt;
@@ -1510,7 +1545,13 @@ export class SimilarityMap {
 			if (alpha <= 0.02) continue;
 			const maxWidth = Math.min(strong || (rankOf.get(node.id) ?? 99) <= 7 ? 168 : 140, this.cssWidth - 16);
 			if (maxWidth < 20) continue;
-			const lines = nodeLabel(node, this.labelMode).split("\n").filter(Boolean).map(text => fitText(ctx, text, maxWidth));
+			const lines = nodeLabel(node, this.labelMode).split("\n").filter(Boolean).flatMap((text, index) => {
+				const authorLine = index === 0 && this.labelMode !== "title";
+				const suffix = authorLine ? text.match(/(?: 等| et al\.)?(?:（编）| \(eds?\.\))? (?:-?\d+|—)$/)?.[0] ?? "" : "";
+				const names = authorLine ? authorYear(node, "\n").split("\n") : [text];
+				if (names.length === 2 && ctx.measureText(text).width > maxWidth) return [fitText(ctx, names[0]!, maxWidth), fitText(ctx, names[1]!, maxWidth, suffix)];
+				return [fitText(ctx, text, maxWidth, suffix)];
+			});
 			if (!lines.length) continue;
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
@@ -1554,17 +1595,17 @@ function themeColor(value: string, fallback: string): string {
 	return trimmed;
 }
 
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, suffix = ""): string {
 	if (ctx.measureText(text).width <= maxWidth) return text;
 	let low = 0;
-	let high = text.length;
+	let high = text.length - suffix.length;
 	while (low < high) {
 		const mid = Math.ceil((low + high) / 2);
-		const slice = `${text.slice(0, mid)}…`;
+		const slice = `${text.slice(0, mid)}…${suffix}`;
 		if (ctx.measureText(slice).width <= maxWidth) low = mid;
 		else high = mid - 1;
 	}
-	return `${text.slice(0, low)}…`;
+	return `${text.slice(0, low)}…${suffix}`;
 }
 
 function hexRgba(hex: number, alpha: number): string {

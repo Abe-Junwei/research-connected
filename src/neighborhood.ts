@@ -1,5 +1,6 @@
 import { tr } from "./i18n";
 import {
+	isCatalogueRecord,
 	OpenAlexClient,
 	OpenAlexError,
 	toPaper,
@@ -247,6 +248,15 @@ export async function loadNeighborhood(
 	onStage?.("resolving");
 	let seedRaw =
 		target.kind === "doi" ? await client.workByDoi(target.value) : await client.workById(target.value);
+	if (isCatalogueRecord(seedRaw)) {
+		const title = (seedRaw.display_name ?? "").replace(/\s*\/\s*by\s+.*$/i, "").trim();
+		const authors = (seedRaw.authorships ?? []).map(a => a?.author?.display_name?.toLowerCase()).filter(Boolean);
+		const candidates = (await client.searchWorks(title)).filter(work => {
+			const names = (work.authorships ?? []).map(a => a?.author?.display_name?.toLowerCase()).filter(Boolean);
+			return ["book", "report"].includes(work.type ?? "") && names.length === 1 && authors.includes(names[0]) && (work.display_name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "") === title.toLowerCase().replace(/[^a-z0-9]/g, "");
+		});
+		throw new OpenAlexError(tr(`已剔除图书馆目录记录。请核对并使用作品记录${candidates.length ? "：" + candidates.map(work => `${work.display_name} · ${work.publication_year} · ${work.type} · ${shortId(work.id ?? "")}`).join("；") : "：未找到可确认的同名作品，请改用出版社 DOI 或作品 ID"}。`, `Library catalogue record excluded. Choose a verified work record${candidates.length ? ": " + candidates.map(work => `${work.display_name} · ${work.publication_year} · ${work.type} · ${shortId(work.id ?? "")}`).join("; ") : "; no confirmed work found. Use a publisher DOI or work ID"}.`));
+	}
 	let seed = toPaper(seedRaw, "seed");
 	if (!seed) throw new OpenAlexError(tr("OpenAlex 返回的种子作品缺少标题或 ID。", "The seed work from OpenAlex has no title or ID."));
 	if (seed.retracted && options?.savedSeed && !options.allowRetractedSeed) throw new RetractedSeedError(seed);
@@ -934,6 +944,7 @@ function statsFor(
 }
 
 function candidateExclusion(work: RawWork, seed: PaperNode, excludeRetracted: boolean, admission = true): string | null {
+	if (isCatalogueRecord(work)) return tr("图书馆目录记录", "Library catalogue record");
 	const paper = toPaper(work, "related");
 	if (!paper) return tr("记录缺少有效标题或 OpenAlex ID", "Record lacks a valid title or OpenAlex ID");
 	if (paper.id === seed.id) return tr("这篇是种子文献", "This is the seed paper");

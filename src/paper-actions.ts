@@ -7,6 +7,7 @@ import { allowedExternalUrl } from "./safe-url";
 import type { GraphEdge, PaperNode } from "./types";
 
 export interface PaperActionOptions {
+	singleWorkspace?: boolean;
 	getPaperState: (seedId: string, paperId: string) => ProjectPaperState | undefined;
 	setStaged: (paper: PaperNode, seedId: string, staged: boolean, source: string) => void;
 	persist?: (source: string) => Promise<void> | void;
@@ -50,7 +51,7 @@ export function paintPaperActions(
 			const staged = Boolean(options.getPaperState(seedId, paper.id)?.staged);
 			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"));
 			button.setAttribute("aria-pressed", String(staged));
-			button.title = staged ? tr("从当前项目取消收藏", "Remove from this project's saved papers") : tr("收藏到当前项目", "Save to this project");
+			button.title = options.singleWorkspace ? (staged ? tr("取消收藏", "Remove favorite") : tr("收藏到当前图谱", "Save to this graph")) : staged ? tr("从当前项目取消收藏", "Remove from this project's saved papers") : tr("收藏到当前项目", "Save to this project");
 			button.setAttribute("aria-label", button.title);
 		};
 		paintStage();
@@ -70,7 +71,7 @@ export function paintPaperActions(
 					catch (error) { options.setStaged(paper, seedId, before, source); throw error; }
 				}
 				paintStage();
-				paintPaperActionFeedback(feedbackHost, before ? tr("已取消收藏", "Removed from saved papers") : tr("已收藏到当前项目", "Saved to this project"));
+				paintPaperActionFeedback(feedbackHost, before ? tr("已取消收藏", "Removed from saved papers") : options.singleWorkspace ? tr("已收藏到当前图谱", "Saved to this graph") : tr("已收藏到当前项目", "Saved to this project"));
 			} catch (failure) {
 				paintPaperActionFeedback(feedbackHost, failure instanceof Error ? failure.message : tr("保存失败，请重试", "Could not save. Try again."), true);
 			} finally {

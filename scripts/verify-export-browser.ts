@@ -43,8 +43,12 @@ export async function verifyExportBrowser(): Promise<void> {
 					const handle = embed ? mountEmbed(host, { ...deps, source: "doi: 10.1234/seed\nheight: 600" }) : mountGraphApp(host, { ...deps, initialDoi: "10.1234/seed" });
 					const destroy = () => { if (typeof handle === "function") handle(); else handle.destroy(); host.remove(); };
 					try {
-						await until(() => Boolean(host.querySelector<HTMLButtonElement>(".cpo-export-items button:not(:disabled)")), `${label}: graph loads`);
-						const buttons = () => Array.from(host.querySelectorAll<HTMLButtonElement>(".cpo-export-items button"));
+						await until(() => Boolean(host.querySelector<HTMLButtonElement>(".cpo-export-format button:not(:disabled)")), `${label}: graph loads`);
+						check(host.querySelectorAll(".cpo-export-section").length === 2, `${label}: list and single note have separate sections`);
+						const tableRow = host.querySelectorAll(".cpo-export-format")[2]!;
+						check(tableRow.querySelectorAll("button")[1]!.textContent === (isChinese() ? "复制" : "Copy"), `${label}: table copy label stays concise`);
+						check(!tableRow.textContent?.includes("Markdown"), `${label}: table row has no Markdown label`);
+						const buttons = () => { const all = Array.from(host.querySelectorAll<HTMLButtonElement>(".cpo-export-format button, .cpo-export-note-actions button")); return [all[1]!, all[3]!, all[5]!, writeNote ? all[8]! : all[7]!]; };
 						const click = async (index: number): Promise<void> => {
 							copied = "";
 							host.querySelector<HTMLDetailsElement>(".cpo-export-menu")!.open = true;
@@ -76,8 +80,13 @@ export async function verifyExportBrowser(): Promise<void> {
 							check(host.querySelector(".cpo-export-text")?.textContent === expected, `${label}: note template survives clipboard rejection`);
 							failClipboard = false;
 						}
-						existing = true; await click(3);
-						check(/已找到文献笔记|Literature notes found/.test(message()) && !copied && writes === (writeNote ? 1 : 0), `${label}: existing notes are not duplicated`);
+						existing = true;
+						copied = "";
+						host.querySelector<HTMLDivElement>(".cpo-export-note-actions")!.querySelectorAll("button")[1]!.click();
+						await new Promise(resolve => setTimeout(resolve, 50));
+						check(copied.startsWith("---\n") && writes === (writeNote ? 1 : 0), `${label}: Markdown copy bypasses existing-note deduplication without vault writes`);
+						await click(3);
+						check(writeNote ? /已找到文献笔记|Literature notes found/.test(message()) && !copied : copied.startsWith("---\n"), `${label}: existing notes only block vault writes`);
 						existing = false; confirmed = false; await click(3);
 						check(/请先确认阅读状态|Confirm reading status/.test(message()) && !copied && writes === (writeNote ? 1 : 0), `${label}: reading conflicts cannot silently create an unread note`);
 						if (!embed) {

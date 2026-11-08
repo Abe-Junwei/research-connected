@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
-import { mountGraphApp, type GraphAppHandle } from "./app";
+import { mountGraphApp, type AppDeps, type GraphAppHandle } from "./app";
 import { LOGO_ICON } from "./logo";
 import { VIEW_TYPE } from "./constants";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
@@ -13,6 +13,7 @@ export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
 	readingWorkflow: ReturnType<typeof createReadingWorkflow>;
+	sourceQuality: Pick<AppDeps, "checkMetadata" | "prepareGraph" | "decorateExport">;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -57,6 +58,7 @@ export class ConnectedPapersView extends ItemView {
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.appHandle = mountGraphApp(this.contentEl, {
 			...this.host.readingWorkflow,
+			...this.host.sourceQuality,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,

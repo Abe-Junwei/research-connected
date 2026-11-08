@@ -29,7 +29,7 @@ export function paintGraphStatus(status: HTMLElement, summaryText: string, diagn
 	const label = createEl("summary");
 	label.textContent = tr("采样详情", "Sampling details");
 	const content = createEl("p");
-	content.textContent = diagnostics;
+	content.textContent = diagnostics.replace(/ · (?=(?:采样 |sampled |S2 |滤除|排除|深度采样|明确保留|filtered |excluded |deep sampling|explicitly retained))/g, "\n").replace(/\s*\/\s*(?=(?:参考|施引|相关|References|Citing|Related)[:：])/g, "\n").replace(/^(采样 |sampled )/, "");
 	details.append(label, content);
 	status.replaceChildren(summary, details);
 	status.title = diagnostics;

@@ -1,3 +1,7 @@
+import { verifyBackupBrowser } from "./verify-backup-browser";
+import { verifySingleWorkspaceBrowser } from "./verify-single-workspace-browser";
+import { verifyProjectSwitchPerformanceBrowser } from "./verify-project-switch-performance-browser";
+import { verifyMobileLayoutBrowser } from "./verify-mobile-layout-browser";
 import "../src/host-language";
 import { classicCandidates } from "../src/aggregates";
 import { channelsFromCss } from "../src/theme-color";
@@ -15,10 +19,13 @@ import { fixtureGet } from "../preview/fixture";
 import { mountGraphSurface } from "../src/graph-surface";
 import { createReadingWorkflow } from "../src/reading-workflow";
 import { verifyProjectBrowser } from "./verify-project-browser";
+import { verifyContributorsBrowser } from "./verify-contributors-browser";
+import { verifyMapInteractionBrowser } from "./verify-map-interaction-browser";
 import { verifyExportBrowser } from "./verify-export-browser";
 import { verifyIntroCamera, verifyMapResizeBrowser } from "./verify-map-resize-browser";
 import { syntheticGraph } from "./perf-fixture";
 import type { GetJson } from "../src/openalex";
+import { screenWebResponse, checkWebMetadata, prepareWebGraph, decorateWebExport } from "../preview/quality";
 
 function check(value: unknown, message: string): asserts value {
 	if (!value) throw new Error(message);
@@ -65,6 +72,12 @@ function readableContrast(element: HTMLElement): number {
 }
 
 async function verify(): Promise<void> {
+	if (new URLSearchParams(location.search).has("quality-only")) {
+		await verifyQualityUi();
+		document.body.textContent = "PASS: Web directory filtering, metadata review, source-check actions, pane and embed";
+		document.body.dataset.result = "passed";
+		return;
+	}
 	if (new URLSearchParams(location.search).has("copy-only")) {
 		await verifyCopyUi();
 		document.body.dataset.result = "passed";
@@ -314,9 +327,9 @@ async function verify(): Promise<void> {
 		initialDoi: "10.1234/seed",
 		persistSettings: async () => { if (failSave) throw new Error("disk full"); },
 	});
-	const exportButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-export-items button"));
+	const exportButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-export-format button, .cpo-export-note-actions button"));
 	const exportHint = root.querySelector<HTMLElement>(".cpo-export-items .cpo-tool-hint");
-	check(exportButtons.length === 4 && exportButtons.every((button) => button.disabled), "empty graph disables export");
+	check(exportButtons.length === 8 && exportButtons.every((button) => button.disabled), "empty graph disables export");
 	check(exportHint && !exportHint.hidden && exportHint.textContent?.includes("请先构建图谱"), "empty export explains why it is unavailable");
 	await new Promise<void>((resolve, reject) => {
 		const timer = window.setTimeout(() => { observer.disconnect(); reject(new Error("graph did not load")); }, 5000);
@@ -476,7 +489,7 @@ async function verify(): Promise<void> {
 	check(identity.querySelector(".cpo-paper-sources")?.textContent?.includes("OpenAlex"), "OpenAlex is grouped with source links");
 	sourceLink.click();
 	check(openedUrl.startsWith("https://openalex.org/"), "source link opens the original OpenAlex URL");
-	check(exportButtons.every((button) => !button.disabled) && exportHint?.hidden, "a built graph enables export");
+	check(exportButtons.every((button) => !button.disabled) && !exportHint?.hidden && /条文献记录|literature records/.test(exportHint?.textContent ?? ""), "a built graph enables export and shows its count");
 	const exportDetails = root.querySelector<HTMLDetailsElement>("details.cpo-export-menu")!;
 	const exportMessage = root.querySelector<HTMLElement>(".cpo-export-message")!;
 	exportDetails.open = true;
@@ -807,6 +820,9 @@ async function verify(): Promise<void> {
 	const starNode = { ...labeled("W3", "Star", 2000, 10, false), x: 0, y: 0, radius: 5, color: "#58a6df" };
 	const starFills: Array<{ alpha: number; style: string | CanvasGradient | CanvasPattern }> = [];
 	const starRings: number[] = [];
+	const starImages: number[] = [];
+	const originalImage = labelContext.drawImage.bind(labelContext);
+	labelContext.drawImage = ((...args: Parameters<CanvasRenderingContext2D["drawImage"]>) => { starImages.push(labelContext.globalAlpha); originalImage(...args); }) as CanvasRenderingContext2D["drawImage"];
 	const originalFill = labelContext.fill.bind(labelContext);
 	const originalStroke = labelContext.stroke.bind(labelContext);
 	labelContext.fill = () => { starFills.push({ alpha: labelContext.globalAlpha, style: labelContext.fillStyle }); originalFill(); };
@@ -817,7 +833,7 @@ async function verify(): Promise<void> {
 	starMap.hoverId = null;
 	starMap.selectedId = null;
 	starMap.drawNode(labelContext, starNode);
-	check(starFills.length === 2 && starFills.every(fill => fill.alpha === 0.25), "dark star halo and core both follow focus dimming");
+	check(starFills.length === 1 && starImages.length === 1 && starImages[0] === 0.25 && starFills.every(fill => fill.alpha === 0.25), "dark star halo and core both follow focus dimming");
 	check(starFills.every(fill => fill.style instanceof CanvasGradient) && labelContext.globalAlpha === 1, "dark stars have no solid disk and restore drawing opacity");
 	const sampleCanvas = document.createElement("canvas");
 	sampleCanvas.width = sampleCanvas.height = 64;
@@ -985,6 +1001,7 @@ async function verify(): Promise<void> {
 		starMap.classicGlow.delete(starNode.id);
 		starMap.reducedMotion = true;
 	}
+	labelContext.drawImage = originalImage;
 	labelContext.fill = originalFill;
 	labelContext.stroke = originalStroke;
 	starMap.layoutMode = "force2d";
@@ -1176,11 +1193,63 @@ async function verify(): Promise<void> {
 	window.dispatchEvent(new Event("research-connected-settings"));
 	check(projectWrites === writesAtClose, "a project or settings notice does not save");
 	reopened.destroy();
+	await verifyBackupBrowser();
 	await verifyProjectBrowser();
 	await verifyExportBrowser();
+	await verifyContributorsBrowser();
+	verifyMapInteractionBrowser();
+	await verifyMobileLayoutBrowser();
+	await verifyProjectSwitchPerformanceBrowser();
+	await verifySingleWorkspaceBrowser();
+	await verifyQualityUi();
 	check(uncaught.length === 0, `no uncaught browser errors: ${uncaught.map(String).join(", ")}`);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, rename exit, abstract clamp, empty export, full graph, continuous star motion, node labels, rapid zoom, narrow return, reopen, cleanup";
 	document.body.dataset.result = "passed";
+}
+
+async function verifyQualityUi(): Promise<void> {
+	const rejected = ["List of figures Preface List of abbreviations 1. Introduction 2. Methods 3. Conclusion References Index", "1. Introduction 2. Modality and Subjectivity 3. Modality and Semantic Change 4. Illustrating the Model 5. Cross-linguistic Patterns 6. Shifts Between Types 7. Into Modality 8. Conclusions Appendix References", "Preview this article: Review of a book Page 1 of 1 Previous page Next page /docserver/preview", "https://example.test/thumbnail.jpg"];
+	for (const text of rejected) for (const embedded of [false, true]) {
+		const index: Record<string, number[]> = {};
+		text.split(" ").forEach((word, position) => (index[word] ??= []).push(position));
+		const root = document.createElement("div");
+		document.body.append(root);
+		const settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS, s2Reconcile: false, researchProjects: {} };
+		const getJson: GetJson = async (url, init) => {
+			const target = new URL(url);
+			if (target.hostname.includes("crossref")) return { message: { DOI: "10.1234/seed", type: "book-chapter", subtitle: ["Chapter identity needs review"] } };
+			if (target.hostname.includes("opencitations")) return [];
+			const data = structuredClone(await fixtureGet(url, init));
+			if (data && typeof data === "object" && "id" in data && data.id === "https://openalex.org/W1") Object.assign(data, { abstract_inverted_index: index, type: "book-chapter" });
+			if (data && typeof data === "object" && "results" in data && Array.isArray(data.results)) for (const row of data.results) if (row.id === "https://openalex.org/W1") Object.assign(row, { abstract_inverted_index: index, type: "book-chapter" });
+			return screenWebResponse(data, target);
+		};
+		const opened: string[] = [];
+		let prepared = false;
+		const common = { prepareGraph: (graph: Parameters<typeof prepareWebGraph>[0]) => { prepared = true; return prepareWebGraph(graph); }, decorateExport: decorateWebExport, getSettings: () => settings, getJson, openExternal: (url: string) => { opened.push(url); }, checkMetadata: (paper: PaperNode) => checkWebMetadata(paper, getJson) };
+		const cleanup = embedded ? mountEmbed(root, { ...common, source: "doi: 10.1234/seed", stagePaper: () => {} }) : mountGraphApp(root, { ...common, initialDoi: "10.1234/seed", saveProject: (project, key) => { settings.researchProjects[key ?? project.seedId] = project; } }).destroy;
+		try {
+			for (let i = 0; i < 200 && !root.querySelector(".cpo-metadata-review button"); i++) await new Promise(resolve => setTimeout(resolve, 25));
+			check(prepared, "Web graph preparation runs in pane and embed");
+			const notice = root.querySelector<HTMLElement>(".cpo-metadata-review");
+			check(notice && !notice.hidden && /DOI/.test(notice.textContent ?? ""), "Web metadata review is visible in pane and embed");
+			check(!root.querySelector(".cpo-abstract")?.textContent?.includes(text.slice(0, 40)), "contents, navigation and URL-only data are not rendered as abstracts");
+			const buttons = notice.querySelectorAll<HTMLButtonElement>("button");
+			check(buttons.length === 2, "both original source records have review actions");
+			buttons[0]!.click();
+			check(opened[0] === "https://doi.org/10.1234/seed", "review action preserves the original DOI");
+            const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+            let copied = "";
+            Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(value: string) { copied = value; } } });
+            try {
+                root.querySelector<HTMLDetailsElement>(".cpo-export-menu")!.open = true;
+                root.querySelectorAll<HTMLButtonElement>(".cpo-export-format button, .cpo-export-note-actions button")[1]!.click();
+                await new Promise(resolve => setTimeout(resolve, 50));
+                check(copied.startsWith("% Research Connected quality warning:"), `pane and embed export the Web quality notice (${embedded ? "embed" : "pane"}): ${copied.slice(0, 180)}`);
+                check(copied.includes("@"), "quality notice retains the actual bibliography");
+            } finally { if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor); else Reflect.deleteProperty(navigator, "clipboard"); }
+		} finally { cleanup(); root.remove(); }
+	}
 }
 
 async function verifyCopyUi(): Promise<void> {

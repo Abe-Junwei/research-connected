@@ -1,7 +1,7 @@
 import { TFile, type App } from "obsidian";
 import { indexLiteratureFiles, matchLiteratureNote, type IndexedNote } from "./export-graph";
 import { tr } from "./i18n";
-import { paperDois, paperRecords } from "./work-identity";
+import { paperDois, paperRecords, paperSourceIds } from "./work-identity";
 import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
 import type { ReadingNote } from "./reading-workflow";
@@ -74,7 +74,7 @@ export function lookupLiteratureNote(app: App, paper: PaperNode, doiProperty: st
 		add(indexedNote, true);
 		add(pending, false);
 	};
-	for (const key of [paper.id, ...paperRecords(paper).map((record) => record.id)]) consider(key, index.byId.get(key));
+	for (const key of paperSourceIds(paper)) consider(key, index.byId.get(key));
 	for (const doi of paperDois(paper)) consider(`doi:${doi}`, index.byDoi.get(doi));
 	if (matches.size > 1) return { path: [...matches.keys()][0]!, reading: null, alternatives: [...matches.keys()] };
 	return [...matches.values()][0] ?? null;

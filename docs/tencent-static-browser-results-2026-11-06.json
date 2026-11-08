@@ -1,0 +1,82 @@
+{
+  "tencentCold": {
+    "responseStart": 97.80000001192093,
+    "responseEnd": 98.70000004768372,
+    "domReady": 312.7000000476837,
+    "uiReady": 299,
+    "assets": [
+      {
+        "name": "/styles-bf3dd7e4278b1625.css",
+        "ms": 100.30000001192093,
+        "transfer": 21398,
+        "encoded": 21098
+      },
+      {
+        "name": "/web-CMUUY4BK.js",
+        "ms": 153.79999995231628,
+        "transfer": 123758,
+        "encoded": 123458
+      }
+    ]
+  },
+  "usCold": {
+    "responseStart": 4411.899999976158,
+    "responseEnd": 4412.899999976158,
+    "domReady": 8923.800000011921,
+    "uiReady": 8909.300000011921,
+    "assets": [
+      {
+        "name": "/styles-bf3dd7e4278b1625.css",
+        "ms": 2650.800000011921,
+        "transfer": 21398,
+        "encoded": 21098
+      },
+      {
+        "name": "/web-CMUUY4BK.js",
+        "ms": 4427.899999976158,
+        "transfer": 123758,
+        "encoded": 123458
+      }
+    ]
+  },
+  "tencentWarm": {
+    "responseStart": 52.59999996423721,
+    "responseEnd": 53,
+    "domReady": 92.39999997615814,
+    "uiReady": 85,
+    "assets": [
+      {
+        "name": "/styles-bf3dd7e4278b1625.css",
+        "ms": 0,
+        "transfer": 0,
+        "encoded": 21098
+      },
+      {
+        "name": "/web-CMUUY4BK.js",
+        "ms": 0,
+        "transfer": 0,
+        "encoded": 123458
+      }
+    ]
+  },
+  "usWarm": {
+    "responseStart": 5636.699999988079,
+    "responseEnd": 5637.300000011921,
+    "domReady": 5679.5,
+    "uiReady": 5672.399999976158,
+    "assets": [
+      {
+        "name": "/styles-bf3dd7e4278b1625.css",
+        "ms": 0,
+        "transfer": 0,
+        "encoded": 21098
+      },
+      {
+        "name": "/web-CMUUY4BK.js",
+        "ms": 0,
+        "transfer": 0,
+        "encoded": 123458
+      }
+    ]
+  }
+}

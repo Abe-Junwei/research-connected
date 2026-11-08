@@ -28,8 +28,14 @@ export interface RawWork {
 	concepts?: Array<{ display_name?: string | null; score?: number | null } | null> | null;
 	topics?: Array<RawTopic | null> | null;
 	primary_topic?: RawTopic | null;
-	primary_location?: { source?: { display_name?: string | null } | null } | null;
+	primary_location?: { landing_page_url?: string | null; source?: { display_name?: string | null } | null } | null;
 	biblio?: { volume?: string | null; issue?: string | null; first_page?: string | null; last_page?: string | null } | null;
+}
+
+/** Catalogue responsibility statements plus a catalogue URL identify an entry, not the work itself. */
+export function isCatalogueRecord(work: RawWork): boolean {
+ const url = work.primary_location?.landing_page_url ?? "";
+ return !normalizeDoi(work.doi) && !work.primary_location?.source && /\/\s*by\s+\S/i.test(work.display_name ?? "") && /(?:catalog|opac|library\.|\/buku\/)/i.test(url);
 }
 
 export type GetJson = (
@@ -109,12 +115,12 @@ export class OpenAlexClient {
 		return this.getObject(new URL(`${OPENALEX_API}/works/${id}?select=${WORK_SELECT}`));
 	}
 
-	searchWorks(query: string): Promise<RawWork[]> {
+	async searchWorks(query: string): Promise<RawWork[]> {
 		const url = new URL(`${OPENALEX_API}/works`);
 		url.searchParams.set("search", query);
 		url.searchParams.set("per_page", "8");
 		url.searchParams.set("select", LIST_SELECT);
-		return this.getResults(url);
+		return (await this.getResults(url)).filter(work => !isCatalogueRecord(work));
 	}
 
 	/**
@@ -442,7 +448,7 @@ function authorNames(authorships: RawWork["authorships"]): string[] {
 }
 
 function formatAuthorNames(names: string[]): string {
-	if (names.length === 0) return tr("作者不详", "Author unknown");
+	if (names.length === 0) return tr("作者信息缺失", "Author information missing");
 	if (names.length <= 3) return names.join(", ");
 	return tr(`${names.slice(0, 3).join(", ")} 等`, `${names.slice(0, 3).join(", ")} et al.`);
 }

@@ -1,0 +1,32 @@
+import assert from "node:assert/strict";
+import vm from "node:vm";
+import { build } from "esbuild";
+
+const code = (await build({ entryPoints: ["web/quota-client.ts"], bundle: true, format: "cjs", platform: "browser", write: false })).outputFiles[0].text;
+const store = () => { const data = new Map(); return { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, String(v)), removeItem: k => data.delete(k) }; };
+let now = Date.now(), attempts = 0;
+const localStorage = store(), sessionStorage = store();
+localStorage.setItem("research-connected-browser-token", "browser");
+sessionStorage.setItem("research-connected-session-nonce", "nonce");
+sessionStorage.setItem("research-connected-session-expiry", now / 1000 + 43200);
+const window = { localStorage, sessionStorage, setTimeout: callback => { now += 2000; callback(); }, fetch: async (path, init) => {
+ assert.equal(path, "/api/quota/confirm");
+ assert.deepEqual(JSON.parse(init.body), { reservation_id: "reservation", idempotency_key: "same-key" });
+ if (++attempts === 1) throw new TypeError("offline after local save");
+ return { ok: true, status: 200, json: async () => ({ ok: true, code: "confirmed" }) };
+} };
+const module = { exports: {} };
+vm.runInNewContext(code, { module, exports: module.exports, window, navigator: {}, AbortSignal, Date: { now: () => now }, Error, TypeError, setTimeout: window.setTimeout });
+const client = module.exports;
+client.writeLocalTask({ reservationId: "reservation", idempotencyKey: "same-key", action: "build", expiresAt: now / 1000 + 300, createdAt: now / 1000 });
+const confirmed = await client.confirmQuota("reservation");
+assert.equal(confirmed.ok, true);
+assert.equal(attempts, 2);
+assert.equal(client.readLocalTask(), null);
+attempts = 0;
+window.fetch = async () => { attempts++; throw new TypeError("offline"); };
+client.writeLocalTask({ reservationId: "reservation", idempotencyKey: "same-key", action: "build", expiresAt: now / 1000 + 3, createdAt: now / 1000 });
+assert.equal((await client.confirmQuota("reservation")).ok, false);
+assert.equal(client.readLocalTask(), null, "Expired pending confirmation must clear local busy state");
+assert.ok(attempts <= 2);
+console.log("Quota client: retry transient confirmation with same key; stop and clear at expiry: passed");

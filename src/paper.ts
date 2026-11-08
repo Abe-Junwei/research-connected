@@ -1,5 +1,5 @@
 import { tr } from "./i18n";
-import type { PaperNode } from "./types";
+import type { PaperRecord, PaperNode } from "./types";
 
 export type SeedQuery =
 	| { kind: "doi"; value: string }
@@ -143,4 +143,17 @@ function decodeURIComponentSafe(value: string): string {
 	} catch {
 		return value;
 	}
+}
+
+/** Legacy display placeholders are metadata gaps, not anonymous authors. */
+export function knownAuthorNames(paper: Pick<PaperRecord, "authorList" | "authors">): string[] {
+	if (paper.authorList?.length) return paper.authorList;
+	const value = paper.authors.trim();
+	return value && !["作者不详", "Author unknown", "作者信息缺失", "Author information missing"].includes(value) ? [value] : [];
+}
+
+export function contributorText(paper: Pick<PaperRecord, "authorList" | "authors" | "editorList"> & Partial<Pick<PaperRecord, "doiUrl" | "contributorLookup">>): string {
+	const authors = knownAuthorNames(paper);
+	const editors = paper.editorList ?? [];
+	return [authors.join(", "), editors.length ? `${editors.join(", ")}${tr("（编）", " (eds.)")}` : ""].filter(Boolean).join(" · ") || (paper.doiUrl && paper.contributorLookup !== "missing" ? tr("署名待查", "Contributors pending") : tr("作者信息缺失", "Author information missing"));
 }

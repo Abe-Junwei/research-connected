@@ -3,6 +3,8 @@ import { tr } from "./i18n";
 import { type YearHistogram } from "./year-histogram";
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
+export type ExportAction = "download" | "copy" | "write";
+export type ExportRange = { scope: "filtered" | "full"; mode: "one" | "all"; includeSeedException: false };
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded" | "pending";
 
@@ -55,7 +57,8 @@ export interface GraphChromeOptions {
 	layouts: readonly LayoutMode[];
 	layout: LayoutMode;
 	noteButton: boolean;
-	onExport: (kind: ExportKind) => void;
+	onExport: (kind: ExportKind, action: ExportAction) => void;
+	getExportInfo?: (range: ExportRange) => { count: number; noteTitle: string; noteIsSeed?: boolean; filteredCount?: number; fullCount?: number };
 	onLayout: (mode: LayoutMode) => void;
 	onScrub: (year: number | null) => void;
 	onTab: (tab: GraphTab) => void;
@@ -87,7 +90,8 @@ export interface GraphChrome {
 	setExportText(text: string, showPreview?: boolean): void;
 	copyText(text: string, label: string): Promise<void>;
 	clearExportText(): void;
-	exportOptions(): { mode: "one" | "all"; includeSeedException: boolean };
+	exportOptions(): ExportRange;
+	refreshExportInfo(): void;
 	destroy(): void;
 }
 
@@ -141,6 +145,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		for (const bin of histogram.bins) {
 			const bar = createSpan();
 			bar.style.setProperty("--year", String(bin.year));
+			bar.dataset.year = String(bin.year);
+			bar.dataset.hint = tr(`${bin.year} 年 · ${bin.count} 篇文献`, `${bin.year} · ${bin.count} ${bin.count === 1 ? "paper" : "papers"}`);
 			bar.className = throughAll || bin.year <= cutoff ? "cpo-year-bar is-on" : "cpo-year-bar";
 			bar.style.height = `${Math.max(bin.count === 0 ? 2 : 3, Math.round((bin.count / peak) * 18))}px`;
 			bars.append(bar);
@@ -165,7 +171,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		range.hidden = noYears;
 		play.hidden = noYears;
 		bars.hidden = noYears;
-		play.disabled = histogram.bins.length < 2;
+		play.disabled = histogram.bins.filter(bin => bin.count > 0).length < 2;
 		range.disabled = histogram.bins.length < 2;
 		if (noYears) {
 			summary.textContent = tr("当前样本没有年份", "This sample has no years");
@@ -275,8 +281,10 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			stop();
 			return;
 		}
+		const years = histogram.bins.filter(bin => bin.count > 0).map(bin => bin.year);
 		let year = Number(range.value);
-		if (!Number.isFinite(year) || year >= maxYear) year = minYear;
+		if (!Number.isFinite(year) || year >= maxYear) year = years[0]!;
+		else year = years.find(candidate => candidate >= year) ?? years[0]!;
 		range.value = String(year);
 		publish();
 		play.setAttribute("aria-label", tr("暂停时间视图", "Pause timeline"));
@@ -284,7 +292,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		play.replaceChildren(createChromeIcon("pause"));
 		play.setAttribute("aria-pressed", "true");
 		timer = window.setInterval(() => {
-			year += 1;
+			year = years.find(candidate => candidate > year) ?? maxYear;
 			if (year >= maxYear) {
 				range.value = String(maxYear);
 				stop();
@@ -350,39 +358,68 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 
 	const exportMenu = createEl("details");
 	exportMenu.className = "cpo-export-menu";
-	const exportSummary = createEl("summary");
-	exportSummary.className = "cpo-tool";
-	exportSummary.append(createChromeIcon("export"), document.createTextNode(tr("导出", "Export")), createChromeIcon("chevronDown"));
+	const exportSummary = createEl("summary"); exportSummary.className = "cpo-tool";
+	exportSummary.append(createChromeIcon("export"), document.createTextNode(tr("导出文献资料", "Export literature")), createChromeIcon("chevronDown"));
+	exportSummary.setAttribute("aria-label", tr("导出文献资料", "Export literature"));
+	exportSummary.title = tr("导出文献资料", "Export literature");
 	exportMenu.append(exportSummary);
-	const exportItems = createDiv();
-	exportItems.className = "cpo-export-items";
+	const exportItems = createDiv(); exportItems.className = "cpo-export-items";
+	const exportHeader = createDiv(); exportHeader.className = "cpo-export-header";
+	const exportTitle = createEl("strong"); exportTitle.textContent = tr("导出文献资料", "Export literature");
+	const closeExport = actionButton(tr("关闭", "Close"), () => { exportMenu.open = false; exportSummary.focus(); });
+	closeExport.classList.add("cpo-export-close"); closeExport.setAttribute("aria-label", tr("关闭导出菜单", "Close export menu"));
+	exportHeader.append(exportTitle, closeExport); exportItems.append(exportHeader);
+	const batch = createEl("section"); batch.className = "cpo-export-section cpo-export-list";
+	const batchTitle = createEl("h3"); batchTitle.textContent = tr("文献列表", "Literature list"); batchTitle.id = `${panelId}-export-list`; batch.setAttribute("aria-labelledby", batchTitle.id);
+	const batchDescription = createEl("p"); batchDescription.className = "cpo-export-description";
+	batchDescription.textContent = tr("题名、作者、年份、DOI 等文献文本资料", "Titles, contributors, years, DOIs and other literature metadata"); batch.append(batchTitle, batchDescription);
+	const scope = createEl("select"); scope.setAttribute("aria-label", tr("文献导出范围", "Literature export scope"));
+	for (const [value, text] of [["filtered", tr("当前筛选结果", "Current filtered papers")], ["full", tr("当前图谱全部文献", "All papers in this graph")]] as const) { const option = createEl("option"); option.value = value; option.textContent = text; scope.append(option); }
 	const versionMode = createEl("select"); versionMode.setAttribute("aria-label", tr("导出版本范围", "Export version range"));
-	for (const [value, text] of [["one", tr("每项一个展示版本", "One displayed version per research")], ["all", tr("所有符合条件的版本", "All eligible versions")]] as const) { const option = createEl("option"); option.value = value; option.textContent = text; versionMode.append(option); }
-	const seedException = createEl("input"); seedException.type = "checkbox";
-	const seedLabel = createEl("label"); seedLabel.append(seedException, document.createTextNode(tr("包含起点例外", "Include seed exception")));
-	exportItems.append(versionMode, seedLabel);
-	const exportHint = createDiv();
-	exportHint.className = "cpo-tool-hint";
-	exportHint.hidden = true;
-	exportHint.textContent = tr("请先构建图谱", "Build a graph first");
-	exportItems.append(exportHint);
-	const exportButtons: HTMLButtonElement[] = [];
-	for (const [label, kind] of [["BibTeX", "bibtex"], ["YAML", "yaml"], [tr("表格", "Table"), "table"], [options.noteButton ? tr("写入笔记", "Write to note") : tr("笔记骨架", "Note template"), "note"]] as const) {
-		const button = actionButton(label, () => options.onExport(kind));
-		exportButtons.push(button);
-		exportItems.append(button);
-	}
-	exportMenu.append(exportItems);
-	const setExportsEnabled = (enabled: boolean): void => {
-		exportHint.hidden = enabled;
-		for (const button of exportButtons) {
-			button.disabled = !enabled;
-			if (enabled) button.removeAttribute("title");
-			else button.title = exportHint.textContent ?? "";
-		}
+	for (const [value, text] of [["one", tr("每项研究仅导出当前展示版本", "Current displayed version per research")], ["all", tr("导出所有符合条件的版本", "All eligible versions")]] as const) { const option = createEl("option"); option.value = value; option.textContent = text; versionMode.append(option); }
+	for (const [label, select] of [[tr("导出哪些文献？", "Paper scope"), scope], [tr("版本选择", "Versions"), versionMode]] as const) { const field = createEl("label"); field.className = "cpo-export-field"; const name = createSpan(); name.textContent = label; field.append(name, select); batch.append(field); }
+	const result = createDiv(); result.className = "cpo-export-result";
+	const exportHint = createDiv(); exportHint.className = "cpo-tool-hint"; exportHint.setAttribute("aria-live", "polite");
+	const exclusionHint = createSpan(); exclusionHint.textContent = tr("已排除的文献不导出", "Excluded papers omitted"); result.append(exportHint, exclusionHint); batch.append(result);
+	const note = createEl("section"); note.className = "cpo-export-section cpo-export-note";
+	const noteTitle = createEl("h3"); noteTitle.textContent = tr("单篇文献笔记", "Single literature note"); noteTitle.id = `${panelId}-export-note`; note.setAttribute("aria-labelledby", noteTitle.id);
+	const noteDescription = createEl("p"); noteDescription.className = "cpo-export-description"; noteDescription.textContent = tr("仅下方这一篇，不受列表范围影响", "Only this paper; independent of the list scope");
+	const notePaper = createDiv(); notePaper.className = "cpo-export-note-paper";
+	const noteContext = createSpan(); const noteHint = createEl("strong"); noteHint.className = "cpo-export-note-title"; notePaper.append(noteContext, noteHint);
+	const noteHelp = createEl("p"); noteHelp.className = "cpo-export-description"; noteHelp.textContent = tr("包含文献信息和阅读状态的 Markdown 笔记骨架", "Markdown template with literature metadata and reading status");
+	const noteActions = createDiv(); noteActions.className = "cpo-export-note-actions";
+	note.append(noteTitle, noteDescription, notePaper, noteHelp, noteActions);
+	exportItems.append(batch, note);
+	const exportButtons: HTMLButtonElement[] = [], batchButtons: HTMLButtonElement[] = [];
+	let exportsEnabled = false;
+	const exportRange = (): ExportRange => ({ scope: scope.value === "full" ? "full" : "filtered", mode: versionMode.value === "all" ? "all" : "one", includeSeedException: false });
+	const refreshExportInfo = (): void => {
+		const info = exportsEnabled ? options.getExportInfo?.(exportRange()) : undefined;
+		for (const [index, label, count] of [[0, tr("当前筛选结果", "Current filtered papers"), info?.filteredCount], [1, tr("当前图谱全部文献", "All papers in this graph"), info?.fullCount]] as const) scope.options[index]!.textContent = count === undefined ? label : tr(`${label} · ${count} 篇`, `${label} · ${count}`);
+		exportHint.textContent = exportsEnabled ? tr(`本次导出 ${info?.count ?? 0} 条文献记录`, `${info?.count ?? 0} literature records to export`) : tr("请先构建图谱", "Build a graph first");
+		exclusionHint.hidden = !exportsEnabled;
+		noteContext.textContent = info?.noteIsSeed ? tr("种子文献", "Seed paper") : tr("当前选中的文献", "Selected paper"); noteHint.textContent = info?.noteTitle || "—";
+		for (const button of batchButtons) button.disabled = !exportsEnabled || info?.count === 0;
+		if (exportMenu.open && exportItems.isConnected) positionPopover(exportItems);
 	};
-	setExportsEnabled(false);
+	for (const [label, kind, extension] of [[tr("参考文献 · BibTeX", "References · BibTeX"), "bibtex", "bib"], [tr("结构化资料 · YAML", "Metadata · YAML"), "yaml", "yaml"], [tr("文献表格", "Literature table"), "table", "csv"], ["Markdown", "note", "md"]] as const) {
+		const row = kind === "note" ? noteActions : createDiv();
+		if (kind !== "note") { row.className = "cpo-export-format"; const title = createSpan(); title.textContent = label; row.append(title); batch.append(row); }
+		for (const action of ["download", "copy"] as const) {
+			const text = action === "download" ? tr(`下载 .${extension}`, `Download .${extension}`) : kind === "note" ? tr("复制笔记骨架", "Copy note template") : tr("复制", "Copy");
+			const button = actionButton(text, () => options.onExport(kind, action));
+			button.setAttribute("aria-label", `${action === "download" ? tr("下载", "Download") : tr("复制", "Copy")} ${kind === "table" ? tr("文献表格", "Literature table") : label}`);
+			exportButtons.push(button); if (kind !== "note") batchButtons.push(button); row.append(button);
+		}
+	}
+	if (options.noteButton) { const button = actionButton(tr("写入 Obsidian 笔记", "Write to Obsidian note"), () => options.onExport("note", "write")); exportButtons.push(button); noteActions.append(button); }
+	scope.onchange = versionMode.onchange = refreshExportInfo;
+	exportMenu.addEventListener("toggle", () => { if (exportMenu.open) refreshExportInfo(); });
+	const setExportsEnabled = (enabled: boolean): void => { exportsEnabled = enabled; for (const button of exportButtons) button.disabled = !enabled; refreshExportInfo(); };
+	setExportsEnabled(false); exportMenu.append(exportItems);
 	const releaseExportMenu = registerPopover(exportMenu);
+	const onExportResize = (): void => { if (exportMenu.open) refreshExportInfo(); };
+	window.addEventListener("resize", onExportResize);
 
 	const onExportKey = (event: KeyboardEvent): void => {
 		if (event.key === "Escape" && !output.hidden) clearOutputText();
@@ -397,7 +434,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(exportMenu, output);
 
 	return {
-		exportOptions: () => ({ mode: versionMode.value === "all" ? "all" : "one", includeSeedException: seedException.checked }),
+		exportOptions: exportRange,
+		refreshExportInfo,
 		setLayout(mode: LayoutMode): void {
 			layoutButtons.get(mode)?.click();
 		},
@@ -467,6 +505,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			clearOutputText();
 			releaseExportMenu();
 			if (typeof document !== "undefined") document.removeEventListener("keydown", onExportKey);
+			window.removeEventListener("resize", onExportResize);
 			host.replaceChildren();
 			host.classList.remove("cpo-tools");
 			if (actions !== host) {
@@ -565,6 +604,20 @@ function ensurePopoverListeners(): void {
 			menu.open = false;
 		}
 	});
+}
+
+/** Keep a compact menu within the viewport without changing its anchor. */
+export function positionPopover(panel: HTMLElement): void {
+	panel.style.removeProperty("--cpo-export-x"); panel.style.removeProperty("--cpo-export-y");
+	const frame = getComputedStyle(panel).position === "fixed" ? null : panel.closest<HTMLElement>(".cpo-root, .cpo-embed");
+	const bounds = frame?.getBoundingClientRect();
+	const left = Math.max(8, (bounds?.left ?? 0) + 8), right = Math.min(window.innerWidth - 8, (bounds?.right ?? window.innerWidth) - 8);
+	const top = Math.max(8, (bounds?.top ?? 0) + 8), bottom = Math.min(window.innerHeight - 8, (bounds?.bottom ?? window.innerHeight) - 8);
+	panel.style.setProperty("--cpo-menu-width", `${Math.max(0, Math.min(440, right - left))}px`);
+	panel.style.setProperty("--cpo-menu-height", `${Math.max(44, bottom - top)}px`);
+	const rect = panel.getBoundingClientRect();
+	panel.style.setProperty("--cpo-export-x", `${Math.max(left, Math.min(rect.left, right - rect.width)) - rect.left}px`);
+	panel.style.setProperty("--cpo-export-y", `${Math.max(top, Math.min(rect.top, bottom - rect.height)) - rect.top}px`);
 }
 
 /** A details menu closes itself: item click, outside pointer, or Escape. */

@@ -1,7 +1,7 @@
 import { tr } from "./i18n";
 import type { ConnectedPapersSettings } from "./settings-model";
 import { projectWriteKey, readNoteReading, updateProjectPaperState, type ReadingStatus } from "./project-state";
-import { paperDois, paperRecords, sourceVersionGroups } from "./work-identity";
+import { paperDois, paperRecords, paperSourceIds, sourceVersionGroups } from "./work-identity";
 import type { PaperNode } from "./types";
 
 export interface ReadingSource { source: string; reading: ReadingStatus | null; raw?: unknown }
@@ -47,9 +47,9 @@ export interface ReadingWorkflowOptions {
 const emptyStore = (): ReadingWorkflowStore => ({ version: 1, records: {} });
 const valid = (value: unknown): value is ReadingStatus => value === "unread" || value === "to-read" || value === "read";
 const matches = (left: PaperNode, right: PaperNode): boolean => {
-	const ids = new Set(paperRecords(left).map(record => record.id));
+	const ids = new Set(paperSourceIds(left));
 	const dois = paperDois(left);
-	return paperRecords(right).some(record => ids.has(record.id)) || paperDois(right).some(doi => dois.includes(doi));
+	return paperSourceIds(right).some(id => ids.has(id)) || left.id === right.id || paperDois(right).some(doi => dois.includes(doi));
 };
 
 export function normalizeReadingWorkflow(value: unknown): ReadingWorkflowStore | undefined {
