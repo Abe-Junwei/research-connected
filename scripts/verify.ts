@@ -9,6 +9,7 @@ import { verifyS2Pipeline } from "./verify-s2-pipeline";
 import { verifySliceIntegration } from "./verify-slice-integration";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyUi } from "./verify-ui";
+import { verifyContributors } from "./verify-contributors";
 import { verifyExport } from "./verify-export";
 import { surfaceBand } from "../src/responsive";
 import { sidebarWidthLimit } from "../src/sidebar-resize";
@@ -349,8 +350,10 @@ function unit(): void {
 		/引用了/,
 	);
 	assert.equal(shortAuthor("Yann LeCun, Yoshua Bengio, Geoffrey E. Hinton"), "LeCun");
-	assert.equal(shortAuthor("作者不详"), "佚名");
-	assert.equal(authorYear({ authors: "Yann LeCun, Yoshua Bengio", year: 2015 }), "LeCun 2015");
+	assert.equal(shortAuthor("作者不详"), "署名缺失");
+	assert.equal(authorYear({ authors: "Yann LeCun, Yoshua Bengio", year: 2015 }), "LeCun and Bengio 2015");
+	assert.equal(authorYear({ authors: "", authorList: ["Yann LeCun", "Yoshua Bengio", "Geoffrey E. Hinton"], year: 2015 }), "LeCun, Bengio et al. 2015");
+	assert.equal(authorYear({ authors: "Author unknown", authorList: [], editorList: ["Lauren Gawne", "Nathan W. Hill", "Third Editor"], year: 2017 }), "Gawne, Hill et al. (eds.) 2017");
 	assert.equal(citationLabelAlpha(0, 0.5), 1, "最高被引恒显");
 	assert.equal(citationLabelAlpha(3, 0.5), 0, "次档低缩放不显示");
 	assert.ok(citationLabelAlpha(3, 1.0) > 0.5, "次档随放大淡入");
@@ -1102,6 +1105,7 @@ async function main(): Promise<void> {
 	await verifyEvidence();
 	verifyUi();
 	verifyExport();
+	await verifyContributors();
 	verifyWorkspaceFrame();
 	await cursorPaging();
 	await reconcileOffline();

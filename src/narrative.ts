@@ -1,3 +1,4 @@
+import { contributorText } from "./paper";
 import { tr } from "./i18n";
 import { derivativeWorks, priorWorks } from "./aggregates";
 import type { CitationEvidence } from "./citation-evidence";
@@ -46,7 +47,7 @@ export function buildNarrativeEvidence(graph: SimilarityGraph, sendAbstracts: bo
 		id: paper.id,
 		title: paper.title,
 		year: paper.year,
-		authors: paper.authors,
+		authors: contributorText(paper),
 		...(sendAbstracts && paper.abstract ? { abstract: paper.abstract.slice(0, 1200) } : {}),
 		openAlexUrl: paper.openAlexUrl,
 	});

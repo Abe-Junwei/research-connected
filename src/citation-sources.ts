@@ -14,6 +14,8 @@ export interface OpenCitationRow {
 
 export interface CrossrefWork {
 	DOI?: string;
+	author?: unknown;
+	editor?: unknown;
 	abstract?: string;
 	reference?: Array<{ DOI?: string; unstructured?: string }>;
 	relation?: Record<string, Array<{ id?: unknown; "id-type"?: unknown }>>;

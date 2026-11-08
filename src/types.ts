@@ -27,6 +27,9 @@ export interface PaperRecord {
 	authors: string;
 	/** Structured author display names in authorship order; empty when unknown. */
 	authorList: string[];
+	editorList?: string[];
+	contributorSource?: "crossref";
+	contributorLookup?: "missing";
 	abstract: string;
 	abstractSource?: "openalex" | "s2" | "crossref";
 	doiUrl: string | null;
