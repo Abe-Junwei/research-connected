@@ -6,7 +6,7 @@ import { createChromeIcon, paintEvidenceBadges, paintPaperStateBadges } from "./
 import type { SelectionRank, SimilarityGraph } from "./neighborhood";
 import { paintPaperActions, paintPaperActionFeedback, type PaperActionOptions } from "./paper-actions";
 import type { ProjectPaperState, ReadingStatus } from "./project-state";
-import { nonResearchLabel, normalizeDoi } from "./paper";
+import { contributorText, knownAuthorNames, nonResearchLabel, normalizeDoi } from "./paper";
 import { comparableStructuralSimilarity, findEdge, observedRelationCount } from "./relation";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { citationCountText, formatCount } from "./visual";
@@ -107,12 +107,13 @@ export function choosePaperVersion(paper: PaperNode, allowWhole = false, signal?
 		for (const version of versions) { const option = el(select, "option", "", `${version.id} · ${version.doiUrl ?? version.title}`); option.value = version.id; }
 		if (allowWhole && !versions.some(version => version.isSeed)) { const option = el(select, "option", "", tr("整项研究（含未来版本）", "Whole research, including future versions")); option.value = "whole"; }
 		const close = () => { signal?.removeEventListener("abort", cancelAction); dialog.close(); dialog.remove(); };
-		const cancel = el(dialog, "button", "cpo-text-btn", tr("取消", "Cancel")); cancel.type = "button";
+		const cancel = el(dialog, "button", "cpo-ghost", tr("取消", "Cancel")); cancel.type = "button";
 		const cancelAction = () => { close(); reject(new Error(tr("已取消，未保存", "Cancelled; nothing saved"))); };
 		signal?.addEventListener("abort", cancelAction, { once: true });
 		cancel.onclick = cancelAction; dialog.addEventListener("cancel", event => { event.preventDefault(); cancelAction(); });
-		const confirm = el(dialog, "button", "cpo-text-btn", tr("确认", "Confirm")); confirm.type = "button";
+		const confirm = el(dialog, "button", "cpo-primary", tr("确认", "Confirm")); confirm.type = "button";
 		confirm.onclick = () => { const whole = select.value === "whole"; const version = versions.find(version => version.id === select.value) ?? versions[0]!; close(); resolve({ paper: { ...version }, whole }); };
+		const actions = el(dialog, "div", "cpo-project-dialog-actions"); actions.append(cancel, confirm);
 		document.body.append(dialog); dialog.showModal(); select.focus();
 	});
 }
@@ -122,14 +123,14 @@ let readingGroupSequence = 0;
 export function paintPaperWorkflowState(
 	parent: HTMLElement, paper: PaperNode, state: ProjectPaperState & { readingConflict?: boolean },
 	onReading: (reading: ReadingStatus, previous: ReadingStatus) => Promise<void> | void, onExclude?: () => Promise<void> | void,
-	onRestore?: () => Promise<void> | void,
+	onRestore?: () => Promise<void> | void, singleWorkspace = false,
 ): void {
 	const feedbackHost = parent.closest<HTMLElement>(".cpo-evidence-sidebar") ?? parent;
 	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
 	const row = el(card, "div", "cpo-paper-actions");
 	const readingRow = el(row, "div", "cpo-paper-reading-row");
 	const group = el(readingRow, "div", "cpo-paper-reading");
-	group.title = tr("阅读状态在各项目间共享", "Reading status is shared across projects");
+	group.title = singleWorkspace ? tr("阅读状态在不同图谱间保留", "Reading status is retained across graphs") : tr("阅读状态在各项目间共享", "Reading status is shared across projects");
 	const trigger = el(group, "button", "cpo-paper-action cpo-reading-trigger");
 	trigger.type = "button";
 	trigger.setAttribute("aria-haspopup", "menu");
@@ -160,7 +161,7 @@ export function paintPaperWorkflowState(
 		trigger.disabled = busy;
 		const label = conflict ? tr("待确认", "Confirm status") : labels[currentReading];
 		trigger.replaceChildren(document.createTextNode(label), createChromeIcon("chevronDown"));
-		trigger.setAttribute("aria-label", tr(`阅读状态：${label}（各项目共享）`, `Reading status: ${label} (shared across projects)`));
+		trigger.setAttribute("aria-label", singleWorkspace ? tr(`阅读状态：${label}`, `Reading status: ${label}`) : tr(`阅读状态：${label}（各项目共享）`, `Reading status: ${label} (shared across projects)`));
 		for (const input of inputs) {
 			const checked = !conflict && input.value === currentReading;
 			input.setAttribute("aria-checked", String(checked));
@@ -228,7 +229,7 @@ export function paintPaperWorkflowState(
 		exclude.prepend(createChromeIcon(state.excluded ? "refresh" : "exclude"));
 		const action = state.excluded ? onRestore : onExclude;
 		exclude.disabled = !action;
-		exclude.title = state.excluded ? tr("恢复到当前项目图谱", "Restore to the current project's graph") : tr("从当前项目排除", "Exclude from this project");
+		exclude.title = singleWorkspace ? (state.excluded ? tr("恢复到当前图谱", "Restore to this graph") : tr("从当前图谱排除", "Exclude from this graph")) : state.excluded ? tr("恢复到当前项目图谱", "Restore to the current project's graph") : tr("从当前项目排除", "Exclude from this project");
 		exclude.setAttribute("aria-label", exclude.title);
 		if (action) exclude.onclick = async () => {
 			exclude.disabled = true;
@@ -253,23 +254,30 @@ export function semanticHintFor(mode?: "embedding" | "local", model?: string | n
 
 /** Author line from the structured list; falls back to the joined string. */
 export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
-	const names = paper.authorList?.length ? paper.authorList : paper.authors ? [paper.authors] : [];
-	if (names.length === 0) return;
-	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
-	const text = el(row, "span", "cpo-paper-authors", names.slice(0, 5).join(" · "));
-	if (names.length > 5) {
-		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`);
-		more.type = "button";
-		more.setAttribute("aria-expanded", "false");
-		more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
-		more.onclick = () => {
-			const expanded = more.getAttribute("aria-expanded") !== "true";
-			more.setAttribute("aria-expanded", String(expanded));
-			text.textContent = (expanded ? names : names.slice(0, 5)).join(" · ");
-			more.textContent = expanded ? tr("收起", "Collapse") : `+${names.length - 5}`;
-			more.setAttribute("aria-label", expanded ? tr("收起其余作者", "Collapse other authors") : tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
-		};
+	const authors = knownAuthorNames(paper);
+	const editors = paper.editorList ?? [];
+	for (const [names, role] of [[authors, tr("作者", "Authors")], [editors, tr("编者", "Editors")]] as const) {
+		if (!names.length) continue;
+		const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
+		const suffix = role === tr("编者", "Editors") ? tr("（编）", " (eds.)") : "";
+		const text = el(row, "span", "cpo-paper-authors", names.slice(0, 5).join(" · ") + suffix);
+		if (paper.contributorSource) row.title = "Crossref";
+		if (names.length > 5) {
+			const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`);
+			more.type = "button";
+			more.setAttribute("aria-expanded", "false");
+			const label = tr(`显示其余 ${names.length - 5} 位${role}`, `Show ${names.length - 5} more ${role.toLowerCase()}`);
+			more.setAttribute("aria-label", label);
+			more.onclick = () => {
+				const expanded = more.getAttribute("aria-expanded") !== "true";
+				more.setAttribute("aria-expanded", String(expanded));
+				text.textContent = (expanded ? names : names.slice(0, 5)).join(" · ") + suffix;
+				more.textContent = expanded ? tr("收起", "Collapse") : `+${names.length - 5}`;
+				more.setAttribute("aria-label", expanded ? tr(`收起其余${role}`, `Collapse other ${role.toLowerCase()}`) : label);
+			};
+		}
 	}
+	if (!authors.length && !editors.length) el(parent, "p", "cpo-paper-authors cpo-contributor-placeholder", contributorText(paper));
 }
 
 /** 出处行：期刊名/书名题录行，悬停显示全文。元数据卡与聚合卡共用。 */
@@ -484,7 +492,7 @@ export function paintJumpStrip(parent: HTMLElement, paper: PaperNode, onJump: (p
 	el(head, "span", "cpo-chip cpo-chip-accent", ORIGIN_TEXT[paper.origin]);
 	el(head, "span", "cpo-chip cpo-chip-muted", tr(`${paper.year ?? tr("年份不详", "Year unknown")} · 被引 ${citationCountText(paper)}`, `${paper.year ?? tr("年份不详", "Year unknown")} · cited ${citationCountText(paper)} times`));
 	el(info, "p", "cpo-jump-title", paper.title || paper.id);
-	el(info, "p", "cpo-jump-meta", paper.authors);
+	el(info, "p", "cpo-jump-meta", contributorText(paper));
 	const go = el(strip, "button", "cpo-text-btn", tr("查看", "View"));
 	go.append(createChromeIcon("chevronRight"));
 	go.type = "button";
@@ -588,7 +596,7 @@ export function paintPaperDetail(parent: HTMLElement, graph: SimilarityGraph, pa
 	}
 	const versionFacts = graph.researchProjection?.selfCitations.filter(link => paperRecords(paper).some(record => record.id === link.citingId || record.id === link.citedId)) ?? [];
 	if (versionFacts.length) { const facts = el(parent, "details", "cpo-work-sources"); el(facts, "summary", "cpo-fact-note", tr("研究内部的版本引用", "Citations between versions of this research")); for (const link of versionFacts) el(facts, "p", "cpo-fact-note", `${link.citingId} → ${link.citedId} · ${link.source}`); }
-	paintPaperWorkflowState(parent, paper, options.workflow, options.onReading, options.onExclude, options.onRestore);
+	paintPaperWorkflowState(parent, paper, options.workflow, options.onReading, options.onExclude, options.onRestore, options.actions.singleWorkspace);
 	if (paperRecords(paper).length > 1 && options.lookupLiteratureNote && options.openLiteratureNote) {
 		const records = paperRecords(paper);
 		if (records.some(record => options.lookupLiteratureNote!(record))) {

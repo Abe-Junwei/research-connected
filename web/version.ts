@@ -3,7 +3,7 @@ let compatible = true;
 
 export async function requireCompatibleClient(): Promise<void> {
 	await checkVersion();
-	if (!compatible) throw new Error("网页版本需要更新；已保存项目仍可查看和复制。请完成或取消任务后更新。");
+	if (!compatible) throw new Error("网页版本需要更新；已保存图谱仍可查看和复制。请完成或取消任务后更新。");
 }
 
 let banner: HTMLElement | null = null;
@@ -17,7 +17,7 @@ async function checkVersion(): Promise<void> {
 		if (!banner) return;
 		if (version.build === __WEB_BUILD__) { banner.hidden = true; return; }
 		banner.hidden = false;
-		banner.textContent = compatible ? "有新版本。请在任务完成、项目保存后更新。" : "当前网页版本已不兼容。已保存项目仍可查看和复制；请保存后更新。";
+		banner.textContent = compatible ? "有新版本。请在任务完成、图谱自动保存后更新。" : "当前网页版本已不兼容。已保存图谱仍可查看和复制；请确认自动保存后更新。";
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "cpo-text-btn";

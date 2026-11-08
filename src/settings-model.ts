@@ -5,6 +5,8 @@ import type { SourceVersionRelation, WorkIdentityDecision } from "./work-identit
 export type SampleDepth = "standard" | "extended" | "deep";
 
 export interface ConnectedPapersSettings {
+	/** Web imports remain local until a user starts a new source operation. */
+	webOfflineRestore?: boolean;
 	apiKey: string;
 	contactEmail: string;
 	openCitationsToken: string;

@@ -1,5 +1,18 @@
 import type { ConnectedPapersSettings } from "../src/settings-model";
 
+export function sourceReviewPaused(key: string): boolean {
+	try { return Number(window.sessionStorage.getItem(`${key}-source-review-paused-until`)) > Date.now(); }
+	catch { return false; }
+}
+
+export function pauseSourceReview(key: string, paused: boolean): void {
+	try {
+		const marker = `${key}-source-review-paused-until`;
+		if (paused) window.sessionStorage.setItem(marker, String(Date.now() + 86400000));
+		else window.sessionStorage.removeItem(marker);
+	} catch { /* Project safety does not depend on saving a retry marker. */ }
+}
+
 export class StorageFullError extends Error {
 	constructor(message = "Browser storage is full") {
 		super(message);

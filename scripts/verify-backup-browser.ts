@@ -1,0 +1,62 @@
+import { mountGraphApp } from "../src/app";
+import { DEFAULT_SETTINGS } from "../src/settings-model";
+import { saveGraphSnapshot, type ResearchProject } from "../src/project-state";
+import { syntheticGraph } from "./perf-fixture";
+import { captureWorkspace } from "../web/workspace-backup";
+import { mountWorkspaceMenu } from "../web/workspace-menu";
+import { emptyFilter } from "../src/graph-filter";
+
+const check = (value: unknown, message: string): void => { if (!value) throw new Error(message); };
+const tick = () => new Promise(resolve => setTimeout(resolve, 30));
+export async function verifyBackupBrowser(): Promise<void> {
+ const settings = structuredClone(DEFAULT_SETTINGS), snapshot = saveGraphSnapshot(syntheticGraph(12));
+ const project: ResearchProject = { version: 1, seedId: snapshot.seedId, name: "Backup fixture", updatedAt: 1, snapshot, views: [], currentView: { name: "Camera", layout: "temporal", selectedId: null, scrubYear: null, zoom: 1.35, centerX: 12, centerY: 16, updatedAt: 1, filter: { ...emptyFilter(), language: "zz" } } };
+ const excluded = snapshot.nodes[1]!;
+ project.paperStates = { [excluded.id]: { paper: excluded, reading: "read", staged: true, excluded: true, source: "manual", updatedAt: 1 } };
+ settings.researchProjects = { [project.seedId]: project };
+ const host = document.createElement("div"); host.style.cssText = "width:1100px;height:750px"; document.body.append(host);
+ let requests = 0, restored = 0, busy = false, fail = true, revision = "original", downloaded = 0;
+ const create = URL.createObjectURL; URL.createObjectURL = blob => { downloaded++; return create(blob); };
+ const app = mountGraphApp(host, { getSettings: () => settings, loadSavedProject: () => project, localOnly: () => true, checkMetadata: async () => { requests++; throw new Error("Unexpected metadata query"); }, getJson: async () => { requests++; throw new Error("Unexpected source query"); }, openExternal() {} });
+ const menu = mountWorkspaceMenu(host, { capture: () => captureWorkspace(settings, app.captureProject()), canRestore: () => !busy, revision: () => revision, restore: async (_backup, expected) => { if (fail || expected !== revision) throw new Error("Retained original"); restored++; }, notify: message => { host.dataset.notice = message; } });
+ try {
+  busy = true;
+  const choice = menu.confirmChoice("Confirm updated graph");
+  let choiceDialog = document.querySelector<HTMLDialogElement>(".cpo-workspace-dialog")!;
+  check(choiceDialog.querySelector<HTMLButtonElement>(".cpo-workspace-dialog-backup")?.hidden, "Graph confirmation incorrectly offers workspace backup");
+  choiceDialog.querySelector<HTMLButtonElement>(".cpo-primary")!.click();
+  check(await choice, "Graph confirmation is blocked by active build");
+  const cancelled = menu.confirmChoice("Cancel updated graph");
+  choiceDialog = document.querySelector<HTMLDialogElement>(".cpo-workspace-dialog")!;
+  Array.from(choiceDialog.querySelectorAll("button")).find(button => /^(取消|Cancel)$/.test(button.textContent ?? ""))!.click();
+  check(!await cancelled, "Cancel adopted graph");
+  busy = false;
+  check(!host.querySelector('[aria-label="包含起点例外"]'), "Seed exception remains");
+  const count = () => host.querySelector(".cpo-export-items .cpo-tool-hint")?.textContent ?? "";
+  const scope = host.querySelector<HTMLSelectElement>('[aria-label="文献导出范围"], [aria-label="Literature export scope"]')!;
+  check(/\b0\b/.test(count()), "Filtered export did not honor filters");
+  scope.value = "full"; scope.dispatchEvent(new Event("change"));
+  check(count().includes(String(snapshot.nodes.length - 1)), "Full export includes excluded or omits filtered nodes");
+  app.setViewState({ ...app.getViewState(), zoom: 1.6 });
+  const backup = captureWorkspace(settings, app.captureProject());
+  check(backup.data.project?.currentView?.zoom === 1.6, "Backup missed unsaved camera");
+  check(backup.data.project?.currentView?.filter?.language === "zz", "Backup missed filters");
+  const file = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const select = async (text: string) => { const transfer = new DataTransfer(); transfer.items.add(new File([text], "test.wenxian.json", { type: "application/json" })); file.files = transfer.files; file.dispatchEvent(new Event("change")); await tick(); };
+  await select(JSON.stringify({ ...backup, version: 99 })); check(!document.querySelector("dialog[open]") && restored === 0, "Invalid backup opened restore");
+  await select(JSON.stringify(backup));
+  let modal = document.querySelector<HTMLDialogElement>("dialog[open]")!; check(modal?.textContent?.includes("Backup fixture") || modal?.textContent?.includes(snapshot.nodes[0]!.title), "Restore preview missing title");
+  const buttons = () => Array.from(modal.querySelectorAll<HTMLButtonElement>("button"));
+  buttons()[0]!.click(); check(downloaded === 1 && restored === 0, "Pre-restore download replaced data");
+  buttons()[2]!.click(); await tick(); check(restored === 0 && modal.open && modal.textContent?.includes("Retained original"), "Failed restore did not preserve preview/data");
+  busy = true; buttons()[2]!.click(); await tick(); check(restored === 0, "Busy workspace restored");
+  busy = false; fail = false; revision = "changed"; buttons()[2]!.click(); await tick(); check(restored === 0, "Stale preview restored");
+  buttons()[1]!.click(); await tick();
+  await select(JSON.stringify(backup)); modal = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  Array.from(modal.querySelectorAll<HTMLButtonElement>("button"))[2]!.click(); await tick(); check(restored === 1 && !document.querySelector("dialog[open]"), "Valid restore failed");
+  const clear = menu.confirmClear(); modal = document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  Array.from(modal.querySelectorAll<HTMLButtonElement>("button"))[0]!.click(); check(downloaded === 2, "Clear has no backup action");
+  Array.from(modal.querySelectorAll<HTMLButtonElement>("button"))[1]!.click(); check(!await clear, "Download or cancel cleared workspace");
+  await tick(); check(requests === 0, "Local restore queried sources");
+ } finally { URL.createObjectURL = create; app.destroy(); host.remove(); }
+}

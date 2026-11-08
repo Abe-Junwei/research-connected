@@ -1,3 +1,7 @@
+import { downloadText, exportFilename, toCsv } from "./export-file";
+import type { ExportAction } from "./graph-chrome";
+import { contributorText } from "./paper";
+import { applyContributors, createContributorLookup } from "./contributors";
 import { paperHasId, paperRecords, resolveWorkQuery } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
@@ -60,8 +64,10 @@ import { displayStageSource } from "./staging";
 import { commitSourceVersionRelations, matchingSeedProjects, acknowledgeIdentityStates, changeVersionExclusion, commitWorkIdentityDecision, composeProjectGraph, projectVersionGraph, projectVersionNode, projectVersionState, projectForSeed, projectPersistTarget, projectWriteKey, reconcileProjectIdentity, resolveProjectPending, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
+	captureProject(): ResearchProject | null;
+	getGraphSummary(): { title: string; nodes: number; edges: number };
 	destroy(): void;
-	cancelPending(): void;
+	cancelPending(keepAutosave?: boolean): void;
 	expandPaper(paperId: string): Promise<void>;
 	selectPaper(paperId: string): void;
 	getViewState(): ReturnType<SimilarityMap["getViewState"]>;
@@ -75,6 +81,8 @@ const projectDives = new WeakMap<object, Set<string>>();
 
 export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	getSettings: () => ConnectedPapersSettings;
+	localOnly?: () => boolean;
+	confirmClearWorkspace?: () => Promise<boolean>;
 	getJson: GetJson;
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
 	/** Optional host-specific metadata review; absent in Obsidian. */
@@ -90,6 +98,8 @@ export interface AppDeps extends Partial<ReadingWorkflowDeps> {
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	/** Persist settings (grafted members, staging, …). */
 	persistSettings?: () => Promise<void> | void;
+	singleWorkspace?: boolean;
+	clearWorkspace?: () => Promise<void>;
 	loadSavedProject?: () => ResearchProject | null;
 	saveProject?: (project: ResearchProject, projectKey?: string) => Promise<void> | void;
 	initialDoi?: string;
@@ -125,6 +135,7 @@ const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", str
 /** Pane UI shared by the Obsidian view and the browser preview. */
 export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle {
 	root.classList.add("cpo-root", "cpo-surface");
+	root.classList.toggle("is-single-workspace", Boolean(deps.singleWorkspace));
 	root.lang = isChinese() ? "zh-CN" : "en";
 	root.replaceChildren();
 
@@ -152,6 +163,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	projectSummary.append(createChromeIcon("chevronDown"));
 	const projectItems = el(projectMenu, "div", "cpo-menu-items");
 	registerPopover(projectMenu);
+	if (deps.singleWorkspace) projectMenu.remove();
 	const saveProjectButton = el(projectGroup, "button", "cpo-ghost cpo-project-save");
 	saveProjectButton.type = "button";
 	saveProjectButton.disabled = true;
@@ -159,6 +171,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	saveProjectButton.replaceChildren(createChromeIcon("save"), saveLabel);
 	saveProjectButton.setAttribute("aria-label", tr("保存项目", "Save project"));
 	saveProjectButton.setAttribute("aria-live", "polite");
+	if (deps.singleWorkspace) saveProjectButton.hidden = true;
+	const workspaceState = deps.singleWorkspace ? el(projectGroup, "span", "cpo-workspace-state") : null;
+	workspaceState?.setAttribute("role", "status");
+	const clearWorkspaceButton = deps.singleWorkspace ? el(projectGroup, "button", "cpo-ghost cpo-workspace-clear", tr("清空画布", "Clear canvas")) : null;
+	if (clearWorkspaceButton) clearWorkspaceButton.onclick = async () => {
+		if (!allowMutation() || !deps.clearWorkspace) return;
+		if (!await (deps.confirmClearWorkspace ? deps.confirmClearWorkspace() : deps.confirmChoice?.(tr("清空画布将删除图谱、收藏、排除、阅读状态和版本记录，无法撤销。继续？", "Clear the graph, favorites, exclusions, reading and version records? This cannot be undone.")))) return;
+		generation++;
+		if (projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
+		try { await deps.clearWorkspace(); clearOpenProject(""); input.value = ""; paintSaveState("idle"); status.textContent = tr("已清空工作区", "Workspace cleared"); }
+		catch (error) { status.textContent = String(error); }
+	};
 	let activeProjectId: string | null = null;
 	const versionDialogs = new AbortController();
 	const requests = projectRequests.get(deps.getSettings()) ?? new Map<string, number>();
@@ -191,6 +215,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const body = el(root, "div", "cpo-body");
 	const statusBar = el(root, "footer", "cpo-statusbar");
 	statusBar.append(status);
+	if (workspaceState) statusBar.append(workspaceState, saveProjectButton);
 	const iconNav = el(body, "nav", "cpo-icon-nav");
 	iconNav.setAttribute("aria-label", tr("图谱导航", "Graph navigation"));
 	const layoutHost = el(iconNav, "div", "cpo-rail-layouts");
@@ -275,7 +300,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	let saveState: "idle" | "pending" | "saving" | "saved" | "error" = "idle";
 	const paintSaveState = (state: typeof saveState): void => {
 		saveState = state;
-		const label = state === "idle" ? tr("保存项目", "Save project") : state === "pending" ? tr("待保存", "Pending save") : state === "saving" ? tr("保存中…", "Saving…") : state === "error" ? tr("重试保存", "Retry save") : tr("已保存", "Saved");
+		if (deps.singleWorkspace) {
+			saveProjectButton.hidden = state !== "error";
+			if (workspaceState) workspaceState.textContent = state === "error" ? tr("未保存", "Not saved") : state === "saving" || state === "pending" ? tr("正在自动保存…", "Autosaving…") : "";
+		}
+		const label = deps.singleWorkspace && state === "error" ? tr("重试", "Retry") : state === "idle" ? tr("保存项目", "Save project") : state === "pending" ? tr("待保存", "Pending save") : state === "saving" ? tr("保存中…", "Saving…") : state === "error" ? tr("重试保存", "Retry save") : tr("已保存", "Saved");
 		saveLabel.data = label;
 		saveProjectButton.setAttribute("aria-label", label);
 		saveProjectButton.title = label;
@@ -283,15 +312,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	let applyingNotice = false;
 	const removedSeeds = new Set<string>();
-	let persistProjectNow: (current: SimilarityGraph) => void = () => {};
-	const scheduleProjectSave = (): void => {
-		if (applyingNotice || deps.canMutate?.() === false) return;
+	let savedSnapshotGraph: SimilarityGraph | null = null;
+	let pendingViewOnly = true;
+	let persistProjectNow: (current: SimilarityGraph, viewOnly: boolean) => void = () => {};
+	const scheduleProjectSave = (viewOnly = false): void => {
+		if (applyingNotice || deps.canMutate?.() === false || deps.singleWorkspace && !graph) return;
+		pendingViewOnly = projectSaveTimer === null ? viewOnly : pendingViewOnly && viewOnly;
+		if (!viewOnly) savedSnapshotGraph = null;
 		saveRevision++;
 		paintSaveState("pending");
 		if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
 		projectSaveTimer = window.setTimeout(() => {
 			projectSaveTimer = null;
-			if (graph) persistProjectNow(graph);
+			if (graph) persistProjectNow(graph, pendingViewOnly);
 		}, 500);
 	};
 	const frame = mountWorkspaceFrame(root, body, {
@@ -337,6 +370,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const abstractRequested = new Set<string>();
 	const abstractFromS2 = new Set<string>();
 	const abstractFromCrossref = new Set<string>();
+	const contributorLookup = createContributorLookup(deps.getJson, () => deps.getSettings().contactEmail);
 	const abstractMissing = new Set<string>();
 	const abstractErrors = new Map<string, string>();
 	const fetchedAbstracts = new Map<string, Extract<AbstractLookupResult, { status: "found" }>>();
@@ -355,7 +389,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	const allowMutation = (): boolean => {
 		if (deps.canMutate?.() !== false) return true;
-		status.textContent = tr("当前项目为只读或任务进行中；可查看和复制，任务结束或接管编辑后再修改。", "This project is read-only or a task is running. Viewing and copying remain available; edit after completion or takeover.");
+		status.textContent = deps.singleWorkspace ? tr("当前工作区为只读或任务进行中；可查看和复制，任务结束或接管编辑后再修改。", "This workspace is read-only or busy. View and copy, or take over to edit.") : tr("当前项目为只读或任务进行中；可查看和复制，任务结束或接管编辑后再修改。", "This project is read-only or a task is running. Viewing and copying remain available; edit after completion or takeover.");
 		return false;
 	};
 	const hideResults = (): void => {
@@ -407,6 +441,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const paintLists = (): void => {
+		chrome?.refreshExportInfo();
 		evidenceHeading.textContent = tabTitles[tab] ?? tabTitles.graph;
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research");
 		detail.hidden = tab !== "graph";
@@ -450,8 +485,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			}, (card, paper) => {
 				if (!seed) return;
 				const state = workflowState(paper, seed.id);
-				paintPaperWorkflowState(card, paper, state, (reading) => commitWorkflow(paper, seed.id, { reading }), () => removePaper(paper));
+				paintPaperWorkflowState(card, paper, state, (reading) => commitWorkflow(paper, seed.id, { reading }), () => removePaper(paper), undefined, deps.singleWorkspace);
 				paintPaperActions(card, paper, seed.id, null, null, {
+					singleWorkspace: deps.singleWorkspace,
 					getPaperState: (projectId) => workflowState(paper, projectId),
 					setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 					persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
@@ -664,8 +700,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			paintLists();
 			frame.revealRight();
 		},
-		onExport: (kind) => {
-			void exportPane(kind);
+		getExportInfo: range => {
+			const nodes = graph ? graph.nodes : [], project = currentSeedId() ? currentProject(currentSeedId()!) : undefined, filter = { ...mapFilter, scrubYear };
+			return { count: graphExportVersions(nodes, project, range.scope === "full" ? emptyFilter() : filter, range.mode, false).length, filteredCount: graphExportVersions(nodes, project, filter, "one", false).length, fullCount: graphExportVersions(nodes, project, emptyFilter(), "one", false).length, noteTitle: (selectedPaper ?? graph?.nodes.find(node => node.isSeed))?.title ?? "", noteIsSeed: !selectedPaper || selectedPaper.isSeed };
+		},
+		onExport: (kind, action) => {
+			void exportPane(kind, action);
 		},
 	});
 
@@ -716,7 +756,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		query.focus();
 	});
 
-	const exportPane = async (kind: ExportKind): Promise<void> => {
+	const exportPane = async (kind: ExportKind, action: ExportAction = "copy"): Promise<void> => {
 		if (!graph) {
 			chrome?.setExportText(tr("请先构建图谱", "Build a graph first"));
 			return;
@@ -727,7 +767,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			let paper: PaperNode;
 			try { paper = (await choosePaperVersion(selected, false, versionDialogs.signal)).paper; }
 			catch (error) { chrome?.setExportText(error instanceof Error ? error.message : String(error)); return; }
-			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
+			if (action === "write" && deps.lookupLiteratureNote?.(paper)) { showDetail(paper, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = graph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const shared = deps.getReadingState?.(paper);
@@ -736,14 +776,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				return;
 			}
 			const fields = {
-				project: currentProject(seedId)?.name || seedId,
+				project: deps.singleWorkspace ? seedId : currentProject(seedId)?.name || seedId,
 				relation: ORIGIN_TEXT[paper.origin],
 				status: workflowState(paper, seedId).reading,
 			};
 			const filename = literatureFilename(paper, settings.literatureFilename, fields);
 			const raw = literatureMarkdown(paper, settings.literatureTemplate, fields);
 			const markdown = deps.decorateExport?.([paper], raw, "markdown") ?? raw;
-			if (deps.createNote) {
+			if (action === "write" && deps.createNote) {
 				try {
 					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
 					deps.rememberLiteratureNote?.(paper, typeof path === "string" ? path : filename, fields.status);
@@ -754,17 +794,29 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				}
 				return;
 			}
-			await chrome?.copyText(markdown, tr("笔记内容", "Note contents"));
+			if (action === "download") {
+				try { downloadText(filename.endsWith(".md") ? filename : `${filename}.md`, markdown, "text/markdown"); chrome?.setExportText(tr("已发起 Markdown 下载，请在浏览器或系统下载中确认。", "Markdown download requested. Check browser or system downloads.")); }
+				catch (error) { chrome?.setExportText(tr(`下载不可用，请使用复制：${String(error)}`, `Download unavailable; use Copy: ${String(error)}`)); }
+			}
+			else await chrome?.copyText(markdown, tr("笔记骨架", "Note template"));
 			return;
 		}
-		const range = chrome?.exportOptions() ?? { mode: "one" as const, includeSeedException: false };
-		const nodes = orderedForExport(graphExportVersions(graph.nodes, currentSeedId() ? currentProject(currentSeedId()!) : undefined, { ...mapFilter, scrubYear }, range.mode, range.includeSeedException));
+		const range = chrome?.exportOptions() ?? { scope: "filtered" as const, mode: "one" as const, includeSeedException: false };
+		const nodes = orderedForExport(graphExportVersions(graph.nodes, currentSeedId() ? currentProject(currentSeedId()!) : undefined, range.scope === "full" ? emptyFilter() : { ...mapFilter, scrubYear }, range.mode, false));
 		const raw = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
 		const text = deps.decorateExport?.(nodes, raw, kind === "bibtex" ? "bibtex" : kind === "yaml" ? "yaml" : "markdown") ?? raw;
-		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
+		if (action === "download") {
+			try {
+				const csv = kind === "table";
+				downloadText(exportFilename(graph.nodes.find(node => node.isSeed)?.title ?? "literature", csv ? "csv" : kind === "bibtex" ? "bib" : "yaml"), csv ? toCsv(nodes) : text, csv ? "text/csv" : "text/plain");
+				const warning = csv ? deps.decorateExport?.(nodes, "", "markdown") ?? "" : "";
+				chrome?.setExportText([tr("已发起文件下载，请在浏览器或系统下载中确认。", "Download requested. Check browser or system downloads."), warning].filter(Boolean).join("\n"));
+			} catch (error) { chrome?.setExportText(tr(`下载不可用，请使用复制：${String(error)}`, `Download unavailable; use Copy: ${String(error)}`)); }
+		} else await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
 
 	const abstractText = (paper: PaperNode): string => {
+		if (deps.localOnly?.() && !paper.abstract) return tr("备份中没有摘要；可主动重新加载以更新。", "No abstract in this backup; reload to update.");
 		const cached = fetchedAbstracts.get(doiFromPaper(paper) ?? paper.id);
 		if (!paper.abstract && cached) { paper.abstract = cached.text; paper.abstractSource = cached.source; }
 		return abstractCaption(paper, { s2: abstractFromS2, crossref: abstractFromCrossref, missing: abstractMissing, errors: abstractErrors });
@@ -829,7 +881,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			diveNote = tr(`第 ${diveIndex + 1} 轮深挖 · ${parent?.title ?? batch.parentId} · ${sources}`, `Deep dive ${diveIndex + 1} · ${parent?.title ?? batch.parentId} · ${sources}`);
 		}
 		paintPaperDetail(detail, graph, paper, {
-			checkMetadata: deps.checkMetadata,
+			checkMetadata: deps.localOnly?.() ? undefined : deps.checkMetadata,
 			isClassic: !!map.classicEvidence(paper.id),
 			abstractText,
 			onRetryAbstract: abstractErrors.has(abstractKey) ? () => {
@@ -859,6 +911,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			signal: versionDialogs.signal,
 			diveNote,
 			actions: {
+				singleWorkspace: deps.singleWorkspace,
 				getPaperState: (projectId) => workflowState(paper, projectId),
 				setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 				persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seedNode!.id, source) : undefined,
@@ -873,7 +926,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (!deps.persistSettings) throw new Error(tr("当前环境无法保存项目", "Project persistence is unavailable"));
 			await commitWorkIdentityDecision(deps.getSettings(), { ids, kind, source: "manual", updatedAt: Date.now() }, deps.persistSettings);
 		});
-		if (!paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
+		const contributorGraph = graph;
+		if (!deps.localOnly?.()) contributorLookup(detail, paper, true, metadata => {
+			if (disposed || graph !== contributorGraph) return;
+			applyContributors(contributorGraph, paper, metadata);
+			const seed = contributorGraph.nodes.find(node => node.isSeed);
+			if (seed && doiFromPaper(seed) === doiFromPaper(paper)) {
+				seedMeta.textContent = [contributorText(seed), seed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].join(" · ");
+				seedMeta.title = seedMeta.textContent;
+			}
+			applyVersionFilter();
+			scheduleProjectSave();
+			if (selectedPaper?.id === paper.id && tab === "graph") showDetail(paper);
+		});
+		if (!deps.localOnly?.() && !paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
 			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
 				semanticScholarApiKey: deps.getSettings().semanticScholarApiKey,
@@ -990,10 +1056,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (restore) canvas.focus({ preventScroll: true });
 	};
 
-	const persistProject = async (current: SimilarityGraph, patch: Partial<ResearchProject> = {}): Promise<boolean> => {
+	const persistProject = async (current: SimilarityGraph, patch: Partial<ResearchProject> = {}, viewOnly = false): Promise<boolean> => {
 		const seed = current.nodes.find((node) => node.isSeed);
 		if (!seed || !deps.saveProject || applyingNotice || removedSeeds.has(seed.id)) return false;
 		const revision = saveRevision;
+		const saveGeneration = generation;
 		const projects = deps.getSettings().researchProjects;
 		const { writeKey, prior } = projectPersistTarget(projects, seed.id, activeProjectId);
 		// Foreign active slot: keep in-memory dive batches from leaking into the new seed's project.
@@ -1008,7 +1075,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			seedId: seed.id,
 			name: prior?.name || seed.title || seed.id,
 			updatedAt: Date.now(),
-			snapshot: saveGraphSnapshot(current),
+			snapshot: viewOnly && savedSnapshotGraph === current && lastProjectSnapshot ? lastProjectSnapshot : saveGraphSnapshot(current),
 			currentView: patch.currentView ?? { name: tr("当前视图", "Current view"), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: JSON.parse(JSON.stringify(mapFilter)) as GraphFilter, ...frame.collapsed() },
 			views: prior?.views ?? [],
 			deepDives: batches,
@@ -1019,20 +1086,26 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		try { await deps.saveProject(project, writeKey); }
 		catch (error) {
 			lastProjectSnapshot = previousSnapshot;
-			if (graph === current && activeProjectId === projectId) paintSaveState(revision === saveRevision ? "error" : "pending");
+			if (activeProjectId === projectId && (graph === current || deps.singleWorkspace && generation === saveGeneration && currentSeedId() === seed.id)) paintSaveState(revision === saveRevision ? "error" : "pending");
 			status.textContent = error instanceof Error ? tr(`项目保存失败：${error.message}`, `Could not save project: ${error.message}`) : tr("项目保存失败", "Could not save the project");
 			return false;
 		}
-		if (graph === current && (activeProjectId === projectId || !writeKey)) {
+		// The Web store normalizes and notifies before returning, which may replace the graph object.
+		if ((graph === current || deps.singleWorkspace && generation === saveGeneration && currentSeedId() === seed.id) && (activeProjectId === projectId || !writeKey)) {
 			activeProjectId = writeKey ?? projectWriteKey(deps.getSettings().researchProjects, seed.id);
 			if (!writeKey) deepDiveBatches = batches;
+			const stored = deps.getSettings().researchProjects[activeProjectId ?? seed.id];
+			lastProjectSnapshot = stored?.snapshot;
+			savedSnapshotGraph = current;
+			lastVersionStates = stored?.versionStates;
+			lastExclusionScopes = stored?.exclusionScopes;
 			refreshProjectSelect(activeProjectId);
 			paintSaveState(revision === saveRevision ? "saved" : "pending");
 		}
 		return true;
 	};
-	persistProjectNow = current => { void persistProject(current); };
-	const saveCurrentViewOnGesture = (): void => scheduleProjectSave();
+	persistProjectNow = (current, viewOnly) => { void persistProject(current, {}, viewOnly); };
+	const saveCurrentViewOnGesture = (): void => scheduleProjectSave(true);
 	canvas.addEventListener("pointerup", saveCurrentViewOnGesture);
 	canvas.addEventListener("wheel", saveCurrentViewOnGesture, { passive: true });
 	canvas.addEventListener("keyup", saveCurrentViewOnGesture);
@@ -1044,10 +1117,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const saved = await persistProject(graph);
 		if (!saved) return;
 		const name = activeProjectId ? deps.getSettings().researchProjects[activeProjectId]?.name : projectName.textContent;
-		appendStatusDetail(status, tr(`已保存研究项目「${name}」`, `Saved research project “${name}”`));
+		appendStatusDetail(status, deps.singleWorkspace ? tr("已自动保存", "Autosaved") : tr(`已保存研究项目「${name}」`, `Saved research project “${name}”`));
 	};
 
 	const refreshProjectSelect = (selectedId = activeProjectId ?? currentSeedId()): void => {
+		if (deps.singleWorkspace) {
+			const entries = Object.entries(deps.getSettings().researchProjects);
+			activeProjectId = entries.find(([, project]) => project.seedId === currentSeedId())?.[0] ?? null;
+			deps.onProjectChange?.(activeProjectId);
+			paintSaveState(graph ? saveState : "idle");
+			return;
+		}
 		const projects = Object.entries(deps.getSettings().researchProjects ?? {}).filter(([, project]) => project.snapshot).map(([key, project]) => ({ ...project, key })).sort((a, b) => b.updatedAt - a.updatedAt);
 		if (projectItems.querySelector("input")) {
 			const current = projects.find((project) => project.key === (selectedId ?? activeProjectId));
@@ -1192,6 +1272,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	}
 
 	function clearOpenProject(deletedName: string): void {
+		if (deps.singleWorkspace) input.value = "";
 		graph = null;
 		activeProjectId = null;
 		deepDiveBatches = [];
@@ -1424,7 +1505,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (paper) void expandPaper(paper);
 	});
 
-	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true, persist = true): void => {
+	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true, persist = true, animate = persist): void => {
 		const wasApplying = applyingNotice;
 		applyingNotice = true;
 		try {
@@ -1455,22 +1536,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			seedSummary.hidden = false;
 			seedTitle.textContent = seed.title || seed.id;
 			seedTitle.title = seedTitle.textContent;
-			seedMeta.textContent = [seed.authors, seed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
+			seedMeta.textContent = [contributorText(seed), seed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
 			seedMeta.title = seedMeta.textContent;
 		}
 		showDetail(seed);
-		map.setGraph(next.nodes, next.edges, next.seedScore, next.referenceLists);
+		layoutMode = restoreView?.layout ?? layoutMode;
+		map.setGraph(next.nodes, next.edges, next.seedScore, next.referenceLists, { layout: layoutMode, animate });
 		graphKey.setStats(next.nodes, next.edges, next.referenceLists);
 		graphKey.paintColor(layoutMode);
-		// setGraph 不再重置布局；把轨道按钮当前选中的布局回灌给画布。
-		map.setLayout(layoutMode);
 		map.setColorMode(defaultColorMode(layoutMode));
 		rememberSample(next.nodes, restoreView?.scrubYear ?? null);
 		if (restoreView) {
-			layoutMode = restoreView.layout;
 			chrome?.setLayout(layoutMode);
 			scrubYear = restoreView.scrubYear;
-			if (!chrome) map.setLayout(layoutMode);
 			if (restoreView.filter) {
 				mapFilter = { ...restoreView.filter, scrubYear };
 				map.setKinds(mapFilter.kinds);
@@ -1488,7 +1566,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			detailReturn = map.getViewState();
 			detailReturnLocked = false;
 		}
-		applyVersionFilter();
+		const hasNodeFilter = [mapFilter.yearFrom, mapFilter.yearTo, mapFilter.language, mapFilter.workType, mapFilter.concept].some(value => value !== null);
+		if (hasNodeFilter) applyVersionFilter();
+		else map.setContentFilter(mapFilter, next.nodes);
 		paintLists();
 		const strategyNames = [
 			next.strategies.references ? tr("参考文献", "References") : "",
@@ -1577,7 +1657,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false, restoreView?: SavedView, allowRetractedSeed = false): Promise<void> => {
 		if (!allowMutation()) return;
-		if (!refresh) {
+		if (!refresh && !deps.singleWorkspace) {
 			const matches = matchingSeedProjects(deps.getSettings().researchProjects, target);
 			if (matches.length > 1) {
 				generation++;
@@ -1651,7 +1731,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				return;
 			}
 			const seed = next.nodes.find((node) => node.isSeed);
-			const project = targetProject ? settings.researchProjects[activeProjectId ?? ""] : seed ? projectForSeed(settings.researchProjects, seed.id) : undefined;
+			const project = targetProject ? settings.researchProjects[activeProjectId ?? ""] : !deps.singleWorkspace && seed ? projectForSeed(settings.researchProjects, seed.id) : undefined;
 			const projectKey = project ? Object.entries(settings.researchProjects).find(([, candidate]) => candidate === project)?.[0] : undefined;
 			const excludedIds = Object.entries(project?.paperStates ?? {}).filter(([, state]) => state.excluded).map(([id]) => id);
 			next.excludedIds = [...new Set([...(next.excludedIds ?? []), ...excludedIds])];
@@ -1666,7 +1746,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				return;
 			}
 			if (restored.failed) throw new Error(tr(`更新未完成：${restored.failed} 篇保留论文读取失败，原图未替换`, `Update incomplete: ${restored.failed} retained papers could not be loaded; previous graph retained`));
-			if (deps.operationGate && refresh && restored.graph.nodes.filter(node => !node.isSeed).length < 1) {
+			if ((deps.operationGate || deps.singleWorkspace) && refresh && restored.graph.nodes.filter(node => !node.isSeed).length < 1) {
 				status.textContent = tr("未取得邻居文献，已保留旧图；本次不计次数。", "No neighbors retrieved. Previous graph retained; not charged.");
 				return;
 			}
@@ -1679,6 +1759,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (!refresh) {
 				if (!seed || !deps.saveProject) throw new Error(tr("无法保存新项目", "Could not save the new project"));
 				const neighborCount = restored.graph.nodes.filter(node => !node.isSeed).length;
+				if (neighborCount < 1 && deps.singleWorkspace) {
+					status.textContent = tr("未取得邻居文献，已保留原图；本次不计次数。", "No neighbors retrieved. Previous graph retained; not charged.");
+					if (previousInput) input.value = previousInput;
+					return;
+				}
 				if (neighborCount < 1) {
 					applyGraph(restored.graph, undefined, false, false);
 					input.value = seed.id;
@@ -1703,7 +1788,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				}
 				activeProjectId = projectWriteKey(deps.getSettings().researchProjects, seed.id);
 				deepDiveBatches = [];
-				applyGraph(restored.graph, view, false, false);
+				applyGraph(restored.graph, view, false, false, true);
 				input.value = seed.id;
 				refreshProjectSelect(activeProjectId);
 				paintSaveState("saved");
@@ -1744,7 +1829,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				reservationId = null;
 				return;
 			}
-			applyGraph(restored.graph, restoreView, false, false);
+			applyGraph(restored.graph, restoreView, false, false, true);
 			window.dispatchEvent(new Event("research-connected-project"));
 			if (reservationId && deps.operationGate) {
 				await deps.operationGate.confirm(reservationId);
@@ -1766,7 +1851,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (graph) {
 				if (!refresh && previousInput) input.value = previousInput;
 				empty.hidden = true;
-				map.setGraph(graph.nodes, graph.edges, graph.seedScore, graph.referenceLists);
+				if (!deps.singleWorkspace) map.setGraph(graph.nodes, graph.edges, graph.seedScore, graph.referenceLists);
 				graphKey.setStats(graph.nodes, graph.edges, graph.referenceLists);
 				status.textContent = message;
 			} else {
@@ -1915,8 +2000,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		} finally { applyingNotice = false; }
 	};
 	window.addEventListener("research-connected-settings", onSettings);
-	const onProject = (): void => {
-		if (applyingNotice || !graph || exclusionBusy) return;
+	const onProject = (event: Event): void => {
+		const detail: unknown = event instanceof CustomEvent ? event.detail : null;
+		if (deps.singleWorkspace && detail && typeof detail === "object" && "localProjectSave" in detail && detail.localProjectSave === true) return;
+		if (applyingNotice || exclusionBusy) return;
+		if (deps.singleWorkspace) {
+			const saved = deps.loadSavedProject?.();
+			if (saved?.snapshot && saved.seedId !== currentSeedId()) {
+				const restored = restoreGraphSnapshot(saved.snapshot);
+				if (restored) { activeProjectId = Object.keys(deps.getSettings().researchProjects)[0] ?? null; deepDiveBatches = saved.deepDives ?? []; applyGraph(restored, saved.currentView, false, false); input.value = saved.seedId; }
+				return;
+			}
+			if (!saved && graph) { clearOpenProject(""); paintSaveState("idle"); return; }
+		}
+		if (!graph) return;
 		applyingNotice = true;
 		try {
 		const seedId = graph.nodes.find((node) => node.isSeed)?.id;
@@ -1935,7 +2032,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				const sharedSeed = saved.nodes.find(node => node.isSeed);
 				if (sharedSeed) {
 					input.value = sharedSeed.id; seedTitle.textContent = sharedSeed.title; seedTitle.title = sharedSeed.title;
-					seedMeta.textContent = [sharedSeed.authors, sharedSeed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
+					seedMeta.textContent = [contributorText(sharedSeed), sharedSeed.year ?? tr("年份不详", "Year unknown"), tr("种子文献", "Seed paper")].filter(Boolean).join(" · ");
 					seedMeta.title = seedMeta.textContent;
 				}
 				hiddenIds = new Set(saved.excludedIds ?? []);
@@ -1981,8 +2078,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		activeProjectId = Object.entries(deps.getSettings().researchProjects).find(([, project]) => project === saved)?.[0] ?? null;
 		deepDiveBatches = saved?.deepDives ?? [];
 		applyGraph(restored, saved?.currentView, false, false);
+		if (deps.singleWorkspace && saved) input.value = saved.seedId;
 		setBusy(false);
-		appendStatusDetail(status, tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」，可重新加载以更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}”; reload to refresh data`));
+		appendStatusDetail(status, deps.singleWorkspace ? tr("已恢复上次图谱", "Restored the last graph") : tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」，可重新加载以更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}”; reload to refresh data`));
 	} else if (initial) {
 		input.value = initial.value;
 		refreshProjectSelect();
@@ -2094,13 +2192,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	return {
 		openDoiPathSearch,
+		getGraphSummary: () => ({ title: graph?.nodes.find(node => node.isSeed)?.title ?? "", nodes: graph?.nodes.length ?? 0, edges: graph?.edges.length ?? 0 }),
+		captureProject: () => {
+			if (!graph) return null;
+			const seed = graph.nodes.find(node => node.isSeed)!;
+			const prior = currentProject(seed.id);
+			return structuredClone({ ...prior, version: 1, seedId: seed.id, name: (prior?.name || seed.title || seed.id).slice(0, 120), updatedAt: Date.now(), snapshot: saveGraphSnapshot(graph), views: prior?.views ?? [], deepDives: deepDiveBatches, currentView: { name: tr("当前视图", "Current view"), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: structuredClone(mapFilter), ...frame.collapsed() } });
+		},
 		selectPaper: paperId => { const paper = graph?.nodes.find(node => node.id === paperId) ?? graph?.catalog.find(node => node.id === paperId); if (paper) showDetail(paper, true); },
 		getViewState: () => map.getViewState(),
 		setViewState: view => { coverDismissed = true; root.classList.remove("is-detail-cover"); map.resize(); map.setViewState(view); },
 		expandPaper: async paperId => { const paper = graph?.nodes.find(node => node.id === paperId); if (paper) await expandPaper(paper); },
-		cancelPending: () => {
+		cancelPending: (keepAutosave = false) => {
 			generation++;
-			if (projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
+			if (!keepAutosave && projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
 			const seed = currentSeedId();
 			if (seed) { dives.delete(activeProjectId ?? seed); session.endDive(seed); }
 			expanding = false;

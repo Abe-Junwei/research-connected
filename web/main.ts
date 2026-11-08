@@ -1,3 +1,7 @@
+import { createNotice } from "./notice";
+import { captureWorkspace } from "./workspace-backup";
+import { mountWorkspaceMenu } from "./workspace-menu";
+import { createContributorLookup } from "../src/contributors";
 import "../src/host-language";
 import { paintMetadataCard, paintAbstractCard } from "../src/detail-cards";
 import { toBibTeX, toYamlList, toMarkdownTable } from "../src/export-graph";
@@ -7,15 +11,14 @@ import { normalizeDoi } from "../src/paper";
 import type { PaperNode } from "../src/types";
 import { watchVersion, requireCompatibleClient } from "./version";
 import { mountGraphApp, type AppDeps, type GraphAppHandle } from "../src/app";
-import { EXAMPLE_DOI } from "../src/constants";
 import { browserGetJson, browserPostJson } from "./http";
 import { allowedExternalUrl } from "../src/safe-url";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { createReadingWorkflow } from "../src/reading-workflow";
-import { revalidateWebSettings, commitWebRevalidation } from "../preview/revalidate";
+import { revalidateWebSettings } from "../src/source-revalidation";
 import { prepareWebSettings, checkWebMetadata, prepareWebGraph, decorateWebExport } from "../preview/quality";
 import { fixtureGet, fixturePost } from "../preview/fixture";
-import { StorageFullError } from "./storage";
+import { StorageFullError, writeWebProjectSettings, sourceReviewPaused, pauseSourceReview } from "./storage";
 import { createWebSettingsStore, loadWebSettings } from "./project-store";
 import { clearLocalTask, confirmQuota, fetchQuotaStatus, formatQuotaBanner, formatQuotaDetails, readLocalTask, releaseQuota, reserveQuota, taskStillValid, writeLocalTask, type QuotaAction } from "./quota-client";
 import { ensureSession } from "./session-auth";
@@ -23,7 +26,7 @@ import { claimBrowserTask, claimEdit, readActiveTask, clearBrowserTask, currentT
 import { initTheme, wireThemeControls } from "./theme";
 import { tr } from "../src/i18n";
 
-const STORAGE_KEY = "research-connected-web-settings";
+import { WORKSPACE_STORAGE_KEY as STORAGE_KEY, LEGACY_STORAGE_KEY, WORKSPACE_LOCK, removeLegacyWorkspace, clearWorkspaceRecords } from "./workspace";
 const root = document.querySelector("#app");
 if (!(root instanceof HTMLElement)) throw new Error("Missing #app");
 
@@ -32,13 +35,14 @@ const detailId = params.get("paper") || params.get("doi") || "";
 const offline = params.has("fixture");
 
 const settings = structuredClone(DEFAULT_SETTINGS);
+settings.maxNodes = 100;
 // Empty client key: Authorization is injected by the system proxy. A non-empty
 // marker keeps deep OpenAlex paging enabled under the shared neighborhood rules.
 settings.apiKey = "system-proxy";
 settings.contactEmail = "";
 
 let storageWarning = "";
-try { Object.assign(settings, loadWebSettings(STORAGE_KEY)); }
+try { removeLegacyWorkspace(window.localStorage); Object.assign(settings, loadWebSettings(STORAGE_KEY)); }
 catch { storageWarning = tr("浏览器项目存储不可用或格式无法识别。原数据未自动清除；请允许站点存储；若格式损坏，请先清理站点数据再重新建图。", "Browser project storage is unavailable or unreadable. Original data was not cleared. Allow site storage; if the format is corrupt, clear site data before rebuilding."); }
 
 prepareWebSettings(settings);
@@ -49,12 +53,8 @@ watchVersion(() => Boolean(readLocalTask() && taskStillValid()));
 const notice = document.querySelector("#cpo-web-notice");
 const quotaLine = document.querySelector("#cpo-quota-line");
 
-function setNotice(text: string, kind: "info" | "error" = "info"): void {
-	if (!(notice instanceof HTMLElement)) return;
-	notice.hidden = !text;
-	notice.textContent = text;
-	notice.dataset.kind = kind;
-}
+const showNotice = notice instanceof HTMLElement ? createNotice(notice) : null;
+function setNotice(text: string, kind: "info" | "error" = "info"): void { showNotice?.(text, kind); }
 
 const privacyBtn = document.querySelector("#cpo-privacy-info");
 const privacyPanel = document.querySelector("#cpo-privacy-panel");
@@ -106,30 +106,31 @@ async function refreshQuota(): Promise<void> {
 
 let heartbeatStop: (() => void) | null = null;
 let editingProject: string | null = null;
-let activeProjectKey: string | null = null;
+const activeProjectKey = WORKSPACE_LOCK;
 let graphApp: GraphAppHandle | null = null;
 let taskExpiryTimer: number | null = null;
 const lostProjects = new Set<string>();
-const store = createWebSettingsStore(STORAGE_KEY, settings, changed => {
+const store = createWebSettingsStore(STORAGE_KEY, settings, () => {
 	const task = readLocalTask();
 	if (task && !task.saved && (!taskStillValid(task) || readActiveTask()?.reservationId !== task.reservationId)) throw new Error(tr("任务已失效，迟到结果不会保存。", "Task invalidated; late results will not be saved."));
-	for (const key of [...new Set([...changed, ...(activeProjectKey ? [activeProjectKey] : [])])]) {
+	for (const key of [WORKSPACE_LOCK]) {
 		const lock = readLock(key);
 		if (lostProjects.has(key) || lock && lock.tabId !== currentTabId()) throw new Error(tr("另一标签页持有编辑权，请先接管并读取最新项目。", "Another tab owns editing. Take over and reload the latest project first."));
-		if (!lock && changed.includes(key) && !claimEdit(key).ok) throw new Error("Could not acquire project edit access.");
+		if (!lock && !claimEdit(key).ok) throw new Error("Could not acquire project edit access.");
 	}
 });
 if (storageWarning) setNotice(storageWarning, "error");
 
-async function persistSettings(): Promise<void> {
+async function persistSettings(localProjectSave = false): Promise<void> {
 	prepareWebSettings(settings);
 	try {
 		await store.persist();
-		window.dispatchEvent(new Event("research-connected-project"));
+		pauseSourceReview(STORAGE_KEY, false);
+		window.dispatchEvent(new CustomEvent("research-connected-project", { detail: { localProjectSave } }));
 	} catch (error) {
 		window.dispatchEvent(new Event("research-connected-project"));
 		if (error instanceof StorageFullError) {
-			setNotice(tr("浏览器存储已满，已保留现有项目；请清理旧项目后再保存。本次不扣次数。", "Browser storage is full. Existing projects were kept. Clear old projects and retry. This attempt is not charged."), "error");
+			setNotice(tr("浏览器存储已满，已保留现有项目；请释放浏览器存储后重试。本次不扣次数。", "Browser storage is full. Existing projects were kept. Free browser storage and retry. This attempt is not charged."), "error");
 			throw error;
 		}
 		setNotice(error instanceof Error ? error.message : String(error), "error");
@@ -141,7 +142,7 @@ function ensureEdit(projectKey: string): boolean {
 	if (lostProjects.has(projectKey)) return false;
 	const result = claimEdit(projectKey);
 	if (!result.ok) {
-		setNotice(tr("另一标签页正在编辑此项目。可查看和复制，或使用“接管编辑”。", "Another tab is editing this project. You can view and copy, or take over editing."), "info");
+		setNotice(tr("另一标签页正在编辑此工作区。可查看和复制，或使用“接管编辑”。", "Another tab is editing this workspace. You can view and copy, or take over editing."), "info");
 		window.dispatchEvent(new Event("research-connected-project"));
 		return false;
 	}
@@ -282,6 +283,32 @@ window.addEventListener("popstate", () => {
 	else if (!mobilePage && graphApp) { restoringHistory = true; graphApp.selectPaper(id); restoringHistory = false; }
 });
 
+function appendSourceBackupCleanup(parent: HTMLElement): void {
+	if (storageWarning) return;
+	try { if (window.localStorage.getItem(STORAGE_KEY) === null || window.localStorage.getItem(`${STORAGE_KEY}-before-source-review`) === null) return; }
+	catch { return; }
+	const cleanup = el(parent, "button", "cpo-text-btn");
+	cleanup.type = "button";
+	cleanup.textContent = tr("清理旧来源备份并重试（保留当前项目）", "Remove old source backup and retry (keep current projects)");
+	cleanup.onclick = () => {
+		const task = readLocalTask();
+		if (task && taskStillValid(task)) {
+			setNotice(tr("请先完成或取消当前任务，再清理旧备份。", "Complete or cancel the current task before removing the backup."));
+			if (parent === notice) parent.append(cleanup);
+			return;
+		}
+		try {
+			if (window.localStorage.getItem(STORAGE_KEY) === null) { setNotice(tr("当前项目记录不存在，已保留旧来源备份。", "Current project record is missing; the source backup was retained."), "error"); return; }
+			window.localStorage.removeItem(`${STORAGE_KEY}-before-source-review`);
+			pauseSourceReview(STORAGE_KEY, false);
+			window.location.reload();
+		} catch {
+			setNotice(tr("无法清理旧备份，请检查浏览器是否允许站点存储。当前项目已保留。", "Could not remove the backup. Check site storage permissions. Current projects retained."), "error");
+			if (parent === notice) parent.append(cleanup);
+		}
+	};
+}
+
 async function start(): Promise<void> {
 	const host = root as HTMLElement;
 	// Local rendering must never wait for a session, provider or quota request.
@@ -312,7 +339,15 @@ async function start(): Promise<void> {
 			}
 			const quality = el(panel, "p", "cpo-side-tip"); quality.hidden = true;
 			void checkWebMetadata(paper, browserGetJson).then(text => { if (text) { quality.textContent = text; quality.hidden = false; } }).catch(() => {});
-			paintMetadataCard(panel, paper, null);
+			const metadataCard = el(panel, "div");
+			paintMetadataCard(metadataCard, paper, null);
+			createContributorLookup(browserGetJson, () => "")(metadataCard, paper, true, metadata => {
+				if (metadata.authors.length) { paper.authorList = metadata.authors; paper.authors = metadata.authors.join(", "); }
+				paper.editorList = metadata.editors;
+				paper.contributorSource = "crossref";
+				metadataCard.replaceChildren();
+				paintMetadataCard(metadataCard, paper, null);
+			});
 			const abstract = el(panel, "div");
 			paintAbstractCard(abstract, paper, p => p.abstract || tr("暂无可用摘要", "No abstract available"));
 			if (!paper.abstract) {
@@ -348,7 +383,7 @@ async function start(): Promise<void> {
 		return;
 	}
 
-	let review: Awaited<ReturnType<typeof revalidateWebSettings>> = null;
+	let review: Awaited<ReturnType<typeof revalidateWebSettings>> = sourceReviewPaused(STORAGE_KEY) ? { complete: false, notice: "" } : null;
 
 	const takeover = document.querySelector("#cpo-takeover");
 	const cancel = document.querySelector("#cpo-cancel-task");
@@ -358,7 +393,7 @@ async function start(): Promise<void> {
 		const task = readLocalTask();
 		if (cancel instanceof HTMLButtonElement) cancel.hidden = !task || Boolean(task.saved) || !taskStillValid(task);
 		const blocked = !canMutate();
-		for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>(".cpo-paper-stage, .cpo-reading-trigger, .cpo-reading-option, .cpo-paper-exclude, .cpo-project-rename, .cpo-project-delete, .cpo-web-deep"))) {
+		for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>(".cpo-paper-stage, .cpo-reading-trigger, .cpo-reading-option, .cpo-paper-exclude, .cpo-project-rename, .cpo-project-delete, .cpo-web-deep, .cpo-workspace-clear, .cpo-form button[type=submit]"))) {
 			if (blocked && !button.disabled) { button.dataset.accessDisabled = "true"; button.disabled = true; }
 			if (!blocked && button.dataset.accessDisabled) { button.disabled = false; delete button.dataset.accessDisabled; }
 		}
@@ -370,7 +405,7 @@ async function start(): Promise<void> {
 			const lock = readLock(projectKey);
 			const label = tr("接管编辑", "Take over editing");
 			if (takeover.textContent !== label) takeover.textContent = label;
-			takeover.setAttribute("aria-label", tr("另一标签页正在编辑此项目，点击接管编辑权", "Another tab is editing this project. Take over editing."));
+			takeover.setAttribute("aria-label", tr("另一标签页正在编辑此工作区，点击接管编辑权", "Another tab is editing this workspace. Take over editing."));
 			takeover.title = lock ? tr("另一标签页持有编辑锁", "Another tab holds the edit lock") : "";
 		}
 	}
@@ -411,6 +446,7 @@ async function start(): Promise<void> {
 			}
 			syncTakeoverButton();
 		}
+		if (event.key === LEGACY_STORAGE_KEY || event.key === `${LEGACY_STORAGE_KEY}-before-source-review`) removeLegacyWorkspace(window.localStorage);
 		if (event.key === STORAGE_KEY) {
 			try { if (store.refresh()) window.dispatchEvent(new Event("research-connected-project")); }
 			catch { setNotice(tr("另一标签页的项目无法读取，已保留当前数据。", "Could not read the other tab's project; current data retained."), "error"); }
@@ -429,42 +465,65 @@ async function start(): Promise<void> {
 		resolveReading: (...args) => canMutate() ? workflow.resolveReading(...args) : Promise.reject(new Error("Project is read-only or busy.")),
 		retryReading: (...args) => canMutate() ? workflow.retryReading(...args) : Promise.reject(new Error("Project is read-only or busy.")),
 		getSettings: () => settings,
-		saveProject: async (project, projectKey) => {
-			const key = projectKey ?? project.seedId;
-			settings.researchProjects[key] = project;
-			await persistSettings();
+		singleWorkspace: true,
+		localOnly: () => Boolean(settings.webOfflineRestore),
+		confirmClearWorkspace: () => workspaceMenu.confirmClear(),
+		clearWorkspace: async () => {
+			const previous = structuredClone(settings);
+			clearWorkspaceRecords(settings);
+			try { await persistSettings(); window.localStorage.removeItem(`${STORAGE_KEY}-before-source-review`); }
+			catch (error) { Object.assign(settings, previous); throw error; }
+		},
+		saveProject: async project => {
+			settings.researchProjects = { [project.seedId]: project };
+			if (readLocalTask() && !readLocalTask()?.saved) settings.webOfflineRestore = false;
+			await persistSettings(true);
 		},
 		persistSettings,
 		canMutate,
 		onSelectPaper: openMobilePaper,
-		onProjectChange: key => {
-			if (key === activeProjectKey) return;
-			if (editingProject) { heartbeatStop?.(); releaseEdit(editingProject); editingProject = null; }
-			activeProjectKey = key;
-			if (key) ensureEdit(key);
+		onProjectChange: () => {
+			if (!editingProject && !lostProjects.has(WORKSPACE_LOCK)) ensureEdit(WORKSPACE_LOCK);
 			syncTakeoverButton();
 		},
-		beforeProjectSwitch: async () => {
-			const task = readLocalTask();
-			if (task && !task.saved && taskStillValid(task)) {
-				if (!window.confirm(tr("切换项目将取消当前任务，是否继续？", "Switching projects cancels the current task. Continue?"))) return false;
-				await cancelTask();
-			}
-			return true;
-		},
-		loadSavedProject: () => Object.values(settings.researchProjects).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+
+		loadSavedProject: () => Object.values(settings.researchProjects).find(project => project.snapshot) ?? null,
 		getJson: offline ? fixtureGet : browserGetJson,
 		postJson: offline ? fixturePost : browserPostJson,
 		prepareGraph: graph => [review?.notice, prepareWebGraph(graph)].filter(Boolean).join("\n") || null,
 		decorateExport: (papers, text, format) => decorateWebExport(papers, text, format, review?.complete === false),
 		checkMetadata: paper => checkWebMetadata(paper, browserGetJson),
 		...(offline ? {} : { operationGate }),
-		confirmChoice: async (message) => window.confirm(message),
+		confirmChoice: message => workspaceMenu.confirmChoice(message),
 		openExternal: (url) => {
 			const safe = allowedExternalUrl(url);
 			if (safe) window.open(safe, "_blank", "noopener,noreferrer");
 		},
-		initialDoi: offline && !Object.values(settings.researchProjects).some(project => project.snapshot) ? EXAMPLE_DOI : undefined,
+		initialDoi: undefined,
+	});
+
+	const workspaceMenu = mountWorkspaceMenu(host, {
+		capture: () => captureWorkspace(settings, graphApp?.captureProject() ?? null),
+		getInfo: () => graphApp?.getGraphSummary() ?? { title: "", nodes: 0, edges: 0 },
+		canRestore: () => canMutate() && !(readActiveTask() && Date.now() - readActiveTask()!.startedAt < 300000),
+		revision: () => window.localStorage.getItem(STORAGE_KEY),
+		notify: message => setNotice(message),
+		restore: async (backup, revision) => {
+			if (!canMutate() || readActiveTask() && Date.now() - readActiveTask()!.startedAt < 300000) throw new Error("工作区忙碌或只读 / Workspace is busy or read-only");
+			const expired = readLocalTask();
+			if (expired && !taskStillValid(expired)) { clearLocalTask(expired.reservationId); clearBrowserTask(expired.reservationId); }
+			const next = structuredClone(settings);
+			clearWorkspaceRecords(next);
+			if (backup.data.project) next.researchProjects = { [backup.data.project.seedId]: structuredClone(backup.data.project) };
+			if (backup.data.readingWorkflow) next.readingWorkflow = structuredClone(backup.data.readingWorkflow);
+			if (backup.data.workIdentityDecisions) next.workIdentityDecisions = structuredClone(backup.data.workIdentityDecisions);
+			if (backup.data.sourceVersionRelations) next.sourceVersionRelations = structuredClone(backup.data.sourceVersionRelations);
+			next.webOfflineRestore = true;
+			graphApp?.cancelPending(true);
+			await store.replace(next, revision);
+			graphApp?.cancelPending();
+			window.location.reload();
+		},
 	});
 
 	const brand = host.querySelector(".cpo-brand");
@@ -478,21 +537,34 @@ async function start(): Promise<void> {
 		if (editingProject) releaseEdit(editingProject);
 	});
 	void currentTabId();
-	if (!offline) {
+	if (privacyPanel instanceof HTMLElement) appendSourceBackupCleanup(privacyPanel);
+	if (!offline && !settings.webOfflineRestore && !sourceReviewPaused(STORAGE_KEY)) {
 		// Review a copy after first paint; a stale result must never overwrite editing.
 		window.requestAnimationFrame(() => window.setTimeout(() => {
 			const baseline = JSON.stringify(settings);
 			let stored: string | null;
+			let reviewStorageFull = false;
+			let reviewSuperseded = false;
 			try { stored = window.localStorage.getItem(STORAGE_KEY); } catch { return; }
 			void revalidateWebSettings(structuredClone(settings), browserGetJson, async next => {
 				const commit = (): void => {
 				const task = readActiveTask();
 				if (JSON.stringify(settings) !== baseline || window.localStorage.getItem(STORAGE_KEY) !== stored
 					|| task && Date.now() - task.startedAt < 300000
-					|| Object.keys(settings.researchProjects).some(key => ownedElsewhere(key))) {
+					|| lostProjects.has(WORKSPACE_LOCK) || ownedElsewhere(WORKSPACE_LOCK)) {
+					reviewSuperseded = true;
 					throw new Error(tr("项目正在使用或已发生修改，本轮来源核对未覆盖当前项目。", "The project is in use or has changed; the background review did not overwrite it."));
 				}
-				commitWebRevalidation(STORAGE_KEY, next);
+				try {
+					// localStorage replacement is atomic; a second full snapshot can exhaust Safari's quota.
+					writeWebProjectSettings(STORAGE_KEY, next);
+					pauseSourceReview(STORAGE_KEY, false);
+				} catch (error) {
+					if (!(error instanceof StorageFullError)) throw error;
+					reviewStorageFull = true;
+					pauseSourceReview(STORAGE_KEY, true);
+					throw new Error(tr("浏览器本地存储空间不足，原项目已保留。请释放浏览器存储空间后重试；本标签页已暂停自动复核。", "Browser storage is full. Original projects retained. Free browser storage and retry. Automatic review is paused in this tab."));
+				}
 				store.refresh(true);
 				window.dispatchEvent(new Event("research-connected-project"));
 				};
@@ -500,7 +572,9 @@ async function start(): Promise<void> {
 				else commit();
 			}).then(result => {
 				review = result;
-				if (result?.notice) setNotice(result.notice);
+				// An outdated background result is discarded normally, not a failed user save.
+				if (!reviewSuperseded && result?.notice) setNotice(result.notice);
+				if (reviewStorageFull && notice instanceof HTMLElement) appendSourceBackupCleanup(notice);
 			}).catch(() => { /* Keep the locally rendered project on review failure. */ });
 		}, 0));
 	}

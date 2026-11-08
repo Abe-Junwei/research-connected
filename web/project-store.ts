@@ -12,6 +12,7 @@ export function loadWebSettings(key: string): ConnectedPapersSettings {
 	settings.researchProjects = normalizeProjects(settings.researchProjects);
 	settings.readingWorkflow = normalizeReadingWorkflow(settings.readingWorkflow);
 	if (!Array.isArray(settings.stagedPapers)) throw new Error("文献存储格式无法识别，请重新建图。");
+	settings.maxNodes = 100;
 	settings.apiKey = "system-proxy";
 	settings.contactEmail = "";
 	prepareWebSettings(settings);
@@ -45,6 +46,16 @@ export function createWebSettingsStore(key: string, settings: ConnectedPapersSet
 			if (same(next, baseline)) return false;
 			adopt(next);
 			return true;
+		},
+		async replace(next: ConnectedPapersSettings, expectedRaw: string | null): Promise<void> {
+			const commit = (): void => {
+				assertWrite(Object.keys(next.researchProjects));
+				if (window.localStorage.getItem(key) !== expectedRaw) throw new Error("工作区已变化，请重新选择备份并预览。 / Workspace changed; preview the backup again.");
+				writeWebProjectSettings(key, next);
+				adopt(next);
+			};
+			if (navigator.locks) await navigator.locks.request("research-connected-project-write", commit);
+			else commit();
 		},
 		async persist(): Promise<void> {
 			const commit = (): void => {
