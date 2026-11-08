@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Research Connected embed preview</title>
+		<link rel="stylesheet" href="styles.css" />
+		<style>
+			body {
+				margin: 0;
+				background: var(--background-secondary, #f6f5f2);
+				color: var(--text-normal, #3a3f45);
+				font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+				--background-primary: #ffffff;
+				--background-secondary: #f6f5f2;
+				--text-normal: #3a3f45;
+				--text-muted: #6b7280;
+				--background-modifier-border: #e5e2da;
+				--background-modifier-hover: rgba(60, 64, 70, 0.08);
+				--interactive-accent: #7856c8;
+				--interactive-accent-hover: #6a4cb0;
+				--graph-node: #5c6570;
+				--graph-text: #3a3f45;
+				--graph-node-focused: #7856c8;
+			}
+			#embed .cpo-bar { padding-right: 80px; }
+			.cpo-theme-toggle {
+				position: fixed;
+				z-index: 20;
+				top: 8px;
+				right: 12px;
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				align-items: center;
+				justify-items: center;
+				width: 54px;
+				height: 28px;
+				margin: 0;
+				padding: 0;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 999px;
+				background: var(--background-secondary);
+				color: var(--text-muted);
+				cursor: pointer;
+			}
+			.cpo-theme-toggle .cpo-icon-glyph { width: 13px; height: 13px; z-index: 1; }
+			.cpo-theme-toggle .cpo-theme-sun { color: var(--text-normal); }
+			.cpo-theme-toggle[aria-pressed="true"] .cpo-theme-sun { color: var(--text-faint); }
+			.cpo-theme-toggle[aria-pressed="true"] .cpo-theme-moon { color: var(--text-normal); }
+			.cpo-theme-knob {
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				width: 22px;
+				height: 22px;
+				border: 1px solid var(--background-modifier-border);
+				border-radius: 50%;
+				background: var(--background-primary);
+				transition: transform 160ms ease;
+			}
+			.cpo-theme-toggle[aria-pressed="true"] .cpo-theme-knob { transform: translateX(26px); }
+			.cpo-theme-toggle:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+			@media (prefers-reduced-motion: reduce) {
+				.cpo-theme-knob { transition: none; }
+			}
+			article {
+				max-width: 1120px;
+				margin: 0 auto;
+				padding: 28px 20px 48px;
+			}
+			h1 {
+				margin: 0 0 8px;
+				font-size: 28px;
+				font-weight: 650;
+			}
+			p {
+				margin: 0 0 16px;
+				color: var(--text-muted, #6b7280);
+				line-height: 1.5;
+			}
+		</style>
+	</head>
+	<body>
+		<button type="button" id="cpo-theme-toggle" class="cpo-theme-toggle" aria-pressed="false" aria-label="切换为深色">
+			<i data-lucide="sun" class="cpo-icon-glyph cpo-theme-sun" aria-hidden="true"></i>
+			<i data-lucide="moon" class="cpo-icon-glyph cpo-theme-moon" aria-hidden="true"></i>
+			<span class="cpo-theme-knob" aria-hidden="true"></span>
+		</button>
+		<article>
+			<h1>离线样例：论文相似度图谱</h1>
+			<p>
+				此页面用固定的离线样例检查嵌入图谱的布局、主题和交互，不会请求 OpenAlex。论文详情可从右侧展开，悬停左下角可查看图例。
+			</p>
+			<div id="embed"></div>
+			<p>
+				金色连线表示引用，青绿色表示共被引，靛蓝色表示文献耦合。
+			</p>
+		</article>
+		<script>
+			const previewChinese = new URLSearchParams(location.search).get("lang") !== "en";
+			document.documentElement.lang = previewChinese ? "zh-Hans" : "en";
+			const previewThemes = {
+				paper: { "--background-primary": "#ffffff", "--background-secondary": "#f6f5f2", "--text-normal": "#3a3f45", "--text-muted": "#6b7280", "--background-modifier-border": "#e5e2da", "--interactive-accent": "#7856c8", "--interactive-accent-hover": "#6a4cb0", "--graph-node": "#5c6570", "--graph-text": "#3a3f45", "--graph-node-focused": "#7856c8" },
+				night: { "--background-primary": "#1a1d24", "--background-secondary": "#232833", "--text-normal": "#e6e4df", "--text-muted": "#a8a299", "--background-modifier-border": "rgba(255,255,255,.14)", "--interactive-accent": "#a994e8", "--interactive-accent-hover": "#b9a6ee", "--graph-node": "#d5d0c6", "--graph-text": "#e6e4df", "--graph-node-focused": "#a994e8" },
+			};
+			const themeToggle = document.getElementById("cpo-theme-toggle");
+			let previewTheme = "paper";
+			const applyPreviewTheme = (next) => {
+				previewTheme = next;
+				const tokens = previewThemes[next];
+				for (const node of [document.documentElement, document.body, document.getElementById("embed")]) {
+					for (const [key, value] of Object.entries(tokens)) node?.style.setProperty(key, value);
+				}
+				const dark = next === "night";
+				themeToggle.setAttribute("aria-pressed", String(dark));
+				themeToggle.setAttribute("aria-label", previewChinese ? (dark ? "切换为浅色" : "切换为深色") : (dark ? "Switch to light theme" : "Switch to dark theme"));
+				window.dispatchEvent(new Event("research-connected-theme"));
+			};
+			themeToggle.setAttribute("aria-label", previewChinese ? "切换为深色" : "Switch to dark theme");
+			themeToggle.addEventListener("click", () => applyPreviewTheme(previewTheme === "paper" ? "night" : "paper"));
+			if (new URLSearchParams(location.search).get("theme") === "night") applyPreviewTheme("night");
+		</script>
+		<script src="./embed.js"></script>
+	</body>
+</html>
