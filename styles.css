@@ -2812,14 +2812,18 @@ button.cpo-agg-item {
 	}
 
 	.cpo-surface.cpo-surface.is-narrow .cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar.cpo-evidence-sidebar {
-		flex: 0 0 auto;
+		flex: 0 0 40px;
 		width: 100%;
-		height: auto;
+		height: 40px;
 		min-height: 40px;
-		max-height: none;
+		max-height: 40px;
 		overflow: hidden;
 		border-top: 1px solid var(--background-modifier-border);
 		padding: 0;
+	}
+
+	.cpo-surface.is-narrow .cpo-body.is-sidebar-collapsed > .cpo-evidence-sidebar > .cpo-sidebar-tabs {
+		display: none;
 	}
 
 	.cpo-surface.is-narrow .cpo-evidence-header {
@@ -4856,3 +4860,73 @@ button.cpo-agg-item {
 .cpo-project-dialog::backdrop { background: rgb(0 0 0 / 35%); }
 .cpo-project-dialog select, .cpo-project-dialog label { display: block; margin-block: 12px; }
 .cpo-project-dialog button { margin-inline-end: 8px; }
+
+.cpo-export-format { display: grid; grid-template-columns: minmax(70px, 1fr) auto auto; align-items: center; gap: 8px; }
+.cpo-export-format > span { font-size: 12px; }
+.cpo-export-format > button.cpo-tool { width: auto; }
+.cpo-export-items .cpo-export-format > button.cpo-tool { display: inline-flex; padding: 6px 8px; }
+.cpo-export-items .cpo-tool-hint { white-space: normal; overflow-wrap: anywhere; }
+
+.cpo-root .cpo-export-items, .cpo-embed .cpo-export-items { box-sizing: border-box; width: min(340px, calc(100vw - 24px)); min-width: 0; max-height: calc(100dvh - 24px); overflow-y: auto; transform: translate(var(--cpo-export-x, 0px), var(--cpo-export-y, 0px)); }
+.cpo-export-format > button.cpo-tool { white-space: nowrap; }
+
+/* Export scope belongs to the list; single-note actions are a separate section. */
+.cpo-root .cpo-export-items, .cpo-embed .cpo-export-items { width: min(440px, calc(100vw - 24px)); padding: 0; gap: 0; }
+.cpo-export-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--background-modifier-border); background: var(--background-primary); position: sticky; top: 0; z-index: 1; }
+.cpo-export-header > strong { font-size: 13px; }
+.cpo-export-items button.cpo-export-close { width: auto; padding: 4px 6px; }
+.cpo-export-section { padding: 14px 16px; }
+.cpo-export-section + .cpo-export-section { border-top: 1px solid var(--background-modifier-border); }
+.cpo-export-section h3, .cpo-workspace-backup-content h3 { font-size: 13px; line-height: 1.5; font-weight: 600; margin: 0 0 4px; }
+.cpo-export-description { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0 0 10px; }
+.cpo-export-items label.cpo-export-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 8px; margin: 0 0 8px; padding: 0; min-height: 32px; color: var(--text-muted); }
+.cpo-export-items .cpo-export-field select { height: 32px; }
+.cpo-export-result { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 8px 10px; margin: 10px 0 8px; border-radius: 5px; background: var(--background-secondary); font-size: 11px; color: var(--text-muted); }
+.cpo-export-result .cpo-tool-hint { padding: 0; color: var(--text-normal); font-size: 12px; font-weight: 500; }
+.cpo-export-items .cpo-export-format { min-height: 36px; gap: 8px; }
+.cpo-export-items .cpo-export-format > button.cpo-tool { padding: 4px 8px; }
+.cpo-export-note-paper { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; gap: 8px; border: 1px solid var(--background-modifier-border); border-radius: 5px; padding: 8px 10px; margin: 10px 0 8px; }
+.cpo-export-note-paper > span { color: var(--text-muted); font-size: 11px; }
+.cpo-export-note-title { font-size: 12px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.cpo-export-note-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.cpo-export-items .cpo-export-note-actions > button.cpo-tool { width: auto; }
+@media (max-width: 640px) {
+ .cpo-root .cpo-export-items, .cpo-embed .cpo-export-items { position: fixed; left: 12px; right: 12px; top: auto; bottom: max(12px, env(safe-area-inset-bottom)); width: auto; max-height: 85dvh; transform: none; border-radius: 12px; }
+ .cpo-export-header { padding: 8px 16px; }
+ .cpo-export-items button.cpo-tool, .cpo-export-items .cpo-export-format > button.cpo-tool { min-height: 44px; }
+ .cpo-export-items label.cpo-export-field { display: block; margin-bottom: 12px; }
+ .cpo-export-field > span { display: block; margin-bottom: 6px; }
+ .cpo-export-items .cpo-export-field select { height: 44px; font-size: 13px; }
+ .cpo-export-items .cpo-export-format { grid-template-columns: 1fr 1fr; gap: 6px; margin-block: 12px; }
+ .cpo-export-format > span { grid-column: 1 / -1; }
+ .cpo-export-note-paper { grid-template-columns: 1fr; gap: 4px; }
+ .cpo-export-items .cpo-export-note-actions > button.cpo-tool { flex: 1 1 auto; }
+}
+
+.cpo-root .cpo-export-items, .cpo-embed .cpo-export-items { width: min(var(--cpo-menu-width, 440px), calc(100vw - 24px)); max-height: var(--cpo-menu-height, calc(100dvh - 24px)); }
+@media (max-width: 640px) { .cpo-root .cpo-export-items, .cpo-embed .cpo-export-items { width: auto; max-height: min(85dvh, var(--cpo-menu-height, 85dvh)); } }
+
+.cpo-year-band .cpo-year-bars { overflow: visible; }
+.cpo-year-band .cpo-year-bar { transform-origin: bottom center; transition: transform 120ms ease, background-color 120ms ease; }
+.cpo-year-band .cpo-year-bar:hover { z-index: 2; background: var(--interactive-accent); transform: translateX(-50%) scale(1.5, 1.25); }
+.cpo-year-band .cpo-year-bar::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 28px; }
+.cpo-year-band .cpo-year-bar:hover::after { content: attr(data-hint); position: absolute; left: 50%; bottom: calc(100% + 5px); transform: translateX(-50%) scale(.667, .8); transform-origin: bottom center; padding: 3px 6px; border-radius: 4px; background: var(--text-normal); color: var(--background-primary); font-size: 12px; line-height: 1.2; white-space: nowrap; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .cpo-year-band .cpo-year-bar { transition: none; } }
+
+.cpo-project-dialog { box-sizing: border-box; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; font-family: var(--font-interface, system-ui, sans-serif); font-size: 13px; line-height: 1.6; box-shadow: 0 16px 48px rgb(0 0 0 / 20%); }
+.cpo-project-dialog h3 { margin: 0 0 16px; font-size: 18px; line-height: 1.4; font-weight: 600; }
+.cpo-project-dialog select { box-sizing: border-box; width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 6px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
+.cpo-project-dialog button { font: inherit; min-height: 34px; padding: 6px 12px; margin-top: 12px; border-radius: 6px; }
+.cpo-project-dialog button:focus-visible, .cpo-project-dialog select:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.cpo-project-dialog [role=status]:empty { display: none; }
+@media(max-width:640px) { .cpo-project-dialog { padding: 20px; } .cpo-project-dialog button, .cpo-project-dialog select { min-height: 40px; } }
+
+.cpo-project-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.cpo-project-dialog .cpo-project-dialog-actions button { margin: 0; }
+
+.cpo-operation-notice { position: absolute; z-index: 40; inset-inline: 12px; bottom: 38px; display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font-size: 12px; line-height: 1.5; box-shadow: 0 4px 16px rgb(0 0 0 / 12%); }
+.cpo-operation-notice[hidden] { display: none; }
+.cpo-operation-notice > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cpo-operation-notice.is-error { border-inline-start: 3px solid var(--text-error, #b42318); }
+.cpo-surface .cpo-operation-notice > button { flex: none; border: 0; padding: 0; width: 28px; height: 28px; box-shadow: none; background: transparent; color: var(--text-muted); font-size: 20px; cursor: pointer; }
+.cpo-operation-notice > button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }

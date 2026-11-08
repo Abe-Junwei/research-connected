@@ -1,3 +1,7 @@
+import { downloadText, exportFilename, toCsv } from "./export-file";
+import type { ExportAction } from "./graph-chrome";
+import { contributorText } from "./paper";
+import { applyContributors, createContributorLookup } from "./contributors";
 import { paperRecords, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
@@ -225,8 +229,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const persistent = createEl("input"); persistent.type = "checkbox"; persistent.disabled = !deps.persistAssociation;
 			label.append(persistent, document.createTextNode(tr("记住此代码块的项目关联", "Remember this block's project association")));
 			const error = createEl("p"); error.setAttribute("role", "status");
-			const confirm = createEl("button"); confirm.type = "button"; confirm.textContent = tr("选择", "Choose");
-			const cancel = createEl("button"); cancel.type = "button"; cancel.textContent = tr("取消", "Cancel");
+			const confirm = createEl("button"); confirm.className = "cpo-primary"; confirm.type = "button"; confirm.textContent = tr("选择", "Choose");
+			const cancel = createEl("button"); cancel.className = "cpo-ghost"; cancel.type = "button"; cancel.textContent = tr("取消", "Cancel");
 			const close = () => { dialog.close(); dialog.remove(); associationDialog = null; cancelAssociation = null; };
 			cancelAssociation = () => { close(); reject(new Error(tr("已取消，未保存", "Cancelled; nothing saved"))); };
 			cancel.onclick = () => cancelAssociation?.();
@@ -257,7 +261,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					confirm.disabled = false;
 				}
 			};
-			dialog.append(title, select, label, error, confirm, cancel); shell.append(dialog); dialog.showModal(); select.focus();
+			const actions = createDiv(); actions.className = "cpo-project-dialog-actions"; actions.append(cancel, confirm);
+			dialog.append(title, select, label, error, actions); shell.append(dialog); dialog.showModal(); select.focus();
 		});
 	};
 	canvas.classList.add("cpo-embed-canvas");
@@ -404,6 +409,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const paintLists = (): void => {
+		chrome?.refreshExportInfo();
 		evidenceTitle.textContent = tabTitles[tab] ?? tabTitles.graph;
 		detail.hidden = tab !== "graph";
 		if (tab === "graph") {
@@ -483,11 +489,15 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			paintLists();
 			frame.revealRight();
 		},
-		onExport: (kind) => {
-			void exportView(kind);
+		getExportInfo: range => {
+			const nodes = currentGraph ? sourceGraph?.nodes ?? currentGraph.nodes : [], project = associatedProject(), filter = viewFilter;
+			return { count: graphExportVersions(nodes, project, range.scope === "full" ? emptyFilter() : filter, range.mode, false).length, filteredCount: graphExportVersions(nodes, project, filter, "one", false).length, fullCount: graphExportVersions(nodes, project, emptyFilter(), "one", false).length, noteTitle: (selected ?? currentGraph?.nodes.find(node => node.isSeed))?.title ?? "", noteIsSeed: !selected || selected.isSeed };
+		},
+		onExport: (kind, action) => {
+			void exportView(kind, action);
 		},
 	});
-	const exportView = async (kind: ExportKind): Promise<void> => {
+	const exportView = async (kind: ExportKind, action: ExportAction = "copy"): Promise<void> => {
 		if (!currentGraph) {
 			chrome?.setExportText(tr("请先构建图谱", "Build a graph first"));
 			return;
@@ -498,7 +508,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			let paper: PaperNode;
 			try { paper = (await choosePaperVersion(chosen, false, versionDialogs.signal)).paper; }
 			catch (error) { chrome?.setExportText(error instanceof Error ? error.message : String(error)); return; }
-			if (deps.lookupLiteratureNote?.(paper)) { showDetail(paper, currentGraph, selectedLink, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
+			if (action === "write" && deps.lookupLiteratureNote?.(paper)) { showDetail(paper, currentGraph, selectedLink, true); chrome?.setExportText(tr("已找到文献笔记，请从详情中选择打开", "Literature notes found. Open one from the paper details.")); return; }
 			const settings = deps.getSettings();
 			const seedId = currentGraph.nodes.find((node) => node.isSeed)?.id ?? paper.id;
 			const shared = deps.getReadingState?.(paper);
@@ -514,7 +524,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const filename = literatureFilename(paper, settings.literatureFilename, fields);
 			const raw = literatureMarkdown(paper, settings.literatureTemplate, fields);
 			const markdown = deps.decorateExport?.([paper], raw, "markdown") ?? raw;
-			if (deps.createNote) {
+			if (action === "write" && deps.createNote) {
 				try {
 					const path = await deps.createNote(filename, markdown, settings.literatureFolder);
 					deps.rememberLiteratureNote?.(paper, typeof path === "string" ? path : filename, fields.status);
@@ -525,14 +535,25 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				}
 				return;
 			}
-			await chrome?.copyText(markdown, tr("笔记内容", "Note contents"));
+			if (action === "download") {
+				try { downloadText(filename.endsWith(".md") ? filename : `${filename}.md`, markdown, "text/markdown"); chrome?.setExportText(tr("已发起 Markdown 下载，请在浏览器或系统下载中确认。", "Markdown download requested. Check browser or system downloads.")); }
+				catch (error) { chrome?.setExportText(tr(`下载不可用，请使用复制：${String(error)}`, `Download unavailable; use Copy: ${String(error)}`)); }
+			}
+			else await chrome?.copyText(markdown, tr("笔记骨架", "Note template"));
 			return;
 		}
-		const range = chrome?.exportOptions() ?? { mode: "one" as const, includeSeedException: false };
-		const nodes = orderedForExport(graphExportVersions(currentGraph.nodes, associatedProject(), viewFilter, range.mode, range.includeSeedException));
+		const range = chrome?.exportOptions() ?? { scope: "filtered" as const, mode: "one" as const, includeSeedException: false };
+		const nodes = orderedForExport(graphExportVersions(sourceGraph?.nodes ?? currentGraph.nodes, associatedProject(), range.scope === "full" ? emptyFilter() : viewFilter, range.mode, false));
 		const raw = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
 		const text = deps.decorateExport?.(nodes, raw, kind === "bibtex" ? "bibtex" : kind === "yaml" ? "yaml" : "markdown") ?? raw;
-		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
+		if (action === "download") {
+			try {
+				const csv = kind === "table";
+				downloadText(exportFilename(currentGraph.nodes.find(node => node.isSeed)?.title ?? "literature", csv ? "csv" : kind === "bibtex" ? "bib" : "yaml"), csv ? toCsv(nodes) : text, csv ? "text/csv" : "text/plain");
+				const warning = csv ? deps.decorateExport?.(nodes, "", "markdown") ?? "" : "";
+				chrome?.setExportText([tr("已发起文件下载，请在浏览器或系统下载中确认。", "Download requested. Check browser or system downloads."), warning].filter(Boolean).join("\n"));
+			} catch (error) { chrome?.setExportText(tr(`下载不可用，请使用复制：${String(error)}`, `Download unavailable; use Copy: ${String(error)}`)); }
+		} else await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
 
 	const anchor = placementAnchor(root);
@@ -603,6 +624,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const abstractRequested = new Set<string>();
 	const abstractFromS2 = new Set<string>();
 	const abstractFromCrossref = new Set<string>();
+	const contributorLookup = createContributorLookup(deps.getJson, () => deps.getSettings().contactEmail);
 	const abstractMissing = new Set<string>();
 	const abstractErrors = new Map<string, string>();
 	const fetchedAbstracts = new Map<string, Extract<AbstractLookupResult, { status: "found" }>>();
@@ -721,6 +743,18 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			button.onclick = () => locate(paper);
 			detail.append(hint, button);
 		}
+		contributorLookup(detail, paper, deps.autoFetch !== false, metadata => {
+			if (!alive || currentGraph !== graph) return;
+			applyContributors(graph, paper, metadata);
+			if (sourceGraph) applyContributors(sourceGraph, paper, metadata);
+			map.adoptGraph(graph.nodes, graph.edges, graph.seedScore, undefined, false, graph.referenceLists);
+			const project = associatedProject();
+			if (project && sourceGraph && deps.stagePaper) {
+				project.snapshot = saveGraphSnapshot(sourceGraph);
+				void Promise.resolve(deps.stagePaper(paper, seedId, "Crossref")).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : String(error); });
+			}
+			if (selected?.id === paper.id && tab === "graph") showDetail(paper, graph, link);
+		});
 		if (fetchAbstract && !paper.abstract && !abstractMissing.has(abstractKey) && !abstractRequested.has(abstractKey)) {
 			abstractRequested.add(abstractKey);
 			void fallbackAbstract(deps.getJson, paper, {
@@ -837,10 +871,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		diagnoseButton.disabled = false;
 		chrome?.setExportsEnabled(true);
 		if (sameProject && currentGraph) map.adoptGraph(graph.nodes, graph.edges, graph.seedScore, undefined, false, graph.referenceLists);
-		else map.setGraph(graph.nodes, graph.edges, graph.seedScore, graph.referenceLists);
+		else map.setGraph(graph.nodes, graph.edges, graph.seedScore, graph.referenceLists, { layout: layoutMode });
 		graphKey.setStats(graph.nodes, graph.edges, graph.referenceLists);
 		graphKey.paintColor(layoutMode);
-		if (!sameProject) map.setLayout(layoutMode);
 		map.setColorMode(layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode));
 		applyFilter();
 		session.apply({ type: "sample", years: graph.nodes.map((node) => node.year), scrubYear: viewFilter.scrubYear });
@@ -848,9 +881,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (histogram) chrome?.showSample(histogram, viewFilter.scrubYear);
 		paintLists();
 		const seed = graph.nodes.find((node) => node.isSeed);
-		const fullStatus = tr(`${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
+		const fullStatus = tr(`${[seed?.title, seed ? contributorText(seed) : "", seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
-		}${graph.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}`, `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
+		}${graph.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}`, `${[seed?.title, seed ? contributorText(seed) : "", seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
 			graph.skippedNonResearch ? ` · filtered ${graph.skippedNonResearch} reviews and other non-research records` : ""
 		}${graph.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}`);
 		const enhancementNote = enhancementText(graph);
