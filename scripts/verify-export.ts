@@ -1,3 +1,4 @@
+import { toCsv, exportFilename } from "../src/export-file";
 import assert from "node:assert/strict";
 import { bindLanguage } from "../src/i18n";
 import { readHostLanguage } from "../src/host-language";
@@ -10,6 +11,11 @@ export function verifyExport(): void {
 	const paper: PaperNode = { id: "W1", title: "A {B} \\ C & 50%_#~^", authors: "Ada & Bob", authorList: ["Ada & Bob", "王明"], year: 2020, citedByCount: 0, citationCountStatus: "known", abstract: "", doiUrl: "https://doi.org/10.1234/example", openAlexUrl: "https://openalex.org/W1", isSeed: true, origin: "seed", language: "en", workType: "article", venue: "Journal", concepts: [], retracted: false };
 	const missing = { ...paper, id: "W2", isSeed: false, year: null, citationCountStatus: "missing" as const, doiUrl: null };
 	const before = JSON.stringify([paper, missing]);
+	const csv = toCsv([{ ...paper, title: '=HYPERLINK("bad")\nsecond, line', editorList: ["Editor A", "Editor B"] }]);
+	assert.ok(csv.startsWith("\uFEFF") && csv.includes('"\'=HYPERLINK(""bad"")\nsecond, line"'));
+	assert.ok(csv.includes("Ada & Bob; 王明") && csv.includes("Editor A; Editor B"));
+	assert.ok(!/[\\/:*?"<>|]/.test(exportFilename("../unsafe: title", "csv")));
+
 	const keys = toBibTeX([paper, { ...paper, id: "W10001" }, { ...paper, id: "W20001" }, paper]).match(/^@\w+\{([^,]+)/gm)!;
 	assert.equal(new Set(keys).size, 4, "citation keys remain unique after repeated suffix collisions");
 	assert.match(toBibTeX([paper]), /A \\\{B\\\} \\textbackslash\{\} C \\& 50\\%\\_\\#\\textasciitilde\{\}\\textasciicircum\{\}/, "BibTeX preserves literal punctuation and escapes TeX commands");

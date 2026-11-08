@@ -1,7 +1,7 @@
 import { availableCitations, citationCountText } from "./visual";
 import { tr } from "./i18n";
 import { shortAuthor } from "./labels";
-import { normalizeDoi } from "./paper";
+import { contributorText, knownAuthorNames, normalizeDoi } from "./paper";
 import { paperDois, paperRecords, paperSourceIds } from "./work-identity";
 import { projectVersionState, selectExportVersions, type ReadingStatus, type ResearchProject } from "./project-state";
 import { nodeMatchesFilter, type GraphFilter } from "./graph-filter";
@@ -22,7 +22,8 @@ export function toYamlList(nodes: readonly PaperNode[]): string {
 	const lines = ["papers:"];
 	for (const paper of nodes) {
 		lines.push(`  - title: ${yamlString(paper.title)}`);
-		lines.push(`    authors: ${yamlString(paper.authors)}`);
+		lines.push(`    authors: ${yamlString(knownAuthorNames(paper).join(", "))}`);
+		if (paper.editorList?.length) lines.push(`    editors: ${JSON.stringify(paper.editorList)}`);
 		lines.push(`    year: ${paper.year ?? "null"}`);
 		lines.push(`    citations: ${availableCitations(paper) ?? "null"}`);
 		const doi = doiOf(paper);
@@ -39,7 +40,7 @@ export function toMarkdownTable(nodes: readonly PaperNode[]): string {
 	const rows = nodes.map((paper) => {
 		const year = paper.year === null ? "" : String(paper.year);
 		const doi = doiOf(paper) ?? "";
-		return `| ${cell(paper.title)} | ${cell(paper.authors)} | ${year} | ${citationCountText(paper)} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
+		return `| ${cell(paper.title)} | ${cell(contributorText(paper))} | ${year} | ${citationCountText(paper)} | ${cell(doi)} | ${cell(paper.openAlexUrl)} |`;
 	});
 	return [header, rule, ...rows].join("\n");
 }
@@ -56,7 +57,8 @@ function bibEntry(paper: PaperNode, used: Set<string>): string {
 	const key = citeKey(paper, used);
 	const fields = [
 		`  title = {${bibText(paper.title)}}`,
-		`  author = {${(paper.authorList?.length ? paper.authorList : [paper.authors]).map(bibText).join(" and ")}}`,
+		...(knownAuthorNames(paper).length ? [`  author = {${knownAuthorNames(paper).map(bibText).join(" and ")}}`] : []),
+		...(paper.editorList?.length ? [`  editor = {${paper.editorList.map(bibText).join(" and ")}}`] : []),
 		`  year = {${paper.year ?? ""}}`,
 	];
 	if (paper.venue && (type === "article" || type === "incollection")) fields.push(`  ${type === "article" ? "journal" : "booktitle"} = {${bibText(paper.venue)}}`);
@@ -79,7 +81,7 @@ function bibType(workType: string | null): string {
 }
 
 function citeKey(paper: PaperNode, used: Set<string>): string {
-	const author = shortAuthor(paper.authors).replace(/[^A-Za-z0-9]+/g, "") || "anon";
+	const author = shortAuthor(knownAuthorNames(paper).join(", ") || paper.editorList?.join(", ") || "").replace(/[^A-Za-z0-9]+/g, "") || "anon";
 	const year = paper.year ?? "nd";
 	const base = `${author}${year}`;
 	let key = base;
@@ -119,7 +121,7 @@ export interface LiteratureFields {
 export function fillLiteratureTemplate(template: string, paper: PaperNode, fields: LiteratureFields): string {
 	const values: Record<"title" | "authors" | "year" | "doi" | "openalex" | "relation" | "project" | "status", string> = {
 		title: paper.title,
-		authors: paper.authors,
+		authors: contributorText(paper),
 		year: paper.year === null ? "" : String(paper.year),
 		doi: normalizeDoi(paper.doiUrl) ?? "",
 		openalex: paper.openAlexUrl,
@@ -143,9 +145,10 @@ export function literatureMarkdown(paper: PaperNode, template: string, fields: L
 	const lines = [
 		"---",
 		`title: ${yamlString(paper.title)}`,
-		`authors: ${yamlString(paper.authors)}`,
+		`authors: ${yamlString(knownAuthorNames(paper).join(", "))}`,
 		`year: ${paper.year ?? "null"}`,
 	];
+	if (paper.editorList?.length) lines.push(`editors: ${JSON.stringify(paper.editorList)}`);
 	if (doi) lines.push(`doi: ${yamlString(doi)}`);
 	if (paper.records?.length) lines.push(`rc-doi-aliases: ${JSON.stringify(paperDois(paper))}`, `rc-openalex-aliases: ${JSON.stringify(paperRecords(paper).map((record) => record.id))}`);
 	lines.push(

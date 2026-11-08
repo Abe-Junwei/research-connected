@@ -1,3 +1,4 @@
+import { contributorText } from "./paper";
 import { tr } from "./i18n";
 import { paintPaperActionFeedback } from "./paper-actions";
 import type { ReadingWorkflowDeps } from "./reading-workflow";
@@ -99,7 +100,7 @@ export function paintWorkflowLibrary(host: HTMLElement, options: WorkflowLibrary
 		const item = append(list, "li", "cpo-agg-entry");
 		const card = append(item, "div", "cpo-card cpo-library-card");
 		append(card, "h3", "cpo-card-title", paper.title || paper.id);
-		append(card, "p", "cpo-library-meta", [paper.year, paper.authors, state.source].filter(Boolean).join(" · "));
+		append(card, "p", "cpo-library-meta", [paper.year, contributorText(paper), state.source].filter(Boolean).join(" · "));
 		if (state.staged && options.tab === "excluded") append(card, "span", "cpo-chip", tr("已收藏", "Saved"));
 		const actions = append(card, "div", "cpo-library-actions");
 		action(actions, tr("查看", "View"), () => options.onView(paper));
