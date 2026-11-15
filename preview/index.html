@@ -91,6 +91,8 @@
 					for (const [key, value] of Object.entries(tokens)) node?.style.setProperty(key, value);
 				}
 				const dark = next === "night";
+				document.documentElement.classList.toggle("theme-dark", dark);
+				document.body.classList.toggle("theme-dark", dark);
 				themeToggle.setAttribute("aria-pressed", String(dark));
 				themeToggle.setAttribute("aria-label", previewChinese ? (dark ? "切换为浅色" : "切换为深色") : (dark ? "Switch to light theme" : "Switch to dark theme"));
 				window.dispatchEvent(new Event("research-connected-theme"));

@@ -3,7 +3,9 @@ import type { ExportAction } from "./graph-chrome";
 import { contributorText } from "./paper";
 import { applyContributors, createContributorLookup } from "./contributors";
 import { paperRecords, WORK_IDENTITY_VERSION } from "./work-identity";
+import { preventImeSubmit } from "./ime-input";
 import { isChinese, tr } from "./i18n";
+import { labelModalDialog } from "./modal-dialog";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, fallbackAbstract, type AbstractLookupResult, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
@@ -220,9 +222,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const dialog = createEl("dialog");
 			associationDialog = dialog;
 			dialog.className = "cpo-surface cpo-project-dialog";
-			dialog.setAttribute("aria-label", tr("选择操作所属项目", "Choose a project for this action"));
 			const title = createEl("h3"); title.textContent = tr("选择操作所属项目", "Choose a project for this action");
-			const select = createEl("select"); select.setAttribute("aria-label", tr("研究项目", "Research project"));
+			labelModalDialog(dialog, title);
+			const select = createEl("select"); select.autofocus = true; select.setAttribute("aria-label", tr("研究项目", "Research project"));
 			for (const [key, project] of Object.entries(deps.getSettings().researchProjects)) { const option = createEl("option"); option.value = key; option.textContent = `${project.name} (${key})`; select.append(option); }
 			const create = createEl("option"); create.value = "new"; create.textContent = tr("新建项目", "Create project"); select.append(create);
 			const label = createEl("label");
@@ -801,6 +803,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		form.className = "cpo-diagnose-form";
 		const query = createEl("input");
 		query.placeholder = tr("DOI 或 OpenAlex ID", "DOI or OpenAlex ID");
+		query.spellcheck = false;
+		query.setAttribute("autocapitalize", "none");
+		query.setAttribute("enterkeyhint", "search");
 		query.setAttribute("aria-label", tr("要诊断的论文", "Paper to inspect"));
 		const submit = createEl("button");
 		submit.type = "submit";
@@ -810,6 +815,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const result = createDiv();
 		result.className = "cpo-diagnose-result";
 		detail.append(form, result);
+		preventImeSubmit(form, query);
 		form.addEventListener("submit", (event) => {
 			event.preventDefault();
 			if (!currentGraph) return;
