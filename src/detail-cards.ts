@@ -10,6 +10,7 @@ import { contributorText, knownAuthorNames, nonResearchLabel, normalizeDoi } fro
 import { comparableStructuralSimilarity, findEdge, observedRelationCount } from "./relation";
 import type { GraphEdge, Origin, PaperNode } from "./types";
 import { citationCountText, formatCount } from "./visual";
+import { labelModalDialog } from "./modal-dialog";
 import { paperRecords } from "./work-identity";
 import { admissionText } from "./admission";
 
@@ -101,9 +102,10 @@ export function choosePaperVersion(paper: PaperNode, allowWhole = false, signal?
 	const versions = paperRecords(paper);
 	if (versions.length < 2) return Promise.resolve({ paper, whole: false });
 	return new Promise((resolve, reject) => {
-		const dialog = createEl("dialog"); dialog.className = "cpo-surface cpo-project-dialog"; dialog.setAttribute("aria-label", tr("选择操作版本", "Choose a version for this action"));
-		el(dialog, "h3", "", tr("选择操作版本", "Choose a version for this action"));
-		const select = el(dialog, "select", ""); select.setAttribute("aria-label", tr("版本或整项研究", "Version or whole research"));
+		const dialog = createEl("dialog"); dialog.className = "cpo-surface cpo-project-dialog";
+		const title = el(dialog, "h3", "", tr("选择操作版本", "Choose a version for this action"));
+		labelModalDialog(dialog, title);
+		const select = el(dialog, "select", ""); select.autofocus = true; select.setAttribute("aria-label", tr("版本或整项研究", "Version or whole research"));
 		for (const version of versions) { const option = el(select, "option", "", `${version.id} · ${version.doiUrl ?? version.title}`); option.value = version.id; }
 		if (allowWhole && !versions.some(version => version.isSeed)) { const option = el(select, "option", "", tr("整项研究（含未来版本）", "Whole research, including future versions")); option.value = "whole"; }
 		const close = () => { signal?.removeEventListener("abort", cancelAction); dialog.close(); dialog.remove(); };
