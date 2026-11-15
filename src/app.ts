@@ -4,6 +4,7 @@ import type { ExportAction } from "./graph-chrome";
 import { contributorText } from "./paper";
 import { applyContributors, createContributorLookup } from "./contributors";
 import { paperHasId, paperRecords, resolveWorkQuery } from "./work-identity";
+import { isImeConfirmingEnter, preventImeSubmit, watchImeComposition } from "./ime-input";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
@@ -124,6 +125,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.placeholder = tr("DOI、OpenAlex ID 或论文标题", "DOI, OpenAlex ID, or paper title");
 	input.autocomplete = "off";
 	input.spellcheck = false;
+	input.setAttribute("autocapitalize", "none");
+	input.setAttribute("enterkeyhint", "search");
 	input.setAttribute("aria-label", tr("种子文献", "Seed paper"));
 	const submit = el(form, "button", "cpo-primary", tr("构建", "Build"));
 	submit.type = "submit";
@@ -318,7 +321,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	let layoutMode: LayoutMode = "force2d";
 	let generation = 0;
 	let hiddenIds = new Set<string>();
-	let composing = false;
 	let disposed = false;
 	let narrativeBusy = false;
 	let settingsRevision = 0;
@@ -685,9 +687,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		query.type = "text";
 		query.placeholder = tr("DOI 或 OpenAlex ID", "DOI or OpenAlex ID");
 		query.setAttribute("aria-label", tr("要诊断的论文", "Paper to inspect"));
+		query.setAttribute("autocapitalize", "none");
+		query.setAttribute("enterkeyhint", "search");
+		query.spellcheck = false;
 		const check = el(form, "button", "cpo-primary", tr("查询", "Search"));
 		check.type = "submit";
 		const result = el(detail, "div", "cpo-diagnose-result");
+		preventImeSubmit(form, query);
 		form.addEventListener("submit", (event) => {
 			event.preventDefault();
 			if (!graph) return;
@@ -1137,6 +1143,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		nameButton.replaceWith(input);
 		input.focus();
 		input.select();
+		input.setAttribute("enterkeyhint", "done");
+		input.setAttribute("autocapitalize", "none");
+		const ime = watchImeComposition(input);
 		let done = false;
 		const finish = async (commit: boolean): Promise<void> => {
 			if (done) return;
@@ -1158,10 +1167,27 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			refreshProjectSelect(activeProjectId ?? seedId);
 		};
 		input.addEventListener("keydown", (event) => {
-			if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); event.stopPropagation(); void finish(true); }
-			if (event.key === "Escape") { event.stopPropagation(); void finish(false); }
+			if (event.key === "Enter") {
+				event.stopPropagation();
+				if (isImeConfirmingEnter(event, ime.lastEndAt())) return;
+				event.preventDefault();
+				void finish(true);
+				return;
+			}
+			if (event.key === "Escape") {
+				event.stopPropagation();
+				if (event.isComposing) return;
+				void finish(false);
+			}
 		});
-		input.addEventListener("blur", () => { void finish(true); });
+		input.addEventListener("blur", () => {
+			if (ime.composing()) return;
+			void finish(true);
+		});
+		input.addEventListener("compositionend", () => {
+			if (!input.isConnected || document.activeElement === input) return;
+			void finish(true);
+		});
 	}
 
 	async function deleteProject(seedId: string): Promise<void> {
@@ -1737,16 +1763,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		await buildResolved(parsed);
 	};
 
+	preventImeSubmit(form, input);
 	form.addEventListener("submit", (event) => {
 		event.preventDefault();
-		if (composing) return;
 		void submitQuery();
-	});
-	input.addEventListener("compositionstart", () => {
-		composing = true;
-	});
-	input.addEventListener("compositionend", () => {
-		composing = false;
 	});
 	zoomIn.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1.2); });
 	zoomOut.addEventListener("click", () => { freezeDetailReturn(); map.zoomBy(1 / 1.2); });
@@ -1956,10 +1976,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const endpoints = el(label, "input");
 		endpoints.type = "text";
 		endpoints.required = true;
+		endpoints.spellcheck = false;
+		endpoints.setAttribute("autocapitalize", "none");
+		endpoints.setAttribute("enterkeyhint", "search");
 		endpoints.placeholder = "10.1/a → 10.2/b";
 		const submitPath = el(form, "button", "cpo-text-btn", tr("查找路径", "Find path"));
 		submitPath.type = "submit";
 		endpoints.focus();
+		preventImeSubmit(form, endpoints);
 		form.onsubmit = (event) => {
 			event.preventDefault();
 			if (!graph) return;

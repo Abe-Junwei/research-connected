@@ -48,6 +48,11 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			desc: tr("可选。填写后随 OpenAlex 请求发送；格式有效时也随 Crossref 请求发送，供服务方联系。填写邮箱不保证提高请求额度。", "Optional. Sent with OpenAlex requests and, when valid, Crossref requests so providers can contact you. An email does not guarantee a higher request allowance."),
 			render: (setting) => {
 				setting.addText((text) => {
+					text.inputEl.type = "email";
+					text.inputEl.autocomplete = "email";
+					text.inputEl.inputMode = "email";
+					text.inputEl.spellcheck = false;
+					text.inputEl.enterKeyHint = "done";
 					text
 						.setPlaceholder("you@example.com")
 						.setValue(this.store.settings.contactEmail)

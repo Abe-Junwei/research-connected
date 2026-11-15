@@ -216,7 +216,6 @@
 }
 
 .cpo-root input.cpo-input:focus {
-	outline: none;
 	border-color: var(--cpo-accent);
 }
 
@@ -957,7 +956,6 @@
 	gap: 1px;
 	min-width: 0;
 	overflow-x: auto;
-	scrollbar-width: none;
 }
 
 .cpo-graph-key-n {
@@ -2742,7 +2740,6 @@ button.cpo-agg-item {
 	padding: 5px 6px;
 	overflow-x: auto;
 	overscroll-behavior-x: contain;
-	scrollbar-width: thin;
 }
 
 .cpo-workspace-tools .cpo-tab-row button.cpo-tool {
@@ -3404,6 +3401,13 @@ button.cpo-agg-item {
 	--graph-text: var(--text-normal, #4b5563);
 	--cpo-canvas-bg-start: var(--background-primary, var(--rc-surface));
 	--cpo-canvas-bg-end: var(--background-secondary, var(--rc-canvas));
+	/* Follow the Obsidian theme class. `light dark` would follow the OS instead. */
+	color-scheme: light;
+	accent-color: var(--interactive-accent, var(--cpo-accent));
+}
+
+.theme-dark .cpo-surface {
+	color-scheme: dark;
 }
 
 @supports (color: oklch(from white l c h)) {
@@ -3415,6 +3419,29 @@ button.cpo-agg-item {
 .cpo-surface :where(button, input, summary, [tabindex]):focus-visible {
 	outline: 2px solid var(--rc-focus);
 	outline-offset: 2px;
+}
+
+/* Short headings stay balanced; body copy avoids a short last line. Not applied globally. */
+.cpo-empty-title,
+.cpo-project-dialog h3,
+.cpo-card-title,
+.cpo-surface .cpo-agg-open {
+	text-wrap: balance;
+}
+
+.cpo-abstract,
+.cpo-empty p,
+.cpo-fact-note,
+.cpo-hit-title {
+	text-wrap: pretty;
+}
+
+.cpo-surface:lang(zh) {
+	line-break: strict;
+}
+
+.cpo-surface:lang(zh) .cpo-empty-title {
+	letter-spacing: normal;
 }
 
 .cpo-stage,
@@ -4857,7 +4884,8 @@ button.cpo-agg-item {
 	background: var(--background-primary);
 	color: var(--text-normal);
 }
-.cpo-project-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.cpo-project-dialog:modal { overscroll-behavior: contain; }
+.cpo-project-dialog::backdrop { background: rgb(0 0 0 / 35%); overflow: hidden; overscroll-behavior: contain; }
 .cpo-project-dialog select, .cpo-project-dialog label { display: block; margin-block: 12px; }
 .cpo-project-dialog button { margin-inline-end: 8px; }
 
