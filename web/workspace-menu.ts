@@ -62,7 +62,7 @@ export function mountWorkspaceMenu(host: HTMLElement, options: {
  function dialog(title: string, description: string, acceptLabel: string, onAccept?: () => Promise<void>, workspaceAction = true): Promise<boolean> {
   return new Promise(resolve => {
    const modal = document.createElement("dialog"); modal.className = "cpo-surface cpo-workspace-dialog";
-   const heading = document.createElement("h2"); heading.textContent = title; heading.id = "cpo-workspace-dialog-title"; modal.setAttribute("aria-labelledby", heading.id); modal.append(heading);
+   const heading = document.createElement("h2"); heading.textContent = title; heading.id = "cpo-workspace-dialog-title"; modal.setAttribute("aria-labelledby", heading.id); modal.setAttribute("closedby", "any"); modal.append(heading);
    const body = document.createElement("p"); body.textContent = description; body.className = "cpo-workspace-description"; modal.append(body);
    const feedback = document.createElement("p"); feedback.setAttribute("role", "status"); modal.append(feedback);
    const actions = document.createElement("div"); actions.className = "cpo-workspace-dialog-actions"; modal.append(actions);

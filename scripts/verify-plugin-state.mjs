@@ -165,6 +165,9 @@ assert.deepEqual(helpLinks.map(({ tag, text, href, attr }) => [tag, text, href, 
 ]);
 assert.equal(controls.size, 17, "all non-LLM settings must remain available");
 assert.equal(controls.get("OpenAlex API key").inputEl.type, "password");
+assert.equal(controls.get("Contact email (mailto)").inputEl.type, "email");
+assert.equal(controls.get("Contact email (mailto)").inputEl.autocomplete, "email");
+assert.equal(controls.get("Contact email (mailto)").inputEl.enterKeyHint, "done");
 await controls.get("Maximum nodes").change(999);
 assert.equal(store.settings.maxNodes, 300);
 await controls.get("DOI property name").change("  ");
